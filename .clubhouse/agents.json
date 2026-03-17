@@ -1,0 +1,11 @@
+[
+  {
+    "id": "durable_1773779392624_hgx09z",
+    "name": "zesty-cobra",
+    "color": "rose",
+    "branch": "zesty-cobra/standby",
+    "worktreePath": "/Users/cazzone/Repos/TabletopSimulator/.clubhouse/agents/zesty-cobra",
+    "createdAt": "2026-03-17T20:29:52.712Z",
+    "orchestrator": "claude-code"
+  }
+]
