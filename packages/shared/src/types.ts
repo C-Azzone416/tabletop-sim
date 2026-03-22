@@ -1,9 +1,9 @@
 // Game state types
 
-export type GameStatus = 'waiting' | 'active' | 'won' | 'lost';
+export type GameStatus = 'waiting' | 'setup' | 'active' | 'won' | 'lost';
 export type WireColor = 'blue' | 'yellow' | 'red';
 export type WireStatus = 'hidden' | 'cut' | 'revealed';
-export type ActionType = 'duo_cut' | 'solo_cut' | 'reveal_reds';
+export type ActionType = 'duo_cut' | 'solo_cut' | 'double_detector' | 'reveal_reds';
 export type TurnResult = 'success' | 'fail' | 'explosion';
 
 export interface Game {
@@ -11,6 +11,8 @@ export interface Game {
   mission: number;
   status: GameStatus;
   captainId: string | null;
+  currentTurnPlayerId: string | null;
+  joinCode: string;
   detonatorPosition: number;
   detonatorMax: number;
   createdAt: string;
@@ -22,6 +24,7 @@ export interface Player {
   gameId: string;
   name: string;
   seatOrder: number;
+  doubleDetectorUsed: boolean;
   joinedAt: string;
 }
 
@@ -29,7 +32,7 @@ export interface Wire {
   id: string;
   gameId: string;
   playerId: string;
-  value: string;
+  value: string | null;
   color: WireColor;
   rackPosition: number;
   status: WireStatus;
@@ -56,6 +59,7 @@ export interface Turn {
   playerId: string;
   actionType: ActionType;
   targetWireId: string | null;
+  targetWireId2: string | null;
   guessedValue: string | null;
   result: TurnResult | null;
   createdAt: string;
@@ -64,16 +68,24 @@ export interface Turn {
 // WebSocket message types
 
 export type ClientMessage =
-  | { type: 'join_game'; gameId: string; playerName: string }
+  | { type: 'create_game'; playerName: string }
+  | { type: 'join_game'; joinCode: string; playerName: string }
   | { type: 'start_game' }
+  | { type: 'place_info_token'; wireId: string }
   | { type: 'duo_cut'; targetWireId: string; guessedValue: string }
   | { type: 'solo_cut'; wireValue: string }
+  | { type: 'double_detector'; targetWireId: string; targetWireId2: string }
   | { type: 'reveal_reds' };
 
 export type ServerMessage =
+  | { type: 'game_created'; game: Game; player: Player }
+  | { type: 'joined_game'; game: Game; player: Player; players: Player[] }
+  | { type: 'game_started'; game: Game; players: Player[]; wires: Wire[] }
+  | { type: 'setup_complete'; game: Game }
   | { type: 'game_state'; game: Game; players: Player[]; wires: Wire[]; infoTokens: InfoToken[]; validationTokens: ValidationToken[] }
   | { type: 'player_joined'; player: Player }
-  | { type: 'turn_result'; turn: Turn; game: Game }
+  | { type: 'turn_result'; turn: Turn; game: Game; updatedWires: Wire[] }
+  | { type: 'validation_complete'; wireValue: string; game: Game }
   | { type: 'wire_updated'; wire: Wire }
   | { type: 'game_over'; result: 'won' | 'lost'; reason: string }
   | { type: 'error'; message: string };
