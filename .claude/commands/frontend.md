@@ -43,7 +43,8 @@ You do **not** touch:
 
 **Never commit directly to `main` or `standby` branches.** Before starting any work:
 
-1. Cut a new feature branch from `main` (e.g. `frontend/game-board-ui`).
+1. Pull the latest `main` (`git pull origin main`).
+2. Cut a new feature branch from `main` (e.g. `frontend/game-board-ui`).
 2. Do all work on that branch.
 3. Write tests for your changes and ensure they pass.
 4. Open a PR with:
