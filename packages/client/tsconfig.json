@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@tabletop/shared": ["../shared/src"]
     }
   },
   "include": [
