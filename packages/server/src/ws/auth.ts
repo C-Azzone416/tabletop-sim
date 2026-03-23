@@ -1,4 +1,3 @@
-import type { IncomingMessage } from 'node:http';
 import * as profilesDb from '../db/profiles.js';
 
 export interface AuthenticatedUser {
@@ -7,18 +6,15 @@ export interface AuthenticatedUser {
 }
 
 /**
- * Verify the session token from the WebSocket upgrade request.
- *
- * For V1 (name-only auth with Auth.js JWT), the client passes the session
- * token as a query parameter or cookie. We decode and verify it to get
- * the player's profile ID.
+ * Verify the session from the WebSocket upgrade request.
  *
  * V1 approach: the client sends profileId + name as query params on the
  * WebSocket URL. We verify the profile exists in the database.
  * This will be upgraded to JWT verification when Auth.js shares its secret.
  */
-export async function authenticateUpgrade(request: IncomingMessage): Promise<AuthenticatedUser | null> {
-  const url = new URL(request.url ?? '', `http://${request.headers.host}`);
+export async function authenticateUpgrade(request: { url?: string; headers: Record<string, string | string[] | undefined> }): Promise<AuthenticatedUser | null> {
+  const host = typeof request.headers.host === 'string' ? request.headers.host : 'localhost';
+  const url = new URL(request.url ?? '', `http://${host}`);
   const profileId = url.searchParams.get('profileId');
   const name = url.searchParams.get('name');
 
