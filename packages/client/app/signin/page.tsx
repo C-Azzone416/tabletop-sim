@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { GameRoomScene } from "../components/GameRoomScene";
 
 export default function SignInPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,51 +34,63 @@ export default function SignInPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-zinc-950">
-      <main className="w-full max-w-md px-6">
-        <div className="text-center mb-10">
-          <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-            Bomb Busters
-          </h1>
-          <p className="mt-2 text-zinc-500 dark:text-zinc-400">
-            Cut the right wires. Save the day.
-          </p>
-        </div>
+    <div className="relative flex min-h-screen flex-col items-center overflow-hidden font-sans">
+      {/* Background scene */}
+      <GameRoomScene />
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label
-              htmlFor="player-name"
-              className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
-            >
-              Choose Your Name
-            </label>
-            <input
-              id="player-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Enter your name"
-              maxLength={20}
-              autoFocus
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-4 py-3 text-zinc-900 placeholder-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500"
-            />
+      {/* Warm overlay — no black */}
+      <div className="absolute inset-0 bg-amber-900/10" />
+
+      {/* Sign-in card — compact, upper portion */}
+      <main className="relative z-10 mt-28 w-full max-w-sm px-6 sm:mt-36">
+        <div className="rounded-2xl border border-stone-300/50 bg-stone-50/80 px-6 py-6 shadow-2xl backdrop-blur-sm dark:bg-stone-900/70">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+              Tabletop Simulator
+            </h1>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              Gather your friends. Roll the dice.
+            </p>
           </div>
 
-          {error && (
-            <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-              {error}
-            </div>
-          )}
+          {!expanded ? (
+            <button
+              onClick={() => setExpanded(true)}
+              className="mt-5 w-full rounded-lg bg-teal-700 px-4 py-3 font-medium text-white transition-colors hover:bg-teal-800"
+            >
+              Join
+            </button>
+          ) : (
+            <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+              <div>
+                <input
+                  id="player-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Choose your name"
+                  maxLength={20}
+                  autoFocus
+                  className="w-full rounded-lg border border-stone-300 bg-white/60 px-4 py-3 text-stone-900 placeholder-stone-400 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600 dark:border-stone-600 dark:bg-stone-800/40 dark:text-stone-100 dark:placeholder-stone-500"
+                />
+              </div>
 
-          <button
-            type="submit"
-            disabled={!name.trim() || loading}
-            className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Signing in..." : "Enter Game"}
-          </button>
-        </form>
+              {error && (
+                <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={!name.trim() || loading}
+                className="w-full rounded-lg bg-teal-700 px-4 py-3 font-medium text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading ? "Joining..." : "Enter the Room"}
+              </button>
+            </form>
+          )}
+        </div>
       </main>
     </div>
   );
