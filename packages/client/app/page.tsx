@@ -26,26 +26,19 @@ export default function Home() {
   const handleCreate = () => {
     if (!name.trim()) return;
     setMode("creating");
+    send({ type: "create_game", playerName: name.trim() });
     connect();
-    // Wait for connection, then send
-    const interval = setInterval(() => {
-      send({ type: "create_game", playerName: name.trim() });
-      clearInterval(interval);
-    }, 500);
   };
 
   const handleJoin = () => {
     if (!name.trim() || !joinCode.trim()) return;
     setMode("joining");
+    send({
+      type: "join_game",
+      joinCode: joinCode.trim().toUpperCase(),
+      playerName: name.trim(),
+    });
     connect();
-    const interval = setInterval(() => {
-      send({
-        type: "join_game",
-        joinCode: joinCode.trim().toUpperCase(),
-        playerName: name.trim(),
-      });
-      clearInterval(interval);
-    }, 500);
   };
 
   return (

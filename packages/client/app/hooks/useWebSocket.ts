@@ -6,6 +6,9 @@ import type { ClientMessage, ServerMessage } from "@tabletop/shared";
 const SERVER_URL =
   process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3001";
 
+const MAX_RECONNECT_DELAY = 30_000;
+const INITIAL_RECONNECT_DELAY = 1_000;
+
 type ConnectionStatus = "connecting" | "connected" | "disconnected";
 type MessageHandler = (message: ServerMessage) => void;
 
@@ -13,9 +16,18 @@ export function useWebSocket(onMessage: MessageHandler) {
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef(onMessage);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY);
+  const messageQueueRef = useRef<ClientMessage[]>([]);
   const [status, setStatus] = useState("disconnected" as ConnectionStatus);
 
   onMessageRef.current = onMessage;
+
+  const flushQueue = useCallback((ws: WebSocket) => {
+    while (messageQueueRef.current.length > 0) {
+      const msg = messageQueueRef.current.shift()!;
+      ws.send(JSON.stringify(msg));
+    }
+  }, []);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -28,6 +40,8 @@ export function useWebSocket(onMessage: MessageHandler) {
 
     ws.onopen = () => {
       setStatus("connected");
+      reconnectDelayRef.current = INITIAL_RECONNECT_DELAY;
+      flushQueue(ws);
     };
 
     ws.onmessage = (event) => {
@@ -42,17 +56,21 @@ export function useWebSocket(onMessage: MessageHandler) {
     ws.onclose = () => {
       setStatus("disconnected");
       wsRef.current = null;
-      // Auto-reconnect after 2s
-      reconnectTimeoutRef.current = setTimeout(connect, 2000);
+      // Exponential backoff reconnect
+      const delay = reconnectDelayRef.current;
+      reconnectDelayRef.current = Math.min(delay * 2, MAX_RECONNECT_DELAY);
+      reconnectTimeoutRef.current = setTimeout(connect, delay);
     };
 
     ws.onerror = () => {
       ws.close();
     };
-  }, []);
+  }, [flushQueue]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+    reconnectDelayRef.current = INITIAL_RECONNECT_DELAY;
+    messageQueueRef.current = [];
     wsRef.current?.close();
     wsRef.current = null;
     setStatus("disconnected");
@@ -61,6 +79,9 @@ export function useWebSocket(onMessage: MessageHandler) {
   const send = useCallback((message: ClientMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
+    } else {
+      // Queue message to be sent when connection opens
+      messageQueueRef.current.push(message);
     }
   }, []);
 
