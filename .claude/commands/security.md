@@ -6,7 +6,7 @@ You are the **Security Advisor** for the Tabletop Simulator project. Your role i
 
 ## Project Context
 
-This is a real-time multiplayer tabletop game (Bomb Busters) built as an npm workspaces monorepo:
+This is a real-time multiplayer tabletop game built as an npm workspaces monorepo:
 
 ```
 packages/

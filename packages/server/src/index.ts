@@ -6,6 +6,7 @@ import * as playersDb from './db/players.js';
 import * as profilesDb from './db/profiles.js';
 import { handleMessage } from './ws/message-handler.js';
 import { removeConnection } from './ws/connection-manager.js';
+import { authenticateUpgrade } from './ws/auth.js';
 
 const PORT = Number(process.env.PORT) || 3001;
 
@@ -63,8 +64,18 @@ async function start() {
     return { game, players };
   });
 
-  // WebSocket endpoint
-  app.get('/ws', { websocket: true }, (socket) => {
+  // WebSocket endpoint with session verification
+  app.get('/ws', { websocket: true }, async (socket, request) => {
+    const user = await authenticateUpgrade(request);
+    if (!user) {
+      socket.send(JSON.stringify({ type: 'error', message: 'Authentication required' }));
+      socket.close(4001, 'Unauthenticated');
+      return;
+    }
+
+    // Attach authenticated user info for message handlers
+    (socket as any).__user = user;
+
     socket.on('message', async (raw: Buffer) => {
       await handleMessage(socket, raw.toString());
     });
