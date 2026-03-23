@@ -50,7 +50,7 @@ export default function Home() {
       <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-zinc-950">
         <main className="w-full max-w-md px-6 text-center">
           <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-            Bomb Busters
+            Tabletop Simulator
           </h1>
           <p className="mt-2 text-zinc-500 dark:text-zinc-400">
             Cut the right wires. Save the day.
@@ -71,7 +71,7 @@ export default function Home() {
       <main className="w-full max-w-md px-6">
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-            Bomb Busters
+            Tabletop Simulator
           </h1>
           <p className="mt-2 text-zinc-500 dark:text-zinc-400">
             Cut the right wires. Save the day.

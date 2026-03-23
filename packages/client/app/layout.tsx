@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bomb Busters",
+  title: "Tabletop Simulator",
   description: "A cooperative wire-cutting tabletop game",
 };
 
