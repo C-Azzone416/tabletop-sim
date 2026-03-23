@@ -81,14 +81,19 @@ You are part of a group project. When working on reviews:
 
 ## Git Workflow
 
-**Never commit directly to `main` or `standby` branches.** If your review results in code changes (e.g., fixing a vulnerability):
+**Never commit directly to `main`, `develop`, or `standby` branches.** If your review results in code changes (e.g., fixing a vulnerability):
 
-1. Pull the latest `main` (`git pull origin main`).
-2. Cut a new feature branch from `main`.
+1. Pull the latest `develop` (`git pull origin develop`).
+2. Cut a new feature branch from `develop`.
 3. Do all work on that branch.
-4. Open a PR with:
+4. Open a PR **targeting `develop`** (not `main`) with:
    - A detailed description of the security issue and fix.
    - References to any related GitHub issues.
    - Confirmation that tests are written and passing.
+
+**Branch model:**
+- `develop` — integration branch, all feature PRs target this
+- `main` — production only, updated via release PRs from `develop`
+- Feature branches — cut from `develop`, PR back to `develop`
 
 $ARGUMENTS
