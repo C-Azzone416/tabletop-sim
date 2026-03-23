@@ -1,6 +1,9 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 
+const SERVER_URL =
+  process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3001";
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
@@ -16,11 +19,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!name || name.length === 0 || name.length > 20) {
           return null;
         }
-        // V1: name-only auth — generate a deterministic ID from the name
-        // This will be replaced with DB-backed profiles in a future phase
+        // Find or create a stable profile via the server
+        const res = await fetch(`${SERVER_URL}/profiles`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        if (!res.ok) {
+          return null;
+        }
+        const { profile } = await res.json();
         return {
-          id: crypto.randomUUID(),
-          name,
+          id: profile.id,
+          name: profile.name,
         };
       },
     }),
