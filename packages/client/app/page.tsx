@@ -44,26 +44,9 @@ export default function Home() {
     connect();
   };
 
-  // Not signed in — redirect to sign-in
+  // Middleware redirects unauthenticated users to /signin
   if (!session?.user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-zinc-950">
-        <main className="w-full max-w-md px-6 text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-            Tabletop Simulator
-          </h1>
-          <p className="mt-2 text-zinc-500 dark:text-zinc-400">
-            Cut the right wires. Save the day.
-          </p>
-          <button
-            onClick={() => router.push("/signin")}
-            className="mt-8 rounded-lg bg-blue-600 px-8 py-3 font-medium text-white transition-colors hover:bg-blue-700"
-          >
-            Sign In to Play
-          </button>
-        </main>
-      </div>
-    );
+    return null;
   }
 
   return (
