@@ -2,5 +2,8 @@
   "buildCommand": "npm run build -w packages/shared && npm run build -w packages/client",
   "outputDirectory": "packages/client/.next",
   "installCommand": "npm install",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "redirects": [
+    { "source": "/", "destination": "/signin", "permanent": false }
+  ]
 }
