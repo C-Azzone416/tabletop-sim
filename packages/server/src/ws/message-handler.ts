@@ -5,8 +5,14 @@ import * as playersDb from '../db/players.js';
 import * as connManager from './connection-manager.js';
 import { broadcastGameState, buildPlayerView } from './state-broadcaster.js';
 
+const MAX_NAME_LENGTH = 20;
+
 function isNonEmptyString(val: unknown): val is string {
   return typeof val === 'string' && val.length > 0;
+}
+
+function isValidName(val: unknown): val is string {
+  return isNonEmptyString(val) && val.length <= MAX_NAME_LENGTH;
 }
 
 function validateMessage(parsed: unknown): ClientMessage | null {
@@ -15,10 +21,10 @@ function validateMessage(parsed: unknown): ClientMessage | null {
 
   switch (msg.type) {
     case 'create_game':
-      if (!isNonEmptyString(msg.playerName)) return null;
+      if (!isValidName(msg.playerName)) return null;
       return { type: 'create_game', playerName: msg.playerName };
     case 'join_game':
-      if (!isNonEmptyString(msg.joinCode) || !isNonEmptyString(msg.playerName)) return null;
+      if (!isNonEmptyString(msg.joinCode) || !isValidName(msg.playerName)) return null;
       return { type: 'join_game', joinCode: msg.joinCode, playerName: msg.playerName };
     case 'start_game':
       return { type: 'start_game' };
