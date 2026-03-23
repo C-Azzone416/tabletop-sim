@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { DETONATOR_CONFIG } from '@tabletop/shared';
 import type { Game, Player, Wire, Turn } from '@tabletop/shared';
 import * as gamesDb from '../db/games.js';
@@ -11,7 +12,7 @@ function generateJoinCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+    code += chars[randomInt(chars.length)];
   }
   return code;
 }
