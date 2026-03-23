@@ -5,6 +5,12 @@ import * as playersDb from '../db/players.js';
 import * as connManager from './connection-manager.js';
 import { broadcastGameState, buildPlayerView } from './state-broadcaster.js';
 
+function getAuthenticatedName(socket: WebSocket): string {
+  const user = connManager.getAuthenticatedUser(socket);
+  if (!user) throw new Error('Not authenticated');
+  return user.name;
+}
+
 const MAX_NAME_LENGTH = 20;
 
 function isNonEmptyString(val: unknown): val is string {
@@ -89,20 +95,32 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
         sendError(socket, 'Unknown message type');
     }
   } catch (err) {
-    sendError(socket, err instanceof Error ? err.message : 'Unknown error');
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    const safeMessages = [
+      'Game not found', 'Game already started', 'Game is full',
+      'Not connected to a game', 'Only the captain can start the game',
+      'Need at least 2 players', 'Wire not found', 'Not your turn',
+      'Cannot cut your own wire with duo cut', 'Wire already cut or revealed',
+      'Wire does not belong to this game', 'Double detector already used',
+      'Double detector can only target your own wires', 'Target wires must be hidden',
+      'Game is not active', 'Not authenticated', 'Player not found',
+    ];
+    sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
   }
 }
 
-async function handleCreateGame(socket: WebSocket, playerName: string): Promise<void> {
-  const { game, player } = await engine.createGame(playerName);
+async function handleCreateGame(socket: WebSocket, _playerName: string): Promise<void> {
+  const authenticatedName = getAuthenticatedName(socket);
+  const { game, player } = await engine.createGame(authenticatedName);
   connManager.registerConnection(socket, player.id, game.id);
 
   const response: ServerMessage = { type: 'game_created', game, player };
   socket.send(JSON.stringify(response));
 }
 
-async function handleJoinGame(socket: WebSocket, joinCode: string, playerName: string): Promise<void> {
-  const { game, player, players } = await engine.joinGame(joinCode, playerName);
+async function handleJoinGame(socket: WebSocket, joinCode: string, _playerName: string): Promise<void> {
+  const authenticatedName = getAuthenticatedName(socket);
+  const { game, player, players } = await engine.joinGame(joinCode, authenticatedName);
   connManager.registerConnection(socket, player.id, game.id);
 
   const response: ServerMessage = { type: 'joined_game', game, player, players };

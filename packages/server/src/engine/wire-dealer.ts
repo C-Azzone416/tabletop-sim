@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { MISSION_1_CONFIG } from '@tabletop/shared';
 import type { WireColor } from '@tabletop/shared';
 
@@ -26,7 +27,7 @@ function buildDeck(): { value: string; color: WireColor }[] {
  */
 function shuffle<T>(arr: T[]): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = randomInt(i + 1);
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
