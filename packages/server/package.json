@@ -8,14 +8,15 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@tabletop/shared": "*",
-    "@neondatabase/serverless": "^1.0.2",
-    "fastify": "^5",
+    "@fastify/cors": "^10",
     "@fastify/websocket": "^11",
-    "@fastify/cors": "^10"
+    "@neondatabase/serverless": "^1.0.2",
+    "@tabletop/shared": "*",
+    "fastify": "^5"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/ws": "^8.18.1",
     "tsx": "^4",
     "typescript": "^5"
   }

@@ -1,6 +1,10 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
+import * as gamesDb from './db/games.js';
+import * as playersDb from './db/players.js';
+import { handleMessage } from './ws/message-handler.js';
+import { removeConnection } from './ws/connection-manager.js';
 
 const PORT = Number(process.env.PORT) || 3001;
 
@@ -11,6 +15,44 @@ async function start() {
   await app.register(websocket);
 
   app.get('/health', async () => ({ status: 'ok' }));
+
+  // REST: Create a game (returns join code)
+  app.post('/games', async (request, reply) => {
+    const { playerName } = request.body as { playerName: string };
+    if (!playerName || typeof playerName !== 'string') {
+      return reply.status(400).send({ error: 'playerName is required' });
+    }
+    // Game creation is handled via WebSocket, but this endpoint
+    // can be used to check if a join code is valid
+    return reply.status(501).send({ error: 'Use WebSocket to create games' });
+  });
+
+  // REST: Get game by join code (for lobby preview)
+  app.get<{ Params: { joinCode: string } }>('/games/:joinCode', async (request, reply) => {
+    const { joinCode } = request.params;
+    const game = await gamesDb.getGameByJoinCode(joinCode);
+    if (!game) {
+      return reply.status(404).send({ error: 'Game not found' });
+    }
+    const players = await playersDb.getPlayersByGameId(game.id);
+    return { game, players };
+  });
+
+  // WebSocket endpoint
+  app.get('/ws', { websocket: true }, (socket) => {
+    socket.on('message', async (raw: Buffer) => {
+      await handleMessage(socket, raw.toString());
+    });
+
+    socket.on('close', () => {
+      removeConnection(socket);
+    });
+
+    socket.on('error', (err: Error) => {
+      app.log.error(err, 'WebSocket error');
+      removeConnection(socket);
+    });
+  });
 
   await app.listen({ port: PORT, host: '0.0.0.0' });
   console.log(`Server listening on port ${PORT}`);
