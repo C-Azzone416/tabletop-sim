@@ -2,14 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useGameState } from "./hooks/useGameState";
 
 export default function Home() {
   const router = useRouter();
-  const [name, setName] = useState("");
+  const { data: session } = useSession();
   const [joinCode, setJoinCode] = useState("");
   const [mode, setMode] = useState<"idle" | "creating" | "joining">("idle");
+
+  const playerName = session?.user?.name ?? "";
 
   const { state, handleMessage } = useGameState();
   const { status, connect, send } = useWebSocket((message) => {
@@ -24,22 +27,44 @@ export default function Home() {
   });
 
   const handleCreate = () => {
-    if (!name.trim()) return;
+    if (!playerName) return;
     setMode("creating");
-    send({ type: "create_game", playerName: name.trim() });
+    send({ type: "create_game", playerName });
     connect();
   };
 
   const handleJoin = () => {
-    if (!name.trim() || !joinCode.trim()) return;
+    if (!playerName || !joinCode.trim()) return;
     setMode("joining");
     send({
       type: "join_game",
       joinCode: joinCode.trim().toUpperCase(),
-      playerName: name.trim(),
+      playerName,
     });
     connect();
   };
+
+  // Not signed in — redirect to sign-in
+  if (!session?.user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-zinc-950">
+        <main className="w-full max-w-md px-6 text-center">
+          <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+            Bomb Busters
+          </h1>
+          <p className="mt-2 text-zinc-500 dark:text-zinc-400">
+            Cut the right wires. Save the day.
+          </p>
+          <button
+            onClick={() => router.push("/signin")}
+            className="mt-8 rounded-lg bg-blue-600 px-8 py-3 font-medium text-white transition-colors hover:bg-blue-700"
+          >
+            Sign In to Play
+          </button>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-zinc-950">
@@ -53,25 +78,22 @@ export default function Home() {
           </p>
         </div>
 
-        <div className="space-y-6">
-          <div>
-            <label
-              htmlFor="player-name"
-              className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
-            >
-              Your Name
-            </label>
-            <input
-              id="player-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Enter your name"
-              maxLength={20}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-4 py-3 text-zinc-900 placeholder-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500"
-            />
-          </div>
+        <div className="mb-6 flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800">
+          <span className="text-sm text-zinc-600 dark:text-zinc-400">
+            Playing as{" "}
+            <span className="font-medium text-zinc-900 dark:text-zinc-100">
+              {playerName}
+            </span>
+          </span>
+          <button
+            onClick={() => signOut({ callbackUrl: "/signin" })}
+            className="text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            Change name
+          </button>
+        </div>
 
+        <div className="space-y-6">
           {state.error && (
             <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
               {state.error}
@@ -80,7 +102,7 @@ export default function Home() {
 
           <button
             onClick={handleCreate}
-            disabled={!name.trim() || mode !== "idle"}
+            disabled={mode !== "idle"}
             className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {mode === "creating" ? "Creating..." : "Create New Game"}
@@ -108,7 +130,7 @@ export default function Home() {
             />
             <button
               onClick={handleJoin}
-              disabled={!name.trim() || !joinCode.trim() || mode !== "idle"}
+              disabled={!joinCode.trim() || mode !== "idle"}
               className="rounded-lg bg-zinc-800 px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-700 dark:hover:bg-zinc-600"
             >
               {mode === "joining" ? "Joining..." : "Join"}
