@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import * as gamesDb from './db/games.js';
 import * as playersDb from './db/players.js';
+import * as profilesDb from './db/profiles.js';
 import { handleMessage } from './ws/message-handler.js';
 import { removeConnection } from './ws/connection-manager.js';
 
@@ -25,6 +26,30 @@ async function start() {
     // Game creation is handled via WebSocket, but this endpoint
     // can be used to check if a join code is valid
     return reply.status(501).send({ error: 'Use WebSocket to create games' });
+  });
+
+  // REST: Find or create a player profile by name
+  app.post('/profiles', async (request, reply) => {
+    const { name } = request.body as { name: string };
+    if (!name || typeof name !== 'string' || name.trim().length === 0 || name.trim().length > 20) {
+      return reply.status(400).send({ error: 'name is required (1-20 chars)' });
+    }
+    const trimmed = name.trim();
+    const existing = await profilesDb.getProfileByName(trimmed);
+    if (existing) {
+      return { profile: existing };
+    }
+    const profile = await profilesDb.createProfile(trimmed);
+    return reply.status(201).send({ profile });
+  });
+
+  // REST: Get profile by ID
+  app.get<{ Params: { id: string } }>('/profiles/:id', async (request, reply) => {
+    const profile = await profilesDb.getProfileById(request.params.id);
+    if (!profile) {
+      return reply.status(404).send({ error: 'Profile not found' });
+    }
+    return { profile };
   });
 
   // REST: Get game by join code (for lobby preview)
