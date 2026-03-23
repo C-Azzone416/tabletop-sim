@@ -13,8 +13,11 @@ const PORT = Number(process.env.PORT) || 3001;
 async function start() {
   const app = Fastify({ logger: true });
 
-  await app.register(cors, { origin: true });
-  await app.register(websocket);
+  const allowedOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',')
+    : ['http://localhost:3000'];
+  await app.register(cors, { origin: allowedOrigins });
+  await app.register(websocket, { options: { maxPayload: 4096 } });
 
   app.get('/health', async () => ({ status: 'ok' }));
 
