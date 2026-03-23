@@ -5,12 +5,54 @@ import * as playersDb from '../db/players.js';
 import * as connManager from './connection-manager.js';
 import { broadcastGameState, buildPlayerView } from './state-broadcaster.js';
 
+function isNonEmptyString(val: unknown): val is string {
+  return typeof val === 'string' && val.length > 0;
+}
+
+function validateMessage(parsed: unknown): ClientMessage | null {
+  if (typeof parsed !== 'object' || parsed === null || !('type' in parsed)) return null;
+  const msg = parsed as Record<string, unknown>;
+
+  switch (msg.type) {
+    case 'create_game':
+      if (!isNonEmptyString(msg.playerName)) return null;
+      return { type: 'create_game', playerName: msg.playerName };
+    case 'join_game':
+      if (!isNonEmptyString(msg.joinCode) || !isNonEmptyString(msg.playerName)) return null;
+      return { type: 'join_game', joinCode: msg.joinCode, playerName: msg.playerName };
+    case 'start_game':
+      return { type: 'start_game' };
+    case 'place_info_token':
+      if (!isNonEmptyString(msg.wireId)) return null;
+      return { type: 'place_info_token', wireId: msg.wireId };
+    case 'duo_cut':
+      if (!isNonEmptyString(msg.targetWireId) || !isNonEmptyString(msg.guessedValue)) return null;
+      return { type: 'duo_cut', targetWireId: msg.targetWireId, guessedValue: msg.guessedValue };
+    case 'solo_cut':
+      if (!isNonEmptyString(msg.wireValue)) return null;
+      return { type: 'solo_cut', wireValue: msg.wireValue };
+    case 'double_detector':
+      if (!isNonEmptyString(msg.targetWireId) || !isNonEmptyString(msg.targetWireId2)) return null;
+      return { type: 'double_detector', targetWireId: msg.targetWireId, targetWireId2: msg.targetWireId2 };
+    case 'reveal_reds':
+      return { type: 'reveal_reds' };
+    default:
+      return null;
+  }
+}
+
 export async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
-  let msg: ClientMessage;
+  let parsed: unknown;
   try {
-    msg = JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch {
     sendError(socket, 'Invalid JSON');
+    return;
+  }
+
+  const msg = validateMessage(parsed);
+  if (!msg) {
+    sendError(socket, 'Invalid message format');
     return;
   }
 
