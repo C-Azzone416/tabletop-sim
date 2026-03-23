@@ -1,4 +1,4 @@
 // Shared types and constants for Tabletop Simulator
 
-export * from './types.js';
-export * from './constants.js';
+export * from './types';
+export * from './constants';
