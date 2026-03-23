@@ -5,7 +5,7 @@ import * as gamesDb from './db/games.js';
 import * as playersDb from './db/players.js';
 import * as profilesDb from './db/profiles.js';
 import { handleMessage } from './ws/message-handler.js';
-import { removeConnection } from './ws/connection-manager.js';
+import { removeConnection, setAuthenticatedUser } from './ws/connection-manager.js';
 import { authenticateUpgrade } from './ws/auth.js';
 
 const PORT = Number(process.env.PORT) || 3001;
@@ -73,8 +73,7 @@ async function start() {
       return;
     }
 
-    // Attach authenticated user info for message handlers
-    (socket as any).__user = user;
+    setAuthenticatedUser(socket, user);
 
     socket.on('message', async (raw: Buffer) => {
       await handleMessage(socket, raw.toString());
