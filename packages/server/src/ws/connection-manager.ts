@@ -1,4 +1,5 @@
 import type { WebSocket } from 'ws';
+import type { AuthenticatedUser } from './auth.js';
 
 interface ConnectionInfo {
   playerId: string;
@@ -8,6 +9,15 @@ interface ConnectionInfo {
 
 const connections = new Map<WebSocket, ConnectionInfo>();
 const gameConnections = new Map<string, Map<string, WebSocket>>();
+const authenticatedUsers = new Map<WebSocket, AuthenticatedUser>();
+
+export function setAuthenticatedUser(socket: WebSocket, user: AuthenticatedUser): void {
+  authenticatedUsers.set(socket, user);
+}
+
+export function getAuthenticatedUser(socket: WebSocket): AuthenticatedUser | undefined {
+  return authenticatedUsers.get(socket);
+}
 
 export function registerConnection(socket: WebSocket, playerId: string, gameId: string): void {
   connections.set(socket, { playerId, gameId, socket });
@@ -30,6 +40,7 @@ export function removeConnection(socket: WebSocket): void {
     }
     connections.delete(socket);
   }
+  authenticatedUsers.delete(socket);
 }
 
 export function getConnectionInfo(socket: WebSocket): ConnectionInfo | undefined {
