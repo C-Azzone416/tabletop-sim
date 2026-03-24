@@ -70,7 +70,7 @@ export interface Turn {
 export type ClientMessage =
   | { type: 'create_game'; playerName: string }
   | { type: 'join_game'; joinCode: string; playerName: string }
-  | { type: 'start_game' }
+  | { type: 'start_game'; mission?: number }
   | { type: 'place_info_token'; wireId: string }
   | { type: 'duo_cut'; targetWireId: string; guessedValue: string }
   | { type: 'solo_cut'; wireValue: string }
