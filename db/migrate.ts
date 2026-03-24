@@ -17,17 +17,43 @@ const migrationsDir = join(__dirname, 'migrations');
 const migrations = [
   '001_initial_schema.sql',
   '002_mission1_updates.sql',
+  '003_player_profiles.sql',
 ];
 
 async function run() {
   await client.connect();
+
+  // Create migration tracking table if it doesn't exist
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS _migrations (
+      name TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // Check which migrations have already been applied
+  const { rows: applied } = await client.query('SELECT name FROM _migrations');
+  const appliedSet = new Set(applied.map((r: { name: string }) => r.name));
+
+  let count = 0;
   for (const file of migrations) {
+    if (appliedSet.has(file)) {
+      console.log(`  ⏭ ${file} (already applied)`);
+      continue;
+    }
     const content = readFileSync(join(migrationsDir, file), 'utf-8');
     console.log(`Running ${file}...`);
     await client.query(content);
+    await client.query('INSERT INTO _migrations (name) VALUES ($1)', [file]);
     console.log(`  ✓ ${file} applied`);
+    count++;
   }
-  console.log('\nAll migrations complete.');
+
+  if (count === 0) {
+    console.log('\nAll migrations already applied.');
+  } else {
+    console.log(`\n${count} migration(s) applied.`);
+  }
   await client.end();
 }
 
