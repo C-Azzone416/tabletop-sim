@@ -47,7 +47,7 @@ describe("Lobby", () => {
 
   it("shows start button for captain with enough players", () => {
     render(<Lobby {...defaultProps()} />);
-    const button = screen.getByRole("button", { name: "Start Game" });
+    const button = screen.getByRole("button", { name: /Start Mission/ });
     expect(button).toBeInTheDocument();
     expect(button).toBeEnabled();
   });
@@ -56,7 +56,7 @@ describe("Lobby", () => {
     const props = defaultProps();
     props.players = [props.players[0]];
     render(<Lobby {...props} />);
-    const button = screen.getByRole("button");
+    const button = screen.getByRole("button", { name: /Need \d+ more/ });
     expect(button).toBeDisabled();
   });
 
@@ -64,8 +64,8 @@ describe("Lobby", () => {
     const user = userEvent.setup();
     const props = defaultProps();
     render(<Lobby {...props} />);
-    await user.click(screen.getByRole("button", { name: "Start Game" }));
-    expect(props.onStartGame).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole("button", { name: /Start Mission/ }));
+    expect(props.onStartGame).toHaveBeenCalledWith(1);
   });
 
   it("shows waiting message for non-captain player", () => {
@@ -75,6 +75,6 @@ describe("Lobby", () => {
     expect(
       screen.getByText("Waiting for the captain to start the game...")
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start Game" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Start Mission/ })).not.toBeInTheDocument();
   });
 });

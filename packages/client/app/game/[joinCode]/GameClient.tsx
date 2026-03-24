@@ -35,7 +35,7 @@ export function GameClient({ joinCode }: GameClientProps) {
           players={state.players}
           localPlayerId={state.localPlayer?.id ?? ""}
           captainId={state.game?.captainId ?? null}
-          onStartGame={() => send({ type: "start_game" })}
+          onStartGame={(mission) => send({ type: "start_game", mission })}
         />
         {state.error && (
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg dark:bg-red-900/20 dark:text-red-400">
