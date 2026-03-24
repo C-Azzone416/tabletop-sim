@@ -54,16 +54,21 @@ You do **not** touch:
 
 ## Git Workflow
 
-**Never commit directly to `main` or `standby` branches.** Before starting any work:
+**Never commit directly to `main`, `develop`, or `standby` branches.** Before starting any work:
 
-1. Pull the latest `main` (`git pull origin main`).
-2. Cut a new feature branch from `main` (e.g. `backend/add-game-api`).
-2. Do all work on that branch.
-3. Write tests for your changes and ensure they pass.
-4. Open a PR with:
+1. Pull the latest `develop` (`git pull origin develop`).
+2. Cut a new feature branch from `develop` (e.g. `backend/add-game-api`).
+3. Do all work on that branch.
+4. Write tests for your changes and ensure they pass.
+5. Open a PR **targeting `develop`** (not `main`) with:
    - A detailed description of all changes.
    - References to any related GitHub issues.
    - Confirmation that tests are written and passing.
+
+**Branch model:**
+- `develop` — integration branch, all feature PRs target this
+- `main` — production only, updated via release PRs from `develop`
+- Feature branches — cut from `develop`, PR back to `develop`
 
 ## Coordination
 
