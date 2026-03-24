@@ -1,5 +1,5 @@
 -- Games
-CREATE TABLE games (
+CREATE TABLE IF NOT EXISTS games (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   mission INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'waiting', -- waiting, active, won, lost
@@ -11,7 +11,7 @@ CREATE TABLE games (
 );
 
 -- Players
-CREATE TABLE players (
+CREATE TABLE IF NOT EXISTS players (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE players (
 );
 
 -- Wire tiles on each player's rack
-CREATE TABLE wires (
+CREATE TABLE IF NOT EXISTS wires (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
   player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
@@ -31,7 +31,7 @@ CREATE TABLE wires (
 );
 
 -- Info tokens placed on wires after failed guesses
-CREATE TABLE info_tokens (
+CREATE TABLE IF NOT EXISTS info_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
   wire_id UUID NOT NULL REFERENCES wires(id) ON DELETE CASCADE,
@@ -40,7 +40,7 @@ CREATE TABLE info_tokens (
 );
 
 -- Validation tokens on the board (all 4 of a value cut)
-CREATE TABLE validation_tokens (
+CREATE TABLE IF NOT EXISTS validation_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
   wire_value TEXT NOT NULL,
@@ -48,7 +48,7 @@ CREATE TABLE validation_tokens (
 );
 
 -- Turn log
-CREATE TABLE turns (
+CREATE TABLE IF NOT EXISTS turns (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
   player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
@@ -68,6 +68,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS games_updated_at ON games;
 CREATE TRIGGER games_updated_at
   BEFORE UPDATE ON games
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
