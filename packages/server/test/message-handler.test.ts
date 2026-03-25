@@ -115,6 +115,30 @@ describe("message-handler", () => {
       await handleMessage(ws, JSON.stringify({ type: "double_detector", targetWireId: "w1" }));
       expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
     });
+
+    it("rejects start_game with mission out of range", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({ type: "start_game", mission: 9 }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+    });
+
+    it("rejects start_game with mission 0", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({ type: "start_game", mission: 0 }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+    });
+
+    it("rejects start_game with non-integer mission", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({ type: "start_game", mission: 2.5 }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+    });
+
+    it("rejects start_game with string mission", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({ type: "start_game", mission: "3" }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+    });
   });
 
   describe("create_game", () => {
@@ -181,6 +205,28 @@ describe("message-handler", () => {
       // Both players should receive game_started
       expect(ws.send).toHaveBeenCalled();
       expect(ws2.send).toHaveBeenCalled();
+      // Mission defaults to 1 when not provided
+      expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 1);
+    });
+
+    it("passes selected mission to the engine", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", status: "setup" });
+      const players = [makePlayer({ id: "p1" }), makePlayer({ id: "p2" })];
+      const wires = [makeWire({ playerId: "p1" }), makeWire({ playerId: "p2" })];
+
+      const gameSockets = new Map<string, WebSocket>();
+      gameSockets.set("p1", ws);
+
+      mockConnManager.getConnectionInfo.mockReturnValue({
+        playerId: "p1", gameId: "g1", socket: ws,
+      });
+      mockEngine.startGame.mockResolvedValue({ game, players, wires });
+      mockConnManager.getGameSockets.mockReturnValue(gameSockets);
+
+      await handleMessage(ws, JSON.stringify({ type: "start_game", mission: 5 }));
+
+      expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 5);
     });
   });
 

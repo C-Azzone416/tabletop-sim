@@ -32,8 +32,13 @@ function validateMessage(parsed: unknown): ClientMessage | null {
     case 'join_game':
       if (!isNonEmptyString(msg.joinCode) || !isValidName(msg.playerName)) return null;
       return { type: 'join_game', joinCode: msg.joinCode, playerName: msg.playerName };
-    case 'start_game':
-      return { type: 'start_game' };
+    case 'start_game': {
+      const mission = msg.mission;
+      if (mission !== undefined) {
+        if (typeof mission !== 'number' || !Number.isInteger(mission) || mission < 1 || mission > 8) return null;
+      }
+      return { type: 'start_game', mission: mission ?? 1 };
+    }
     case 'place_info_token':
       if (!isNonEmptyString(msg.wireId)) return null;
       return { type: 'place_info_token', wireId: msg.wireId };
@@ -77,7 +82,7 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
         await handleJoinGame(socket, msg.joinCode, msg.playerName);
         break;
       case 'start_game':
-        await handleStartGame(socket);
+        await handleStartGame(socket, msg.mission ?? 1);
         break;
       case 'place_info_token':
         // Handled during setup phase — for now just acknowledge
@@ -131,11 +136,11 @@ async function handleJoinGame(socket: WebSocket, joinCode: string, _playerName: 
   connManager.broadcastToGame(game.id, notification, player.id);
 }
 
-async function handleStartGame(socket: WebSocket): Promise<void> {
+async function handleStartGame(socket: WebSocket, mission: number): Promise<void> {
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
-  const { game, players, wires } = await engine.startGame(info.gameId, info.playerId);
+  const { game, players, wires } = await engine.startGame(info.gameId, info.playerId, mission);
 
   // Send game_started with per-player wire views
   const gameSockets = connManager.getGameSockets(info.gameId);
