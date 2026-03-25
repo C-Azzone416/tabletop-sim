@@ -18,18 +18,23 @@ export default function Home() {
   const [expanded, setExpanded] = useState(false);
 
   const playerName = session?.user?.name ?? "";
+  const profileId = session?.user?.id ?? "";
 
   const { state, handleMessage } = useGameState();
-  const { status, connect, send } = useWebSocket((message) => {
-    handleMessage(message);
-    if (message.type === "game_created") {
-      router.push(`/game/${message.game.joinCode}`);
-    } else if (message.type === "joined_game") {
-      router.push(`/game/${message.game.joinCode}`);
-    } else if (message.type === "error") {
-      setMode("idle");
-    }
-  });
+  const { status, connect, send } = useWebSocket(
+    (message) => {
+      handleMessage(message);
+      if (message.type === "game_created") {
+        router.push(`/game/${message.game.joinCode}`);
+      } else if (message.type === "joined_game") {
+        router.push(`/game/${message.game.joinCode}`);
+      } else if (message.type === "error") {
+        setMode("idle");
+      }
+    },
+    profileId,
+    playerName,
+  );
 
   const handleCreate = () => {
     if (!playerName) return;
