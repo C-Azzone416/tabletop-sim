@@ -96,6 +96,9 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
       case 'double_detector':
         await handleDoubleDetector(socket, msg.targetWireId, msg.targetWireId2);
         break;
+      case 'reveal_reds':
+        await handleRevealReds(socket);
+        break;
       default:
         sendError(socket, 'Unknown message type');
     }
@@ -109,6 +112,7 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
       'Wire does not belong to this game', 'Double detector already used',
       'Double detector can only target your own wires', 'Target wires must be hidden',
       'Game is not active', 'Not authenticated', 'Player not found',
+      'Reveal reds not available in this mission',
     ];
     sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
   }
@@ -205,6 +209,21 @@ async function handleDoubleDetector(socket: WebSocket, targetWireId: string, tar
 
   // Others just see that a turn happened (with no wire details)
   connManager.broadcastToGame(info.gameId, { type: 'turn_result', turn: { ...turn, result: null }, game, updatedWires: [] }, info.playerId);
+}
+
+async function handleRevealReds(socket: WebSocket): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  const { turn, game, updatedWires } = await engine.executeRevealReds(info.gameId, info.playerId);
+
+  // Broadcast revealed wires — everyone sees red values now (owner sees via 'revealed' status)
+  const gameSockets = connManager.getGameSockets(info.gameId);
+  for (const [playerId, playerSocket] of gameSockets) {
+    const playerWireView = buildPlayerView(updatedWires, playerId);
+    const response: ServerMessage = { type: 'turn_result', turn, game, updatedWires: playerWireView };
+    playerSocket.send(JSON.stringify(response));
+  }
 }
 
 function sendError(socket: WebSocket, message: string): void {

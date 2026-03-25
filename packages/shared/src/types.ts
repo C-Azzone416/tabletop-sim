@@ -50,6 +50,7 @@ export interface ValidationToken {
   id: string;
   gameId: string;
   wireValue: string;
+  wireColor: WireColor;
   validatedAt: string;
 }
 
