@@ -60,14 +60,14 @@ describe("GameClient — full game flow integration", () => {
   });
 
   it("shows lobby state when no game exists yet", () => {
-    render(<GameClient joinCode="ABC123" />);
+    render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
     act(() => vi.advanceTimersByTime(0));
     expect(screen.getByText("Game Lobby")).toBeInTheDocument();
     expect(screen.getByText("ABC123")).toBeInTheDocument();
   });
 
   it("transitions through lobby → setup → active → game over", () => {
-    render(<GameClient joinCode="ABC123" />);
+    render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
     act(() => vi.advanceTimersByTime(0));
     const ws = getWs();
 
@@ -145,7 +145,7 @@ describe("GameClient — full game flow integration", () => {
   });
 
   it("shows error banner when server sends error", () => {
-    render(<GameClient joinCode="ABC123" />);
+    render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
     act(() => vi.advanceTimersByTime(0));
     const ws = getWs();
 
@@ -165,7 +165,7 @@ describe("GameClient — full game flow integration", () => {
   });
 
   it("shows loss overlay on game_over lost", () => {
-    render(<GameClient joinCode="ABC123" />);
+    render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
     act(() => vi.advanceTimersByTime(0));
     const ws = getWs();
 
