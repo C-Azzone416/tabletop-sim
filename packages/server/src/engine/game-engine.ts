@@ -45,12 +45,13 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
   if (game.captainId !== requestingPlayerId) throw new Error('Only the captain can start the game');
 
   const players = await playersDb.getPlayersByGameId(gameId);
-  if (players.length < 2) throw new Error('Need at least 2 players');
+  if (players.length < 1) throw new Error('Need at least 1 player');
 
   const missionConfig = MISSION_CONFIGS[mission];
   if (!missionConfig) throw new Error('Invalid mission');
 
-  const detonatorMax = missionConfig.detonator[players.length];
+  // For solo testing, fall back to the 2-player detonator when player count has no config entry
+  const detonatorMax = missionConfig.detonator[players.length] ?? missionConfig.detonator[2];
   if (!detonatorMax) throw new Error('Invalid player count');
 
   // Store the selected mission

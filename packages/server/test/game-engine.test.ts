@@ -164,16 +164,24 @@ describe("game-engine", () => {
       );
     });
 
-    it("rejects with fewer than 2 players", async () => {
+    it("allows solo start (1 player, uses 2-player detonator config)", async () => {
       const game = makeGame({ id: "g1", status: "waiting", captainId: "p1" });
-      mockGamesDb.getGameById.mockResolvedValue(game);
-      mockPlayersDb.getPlayersByGameId.mockResolvedValue([
-        makePlayer({ id: "p1" }),
-      ]);
+      const players = [makePlayer({ id: "p1", gameId: "g1", name: "Alice", seatOrder: 0 })];
+      const setupGame = { ...game, status: "setup" as const };
 
-      await expect(engine.startGame("g1", "p1")).rejects.toThrow(
-        "Need at least 2 players"
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      mockGamesDb.updateMission.mockResolvedValue(game);
+      mockGamesDb.updateDetonator.mockResolvedValue({ ...game, detonatorPosition: 0 });
+      mockGamesDb.updateGameStatus.mockResolvedValue(setupGame);
+      mockWiresDb.createWire.mockImplementation(async (_gid, _pid, val, col, pos) =>
+        makeWire({ gameId: "g1", value: val, color: col, rackPosition: pos })
       );
+
+      const result = await engine.startGame("g1", "p1");
+
+      expect(result.game.status).toBe("setup");
+      expect(result.players).toHaveLength(1);
     });
 
     it("rejects if game already started", async () => {
