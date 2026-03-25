@@ -128,8 +128,16 @@ export const MISSION_8_CONFIG: MissionConfig = {
   wiresPerPlayer: { 2: 18, 3: { captain: 18, others: 9 }, 4: 9 },
 };
 
-// Lookup map: mission number → config (missions 2-8)
+// Lookup map: mission number → config (all missions 1-8)
 export const MISSION_CONFIGS: Record<number, MissionConfig> = {
+  1: {
+    wireGroups: [
+      { color: 'blue', values: [1, 2, 3, 4, 5, 6], copiesPerValue: 4 },
+    ],
+    totalWires: 24,
+    detonator: { 2: 4, 3: 5, 4: 6 },
+    wiresPerPlayer: { 2: 12, 3: { captain: 12, others: 6 }, 4: 6 },
+  },
   2: MISSION_2_CONFIG,
   3: MISSION_3_CONFIG,
   4: MISSION_4_CONFIG,

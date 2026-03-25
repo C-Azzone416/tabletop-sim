@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
-import { MISSION_1_CONFIG } from '@tabletop/shared';
-import type { WireColor } from '@tabletop/shared';
+import { MISSION_CONFIGS } from '@tabletop/shared';
+import type { MissionConfig, WireColor } from '@tabletop/shared';
 
 export interface DealedWire {
   playerId: string;
@@ -10,13 +10,15 @@ export interface DealedWire {
 }
 
 /**
- * Build the wire deck for Mission 1: 24 blue wires, values 1-6, 4 of each.
+ * Build the full wire deck for a mission from its wire groups.
  */
-function buildDeck(): { value: string; color: WireColor }[] {
+function buildDeck(config: MissionConfig): { value: string; color: WireColor }[] {
   const deck: { value: string; color: WireColor }[] = [];
-  for (const v of MISSION_1_CONFIG.values) {
-    for (let i = 0; i < MISSION_1_CONFIG.copiesPerValue; i++) {
-      deck.push({ value: String(v), color: MISSION_1_CONFIG.wireColor });
+  for (const group of config.wireGroups) {
+    for (const v of group.values) {
+      for (let i = 0; i < group.copiesPerValue; i++) {
+        deck.push({ value: String(v), color: group.color });
+      }
     }
   }
   return deck;
@@ -34,38 +36,46 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 /**
- * Deal wires to players for Mission 1.
+ * Deal wires to players for the given mission.
  *
- * Distribution by player count:
- * - 2 players: 12 each
- * - 3 players: captain gets 12, others get 6
- * - 4 players: 6 each
+ * Wire distribution is driven by the mission config's wiresPerPlayer field:
+ * - 2 players: equal split
+ * - 3 players: captain gets more, others equal
+ * - 4 players: equal split
  *
- * Wires are sorted by value within each player's rack and assigned positions.
+ * Wires are sorted by color group order (blue → yellow → red) then by value
+ * within each color, and assigned rack positions sequentially.
  */
-export function dealWires(playerIds: string[], captainId: string): DealedWire[] {
+export function dealWires(playerIds: string[], captainId: string, missionNumber: number = 1): DealedWire[] {
   const playerCount = playerIds.length;
   if (playerCount < 2 || playerCount > 4) {
     throw new Error(`Invalid player count: ${playerCount}. Must be 2-4.`);
   }
 
-  const deck = shuffle(buildDeck());
+  const config = MISSION_CONFIGS[missionNumber];
+  if (!config) {
+    throw new Error(`Unknown mission: ${missionNumber}. Must be 1-8.`);
+  }
+
+  const deck = shuffle(buildDeck(config));
   const playerWires: Map<string, { value: string; color: WireColor }[]> = new Map();
 
   for (const pid of playerIds) {
     playerWires.set(pid, []);
   }
 
-  // Determine wire counts per player
+  // Determine wire counts per player from mission config
   const wireCounts = new Map<string, number>();
+  const wpp = config.wiresPerPlayer;
   if (playerCount === 2) {
-    for (const pid of playerIds) wireCounts.set(pid, 12);
+    for (const pid of playerIds) wireCounts.set(pid, wpp[2]);
   } else if (playerCount === 3) {
+    const counts = wpp[3] as { captain: number; others: number };
     for (const pid of playerIds) {
-      wireCounts.set(pid, pid === captainId ? 12 : 6);
+      wireCounts.set(pid, pid === captainId ? counts.captain : counts.others);
     }
   } else {
-    for (const pid of playerIds) wireCounts.set(pid, 6);
+    for (const pid of playerIds) wireCounts.set(pid, wpp[4]);
   }
 
   // Deal from the shuffled deck
@@ -78,11 +88,18 @@ export function dealWires(playerIds: string[], captainId: string): DealedWire[] 
     }
   }
 
-  // Sort each player's wires by value and assign rack positions
+  // Color group order for sorting: blue first, yellow second, red third
+  const colorOrder: Record<WireColor, number> = { blue: 0, yellow: 1, red: 2 };
+
+  // Sort each player's wires by color group then by numeric value, assign rack positions
   const result: DealedWire[] = [];
   for (const pid of playerIds) {
     const hand = playerWires.get(pid)!;
-    hand.sort((a, b) => Number(a.value) - Number(b.value));
+    hand.sort((a, b) => {
+      const colorDiff = colorOrder[a.color] - colorOrder[b.color];
+      if (colorDiff !== 0) return colorDiff;
+      return Number(a.value) - Number(b.value);
+    });
     hand.forEach((wire, index) => {
       result.push({
         playerId: pid,

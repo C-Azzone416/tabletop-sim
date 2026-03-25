@@ -104,7 +104,7 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
     const safeMessages = [
       'Game not found', 'Game already started', 'Game is full',
       'Not connected to a game', 'Only the captain can start the game',
-      'Need at least 2 players', 'Wire not found', 'Not your turn',
+      'Need at least 2 players', 'Invalid mission', 'Wire not found', 'Not your turn',
       'Cannot cut your own wire with duo cut', 'Wire already cut or revealed',
       'Wire does not belong to this game', 'Double detector already used',
       'Double detector can only target your own wires', 'Target wires must be hidden',
