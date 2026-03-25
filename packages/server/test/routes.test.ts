@@ -176,10 +176,13 @@ describe("routes", () => {
       const player = makePlayer({ id: "p1", gameId: "g1" });
       const startedGame = { ...game, status: "setup" as const };
 
+      const activeGame = { ...game, status: "active" as const };
+
       mockProfilesDb.getProfileByName.mockResolvedValue(null);
       mockProfilesDb.createProfile.mockResolvedValue(profile);
       mockEngine.createGame.mockResolvedValue({ game, player });
       mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
+      mockEngine.completeSetup.mockResolvedValue(activeGame);
 
       const res = await app.inject({ method: "POST", url: "/dev/seed" });
 
@@ -187,6 +190,7 @@ describe("routes", () => {
       expect(res.json()).toEqual({ joinCode: "DEVGAME", profileId: "prof-dev", playerName: "Dev" });
       expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "prof-dev");
       expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 1);
+      expect(mockEngine.completeSetup).toHaveBeenCalledWith("g1");
     });
 
     it("reuses existing Dev profile", async () => {
@@ -194,10 +198,12 @@ describe("routes", () => {
       const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
       const player = makePlayer({ id: "p1", gameId: "g1" });
       const startedGame = { ...game, status: "setup" as const };
+      const activeGame = { ...game, status: "active" as const };
 
       mockProfilesDb.getProfileByName.mockResolvedValue(profile);
       mockEngine.createGame.mockResolvedValue({ game, player });
       mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
+      mockEngine.completeSetup.mockResolvedValue(activeGame);
 
       const res = await app.inject({ method: "POST", url: "/dev/seed" });
 
