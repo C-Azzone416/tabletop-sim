@@ -126,6 +126,7 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
             id: crypto.randomUUID(),
             gameId: msg.game.id,
             wireValue: msg.wireValue,
+            wireColor: msg.wireColor,
             validatedAt: new Date().toISOString(),
           },
         ],

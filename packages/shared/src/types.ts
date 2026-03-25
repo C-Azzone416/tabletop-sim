@@ -86,7 +86,7 @@ export type ServerMessage =
   | { type: 'game_state'; game: Game; players: Player[]; wires: Wire[]; infoTokens: InfoToken[]; validationTokens: ValidationToken[] }
   | { type: 'player_joined'; player: Player }
   | { type: 'turn_result'; turn: Turn; game: Game; updatedWires: Wire[] }
-  | { type: 'validation_complete'; wireValue: string; game: Game }
+  | { type: 'validation_complete'; wireValue: string; wireColor: WireColor; game: Game }
   | { type: 'wire_updated'; wire: Wire }
   | { type: 'game_over'; result: 'won' | 'lost'; reason: string }
   | { type: 'error'; message: string };
