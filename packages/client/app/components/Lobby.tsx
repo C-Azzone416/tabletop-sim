@@ -132,10 +132,14 @@ export function Lobby({
             disabled={!canStart}
             className="rounded-full bg-green-600 px-8 py-3 font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {canStart
-              ? `Start Mission ${selectedMission}`
-              : `Need ${2 - players.length} more player${players.length === 0 ? "s" : ""}`}
+            Start Mission {selectedMission}
           </button>
+
+          {!canStart && (
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Waiting for at least 1 more player...
+            </p>
+          )}
         </>
       )}
 

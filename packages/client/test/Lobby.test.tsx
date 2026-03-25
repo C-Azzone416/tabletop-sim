@@ -52,12 +52,13 @@ describe("Lobby", () => {
     expect(button).toBeEnabled();
   });
 
-  it("disables start button with only 1 player", () => {
+  it("disables start button with only 1 player and shows waiting message", () => {
     const props = defaultProps();
     props.players = [props.players[0]];
     render(<Lobby {...props} />);
-    const button = screen.getByRole("button", { name: /Need \d+ more/ });
+    const button = screen.getByRole("button", { name: /Start Mission/ });
     expect(button).toBeDisabled();
+    expect(screen.getByText("Waiting for at least 1 more player...")).toBeInTheDocument();
   });
 
   it("calls onStartGame when captain clicks start", async () => {
