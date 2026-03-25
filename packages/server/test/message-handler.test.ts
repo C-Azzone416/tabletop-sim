@@ -152,7 +152,7 @@ describe("message-handler", () => {
 
       await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice" }));
 
-      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice");
+      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "prof-1");
       expect(mockConnManager.registerConnection).toHaveBeenCalledWith(ws, "p1", "g1");
       const sent = lastSent(ws) as { type: string; game: unknown; player: unknown };
       expect(sent.type).toBe("game_created");
@@ -171,7 +171,7 @@ describe("message-handler", () => {
 
       await handleMessage(ws, JSON.stringify({ type: "join_game", joinCode: "ABC123", playerName: "Bob" }));
 
-      expect(mockEngine.joinGame).toHaveBeenCalledWith("ABC123", "Bob");
+      expect(mockEngine.joinGame).toHaveBeenCalledWith("ABC123", "Bob", "prof-2");
       const sent = lastSent(ws) as { type: string };
       expect(sent.type).toBe("joined_game");
       expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(

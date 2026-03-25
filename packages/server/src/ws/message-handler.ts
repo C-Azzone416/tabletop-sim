@@ -5,10 +5,10 @@ import * as playersDb from '../db/players.js';
 import * as connManager from './connection-manager.js';
 import { broadcastGameState, buildPlayerView } from './state-broadcaster.js';
 
-function getAuthenticatedName(socket: WebSocket): string {
+function getAuthenticatedUser(socket: WebSocket) {
   const user = connManager.getAuthenticatedUser(socket);
   if (!user) throw new Error('Not authenticated');
-  return user.name;
+  return user;
 }
 
 const MAX_NAME_LENGTH = 20;
@@ -133,8 +133,8 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
 }
 
 async function handleCreateGame(socket: WebSocket, _playerName: string): Promise<void> {
-  const authenticatedName = getAuthenticatedName(socket);
-  const { game, player } = await withTimeout(engine.createGame(authenticatedName), 'createGame');
+  const user = getAuthenticatedUser(socket);
+  const { game, player } = await withTimeout(engine.createGame(user.name, user.profileId), 'createGame');
   connManager.registerConnection(socket, player.id, game.id);
 
   const response: ServerMessage = { type: 'game_created', game, player };
@@ -142,8 +142,8 @@ async function handleCreateGame(socket: WebSocket, _playerName: string): Promise
 }
 
 async function handleJoinGame(socket: WebSocket, joinCode: string, _playerName: string): Promise<void> {
-  const authenticatedName = getAuthenticatedName(socket);
-  const { game, player, players } = await withTimeout(engine.joinGame(joinCode, authenticatedName), 'joinGame');
+  const user = getAuthenticatedUser(socket);
+  const { game, player, players } = await withTimeout(engine.joinGame(joinCode, user.name, user.profileId), 'joinGame');
   connManager.registerConnection(socket, player.id, game.id);
 
   const response: ServerMessage = { type: 'joined_game', game, player, players };

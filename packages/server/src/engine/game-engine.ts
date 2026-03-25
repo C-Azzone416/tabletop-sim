@@ -17,15 +17,15 @@ function generateJoinCode(): string {
   return code;
 }
 
-export async function createGame(playerName: string): Promise<{ game: Game; player: Player }> {
+export async function createGame(playerName: string, profileId?: string): Promise<{ game: Game; player: Player }> {
   const joinCode = generateJoinCode();
   const game = await gamesDb.createGame(joinCode);
-  const player = await playersDb.createPlayer(game.id, playerName, 0);
+  const player = await playersDb.createPlayer(game.id, playerName, 0, profileId);
   const updatedGame = await gamesDb.updateGameCaptain(game.id, player.id);
   return { game: updatedGame, player };
 }
 
-export async function joinGame(joinCode: string, playerName: string): Promise<{ game: Game; player: Player; players: Player[] }> {
+export async function joinGame(joinCode: string, playerName: string, profileId?: string): Promise<{ game: Game; player: Player; players: Player[] }> {
   const game = await gamesDb.getGameByJoinCode(joinCode);
   if (!game) throw new Error('Game not found');
   if (game.status !== 'waiting') throw new Error('Game already started');
@@ -33,7 +33,7 @@ export async function joinGame(joinCode: string, playerName: string): Promise<{ 
   const existingPlayers = await playersDb.getPlayersByGameId(game.id);
   if (existingPlayers.length >= 4) throw new Error('Game is full');
 
-  const player = await playersDb.createPlayer(game.id, playerName, existingPlayers.length);
+  const player = await playersDb.createPlayer(game.id, playerName, existingPlayers.length, profileId);
   const players = await playersDb.getPlayersByGameId(game.id);
   return { game, player, players };
 }
