@@ -79,7 +79,7 @@ describe("game-engine", () => {
       expect(result.game.captainId).toBe("p1");
       expect(result.player.name).toBe("Alice");
       expect(mockGamesDb.createGame).toHaveBeenCalled();
-      expect(mockPlayersDb.createPlayer).toHaveBeenCalledWith("g1", "Alice", 0);
+      expect(mockPlayersDb.createPlayer).toHaveBeenCalledWith("g1", "Alice", 0, undefined);
       expect(mockGamesDb.updateGameCaptain).toHaveBeenCalledWith("g1", "p1");
     });
   });

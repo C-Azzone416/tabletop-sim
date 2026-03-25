@@ -5,11 +5,12 @@ import * as gamesDb from './db/games.js';
 import * as playersDb from './db/players.js';
 import * as profilesDb from './db/profiles.js';
 import { handleMessage } from './ws/message-handler.js';
-import { removeConnection, setAuthenticatedUser } from './ws/connection-manager.js';
+import { removeConnection, setAuthenticatedUser, registerConnection } from './ws/connection-manager.js';
 import { authenticateUpgrade } from './ws/auth.js';
+import { broadcastGameState } from './ws/state-broadcaster.js';
 
 export async function buildApp() {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: true });
 
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
@@ -85,6 +86,21 @@ export async function buildApp() {
       }
 
       setAuthenticatedUser(socket, user);
+
+      // Reconnect: re-register socket if this profile has an active player in a game
+      try {
+        const player = await playersDb.getActivePlayerByProfileId(user.profileId);
+        if (player) {
+          const game = await gamesDb.getGameById(player.gameId);
+          if (game) {
+            registerConnection(socket, player.id, game.id);
+            const players = await playersDb.getPlayersByGameId(game.id);
+            await broadcastGameState(game.id, game, players);
+          }
+        }
+      } catch (err) {
+        app.log.error({ err }, '[WS /ws] reconnect lookup error');
+      }
 
       socket.on('message', async (raw: Buffer) => {
         await handleMessage(socket, raw.toString());
