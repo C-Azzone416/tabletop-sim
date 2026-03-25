@@ -38,7 +38,7 @@ export async function joinGame(joinCode: string, playerName: string): Promise<{ 
   return { game, player, players };
 }
 
-export async function startGame(gameId: string, requestingPlayerId: string): Promise<{ game: Game; players: Player[]; wires: Wire[] }> {
+export async function startGame(gameId: string, requestingPlayerId: string, mission: number = 1): Promise<{ game: Game; players: Player[]; wires: Wire[] }> {
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');
   if (game.status !== 'waiting') throw new Error('Game already started');
@@ -49,6 +49,9 @@ export async function startGame(gameId: string, requestingPlayerId: string): Pro
 
   const detonatorMax = DETONATOR_CONFIG[players.length];
   if (!detonatorMax) throw new Error('Invalid player count');
+
+  // Store the selected mission
+  await gamesDb.updateMission(gameId, mission);
 
   // Deal wires
   const playerIds = players.map(p => p.id);

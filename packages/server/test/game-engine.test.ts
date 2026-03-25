@@ -11,6 +11,7 @@ vi.mock("../src/db/games.js", () => ({
   updateGameCaptain: vi.fn(),
   updateCurrentTurn: vi.fn(),
   updateDetonator: vi.fn(),
+  updateMission: vi.fn(),
 }));
 
 vi.mock("../src/db/players.js", () => ({
@@ -134,6 +135,7 @@ describe("game-engine", () => {
 
       mockGamesDb.getGameById.mockResolvedValue(game);
       mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      mockGamesDb.updateMission.mockResolvedValue(game);
       mockGamesDb.updateDetonator.mockResolvedValue({ ...game, detonatorPosition: 0 });
       mockGamesDb.updateGameStatus.mockResolvedValue(setupGame);
       mockWiresDb.createWire.mockImplementation(async (_gid, _pid, val, col, pos) =>
