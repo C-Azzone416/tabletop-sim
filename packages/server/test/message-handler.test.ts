@@ -8,13 +8,27 @@ vi.mock("../src/engine/game-engine.js", () => ({
   joinGame: vi.fn(),
   startGame: vi.fn(),
   completeSetup: vi.fn(),
+  executePlaceInfoToken: vi.fn(),
   executeDuoCut: vi.fn(),
   executeSoloCut: vi.fn(),
   executeDoubleDetector: vi.fn(),
+  executeRevealReds: vi.fn(),
+}));
+
+vi.mock("../src/db/games.js", () => ({
+  getGameById: vi.fn(),
+  getGameByJoinCode: vi.fn(),
+  createGame: vi.fn(),
+  updateGameStatus: vi.fn(),
+  updateGameCaptain: vi.fn(),
+  updateCurrentTurn: vi.fn(),
+  updateDetonator: vi.fn(),
+  updateMission: vi.fn(),
 }));
 
 vi.mock("../src/db/players.js", () => ({
   getPlayersByGameId: vi.fn(),
+  getActivePlayerByProfileId: vi.fn(),
 }));
 
 vi.mock("../src/ws/connection-manager.js", () => ({
@@ -33,13 +47,17 @@ vi.mock("../src/ws/state-broadcaster.js", () => ({
 }));
 
 import * as engine from "../src/engine/game-engine.js";
+import * as gamesDb from "../src/db/games.js";
 import * as playersDb from "../src/db/players.js";
 import * as connManager from "../src/ws/connection-manager.js";
+import * as stateBroadcaster from "../src/ws/state-broadcaster.js";
 import { handleMessage } from "../src/ws/message-handler.js";
 
 const mockEngine = vi.mocked(engine);
+const mockGamesDb = vi.mocked(gamesDb);
 const mockPlayersDb = vi.mocked(playersDb);
 const mockConnManager = vi.mocked(connManager);
+const mockStateBroadcaster = vi.mocked(stateBroadcaster);
 
 function mockSocket(): WebSocket {
   return {
@@ -253,6 +271,26 @@ describe("message-handler", () => {
       expect(mockEngine.executeDuoCut).toHaveBeenCalledWith("g1", "p1", "w1", "3");
       const sent = lastSent(ws) as { type: string };
       expect(sent.type).toBe("turn_result");
+    });
+  });
+
+  describe("place_info_token", () => {
+    it("places an info token and broadcasts game state to all players", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", status: "setup" });
+      const players = [makePlayer({ id: "p1" }), makePlayer({ id: "p2" })];
+
+      mockConnManager.getConnectionInfo.mockReturnValue({
+        playerId: "p1", gameId: "g1", socket: ws,
+      });
+      mockEngine.executePlaceInfoToken.mockResolvedValue({ infoToken: { id: "t1", gameId: "g1", wireId: "w1", value: "3", placedAt: "" } });
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+
+      await handleMessage(ws, JSON.stringify({ type: "place_info_token", wireId: "w1" }));
+
+      expect(mockEngine.executePlaceInfoToken).toHaveBeenCalledWith("g1", "p1", "w1");
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game, players);
     });
   });
 
