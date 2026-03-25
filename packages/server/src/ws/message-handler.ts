@@ -58,6 +58,17 @@ function validateMessage(parsed: unknown): ClientMessage | null {
   }
 }
 
+const DB_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`DB timeout: ${label}`)), DB_TIMEOUT_MS)
+    ),
+  ]);
+}
+
 export async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
   let parsed: unknown;
   try {
@@ -72,6 +83,8 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
     sendError(socket, 'Invalid message format');
     return;
   }
+
+  console.log('[ws] message:', msg.type);
 
   try {
     switch (msg.type) {
@@ -103,6 +116,7 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
         sendError(socket, 'Unknown message type');
     }
   } catch (err) {
+    console.error('[ws] handleMessage error:', err);
     const message = err instanceof Error ? err.message : 'Unknown error';
     const safeMessages = [
       'Game not found', 'Game already started', 'Game is full',
@@ -120,7 +134,7 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
 
 async function handleCreateGame(socket: WebSocket, _playerName: string): Promise<void> {
   const authenticatedName = getAuthenticatedName(socket);
-  const { game, player } = await engine.createGame(authenticatedName);
+  const { game, player } = await withTimeout(engine.createGame(authenticatedName), 'createGame');
   connManager.registerConnection(socket, player.id, game.id);
 
   const response: ServerMessage = { type: 'game_created', game, player };
@@ -129,7 +143,7 @@ async function handleCreateGame(socket: WebSocket, _playerName: string): Promise
 
 async function handleJoinGame(socket: WebSocket, joinCode: string, _playerName: string): Promise<void> {
   const authenticatedName = getAuthenticatedName(socket);
-  const { game, player, players } = await engine.joinGame(joinCode, authenticatedName);
+  const { game, player, players } = await withTimeout(engine.joinGame(joinCode, authenticatedName), 'joinGame');
   connManager.registerConnection(socket, player.id, game.id);
 
   const response: ServerMessage = { type: 'joined_game', game, player, players };
@@ -144,7 +158,7 @@ async function handleStartGame(socket: WebSocket, mission: number): Promise<void
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
-  const { game, players, wires } = await engine.startGame(info.gameId, info.playerId, mission);
+  const { game, players, wires } = await withTimeout(engine.startGame(info.gameId, info.playerId, mission), 'startGame');
 
   // Send game_started with per-player wire views
   const gameSockets = connManager.getGameSockets(info.gameId);
@@ -159,7 +173,7 @@ async function handleDuoCut(socket: WebSocket, targetWireId: string, guessedValu
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
-  const { turn, game, updatedWires } = await engine.executeDuoCut(info.gameId, info.playerId, targetWireId, guessedValue);
+  const { turn, game, updatedWires } = await withTimeout(engine.executeDuoCut(info.gameId, info.playerId, targetWireId, guessedValue), 'executeDuoCut');
 
   const players = await playersDb.getPlayersByGameId(info.gameId);
 
@@ -182,7 +196,7 @@ async function handleSoloCut(socket: WebSocket, wireValue: string): Promise<void
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
-  const { turn, game, updatedWires } = await engine.executeSoloCut(info.gameId, info.playerId, wireValue);
+  const { turn, game, updatedWires } = await withTimeout(engine.executeSoloCut(info.gameId, info.playerId, wireValue), 'executeSoloCut');
 
   const gameSockets = connManager.getGameSockets(info.gameId);
   for (const [playerId, playerSocket] of gameSockets) {
@@ -201,7 +215,7 @@ async function handleDoubleDetector(socket: WebSocket, targetWireId: string, tar
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
-  const { turn, game } = await engine.executeDoubleDetector(info.gameId, info.playerId, targetWireId, targetWireId2);
+  const { turn, game } = await withTimeout(engine.executeDoubleDetector(info.gameId, info.playerId, targetWireId, targetWireId2), 'executeDoubleDetector');
 
   // Only the requesting player sees the result detail
   const response: ServerMessage = { type: 'turn_result', turn, game, updatedWires: [] };
@@ -215,7 +229,7 @@ async function handleRevealReds(socket: WebSocket): Promise<void> {
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
-  const { turn, game, updatedWires } = await engine.executeRevealReds(info.gameId, info.playerId);
+  const { turn, game, updatedWires } = await withTimeout(engine.executeRevealReds(info.gameId, info.playerId), 'executeRevealReds');
 
   // Broadcast revealed wires — everyone sees red values now (owner sees via 'revealed' status)
   const gameSockets = connManager.getGameSockets(info.gameId);
