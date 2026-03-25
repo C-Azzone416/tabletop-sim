@@ -20,6 +20,7 @@ async function start() {
   await app.register(websocket, { options: { maxPayload: 4096 } });
 
   app.get('/health', async () => ({ status: 'ok' }));
+  app.get('/healthz', async () => ({ status: 'ok' })); // Render health check alias
 
   // REST: Create a game (returns join code)
   app.post('/games', async (request, reply) => {
@@ -95,6 +96,11 @@ async function start() {
   await app.listen({ port: PORT, host: '0.0.0.0' });
   console.log(`Server listening on port ${PORT}`);
 }
+
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
+  process.exit(1);
+});
 
 start().catch((err) => {
   console.error(err);
