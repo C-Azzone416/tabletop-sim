@@ -187,4 +187,46 @@ describe("useWebSocket", () => {
     act(() => { ws.onmessage?.({ data: "not json{{{" }); });
     expect(onMessage).not.toHaveBeenCalled();
   });
+
+  describe("URL building", () => {
+    it("includes profileId and playerName in WS URL", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(
+        (props) => useWebSocket(props.onMessage, props.profileId, props.playerName),
+        { initialProps: { onMessage, profileId: "abc123", playerName: "Alice" } },
+      );
+      act(() => result.current.connect());
+      expect(MockWebSocket.instances[0].url).toContain("profileId=abc123");
+      expect(MockWebSocket.instances[0].url).toContain("name=Alice");
+    });
+
+    it("builds base URL when no auth params provided", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() => useWebSocket(onMessage));
+      act(() => result.current.connect());
+      const url = MockWebSocket.instances[0].url;
+      expect(url).not.toContain("profileId");
+      expect(url).not.toContain("name=");
+    });
+
+    it("rebuilds connect with updated URL when profileId changes (stale closure regression)", () => {
+      const onMessage = vi.fn();
+      const { result, rerender } = renderHook(
+        (props) => useWebSocket(props.onMessage, props.profileId, props.playerName),
+        { initialProps: { onMessage, profileId: "", playerName: "" } },
+      );
+
+      const connectBefore = result.current.connect;
+      rerender({ onMessage, profileId: "xyz", playerName: "Bob" });
+      const connectAfter = result.current.connect;
+
+      // connect must be a new reference when deps change (dep array fix)
+      expect(connectAfter).not.toBe(connectBefore);
+
+      // The new connect builds the URL with updated params
+      act(() => result.current.connect());
+      expect(MockWebSocket.instances[0].url).toContain("profileId=xyz");
+      expect(MockWebSocket.instances[0].url).toContain("name=Bob");
+    });
+  });
 });
