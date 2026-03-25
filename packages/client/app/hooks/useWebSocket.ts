@@ -12,7 +12,11 @@ const INITIAL_RECONNECT_DELAY = 1_000;
 type ConnectionStatus = "connecting" | "connected" | "disconnected";
 type MessageHandler = (message: ServerMessage) => void;
 
-export function useWebSocket(onMessage: MessageHandler) {
+export function useWebSocket(
+  onMessage: MessageHandler,
+  profileId?: string,
+  playerName?: string,
+) {
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef(onMessage);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -32,7 +36,11 @@ export function useWebSocket(onMessage: MessageHandler) {
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    const wsUrl = SERVER_URL.replace(/^http/, "ws") + "/ws";
+    const base = SERVER_URL.replace(/^http/, "ws") + "/ws";
+    const params = new URLSearchParams();
+    if (profileId) params.set("profileId", profileId);
+    if (playerName) params.set("name", playerName);
+    const wsUrl = params.toString() ? `${base}?${params}` : base;
     setStatus("connecting");
 
     const ws = new WebSocket(wsUrl);
@@ -53,7 +61,8 @@ export function useWebSocket(onMessage: MessageHandler) {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      console.warn("[ws] connection closed", { code: event.code, reason: event.reason });
       setStatus("disconnected");
       wsRef.current = null;
       // Exponential backoff reconnect
@@ -62,7 +71,8 @@ export function useWebSocket(onMessage: MessageHandler) {
       reconnectTimeoutRef.current = setTimeout(connect, delay);
     };
 
-    ws.onerror = () => {
+    ws.onerror = (event) => {
+      console.error("[ws] error", event);
       ws.close();
     };
   }, [flushQueue]);

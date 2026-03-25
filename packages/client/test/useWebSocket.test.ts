@@ -11,13 +11,13 @@ class MockWebSocket {
   url: string;
   readyState = 0;
   onopen: (() => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event: { code: number; reason: string }) => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
-  onerror: (() => void) | null = null;
+  onerror: ((event: unknown) => void) | null = null;
   send = vi.fn();
   close = vi.fn().mockImplementation(() => {
     this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.();
+    this.onclose?.({ code: 1000, reason: "" });
   });
 
   constructor(url: string) {
@@ -36,11 +36,11 @@ class MockWebSocket {
 
   simulateClose() {
     this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.();
+    this.onclose?.({ code: 1000, reason: "" });
   }
 
   simulateError() {
-    this.onerror?.();
+    this.onerror?.({});
   }
 }
 
