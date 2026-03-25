@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { DETONATOR_CONFIG } from '@tabletop/shared';
+import { MISSION_CONFIGS } from '@tabletop/shared';
 import type { Game, Player, Wire, Turn } from '@tabletop/shared';
 import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
@@ -47,15 +47,18 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
   const players = await playersDb.getPlayersByGameId(gameId);
   if (players.length < 2) throw new Error('Need at least 2 players');
 
-  const detonatorMax = DETONATOR_CONFIG[players.length];
+  const missionConfig = MISSION_CONFIGS[mission];
+  if (!missionConfig) throw new Error('Invalid player count');
+
+  const detonatorMax = missionConfig.detonator[players.length];
   if (!detonatorMax) throw new Error('Invalid player count');
 
   // Store the selected mission
   await gamesDb.updateMission(gameId, mission);
 
-  // Deal wires
+  // Deal wires for the selected mission
   const playerIds = players.map(p => p.id);
-  const dealedWires = dealWires(playerIds, game.captainId!);
+  const dealedWires = dealWires(playerIds, game.captainId!, mission);
 
   const createdWires: Wire[] = [];
   for (const dw of dealedWires) {

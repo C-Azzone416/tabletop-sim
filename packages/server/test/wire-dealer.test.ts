@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { dealWires } from "../src/engine/wire-dealer.js";
 
 describe("wire-dealer", () => {
-  describe("dealWires", () => {
+  describe("dealWires — Mission 1 (default)", () => {
     it("deals 24 wires total for 2 players (12 each)", () => {
       const wires = dealWires(["p1", "p2"], "p1");
       expect(wires).toHaveLength(24);
@@ -81,8 +81,87 @@ describe("wire-dealer", () => {
       // Compare the value sequences — vanishingly unlikely to be the same
       const vals1 = deal1.map((w) => w.value).join(",");
       const vals2 = deal2.map((w) => w.value).join(",");
-      // This could fail with probability ~1/(24! / (4!^6)) which is astronomically low
       expect(vals1 === vals2).toBe(false);
+    });
+  });
+
+  describe("dealWires — Mission 3 (blue + yellow)", () => {
+    it("deals 28 wires total for 2 players (14 each)", () => {
+      const wires = dealWires(["p1", "p2"], "p1", 3);
+      expect(wires).toHaveLength(28);
+      expect(wires.filter((w) => w.playerId === "p1")).toHaveLength(14);
+      expect(wires.filter((w) => w.playerId === "p2")).toHaveLength(14);
+    });
+
+    it("deals 28 wires for 3 players (captain 14, others 7)", () => {
+      const wires = dealWires(["p1", "p2", "p3"], "p1", 3);
+      expect(wires).toHaveLength(28);
+      expect(wires.filter((w) => w.playerId === "p1")).toHaveLength(14);
+      expect(wires.filter((w) => w.playerId === "p2")).toHaveLength(7);
+      expect(wires.filter((w) => w.playerId === "p3")).toHaveLength(7);
+    });
+
+    it("includes 16 blue wires and 12 yellow wires", () => {
+      const wires = dealWires(["p1", "p2"], "p1", 3);
+      expect(wires.filter((w) => w.color === "blue")).toHaveLength(16);
+      expect(wires.filter((w) => w.color === "yellow")).toHaveLength(12);
+      expect(wires.filter((w) => w.color === "red")).toHaveLength(0);
+    });
+
+    it("sorts blue wires before yellow within each player rack", () => {
+      const wires = dealWires(["p1", "p2"], "p1", 3);
+      const p1Wires = wires.filter((w) => w.playerId === "p1");
+      const lastBlue = p1Wires.map((w) => w.color).lastIndexOf("blue");
+      const firstYellow = p1Wires.map((w) => w.color).indexOf("yellow");
+      if (lastBlue !== -1 && firstYellow !== -1) {
+        expect(lastBlue).toBeLessThan(firstYellow);
+      }
+    });
+  });
+
+  describe("dealWires — Mission 5 (blue + yellow + red)", () => {
+    it("deals 32 wires total for 2 players (16 each)", () => {
+      const wires = dealWires(["p1", "p2"], "p1", 5);
+      expect(wires).toHaveLength(32);
+      expect(wires.filter((w) => w.playerId === "p1")).toHaveLength(16);
+      expect(wires.filter((w) => w.playerId === "p2")).toHaveLength(16);
+    });
+
+    it("includes 16 blue, 12 yellow, 4 red wires", () => {
+      const wires = dealWires(["p1", "p2"], "p1", 5);
+      expect(wires.filter((w) => w.color === "blue")).toHaveLength(16);
+      expect(wires.filter((w) => w.color === "yellow")).toHaveLength(12);
+      expect(wires.filter((w) => w.color === "red")).toHaveLength(4);
+    });
+
+    it("deals 32 wires for 4 players (8 each)", () => {
+      const wires = dealWires(["p1", "p2", "p3", "p4"], "p1", 5);
+      expect(wires).toHaveLength(32);
+      for (const pid of ["p1", "p2", "p3", "p4"]) {
+        expect(wires.filter((w) => w.playerId === pid)).toHaveLength(8);
+      }
+    });
+  });
+
+  describe("dealWires — Mission 8 (36 wires, hardest)", () => {
+    it("deals 36 wires total for 2 players (18 each)", () => {
+      const wires = dealWires(["p1", "p2"], "p1", 8);
+      expect(wires).toHaveLength(36);
+      expect(wires.filter((w) => w.playerId === "p1")).toHaveLength(18);
+      expect(wires.filter((w) => w.playerId === "p2")).toHaveLength(18);
+    });
+
+    it("includes 16 blue, 12 yellow, 8 red wires", () => {
+      const wires = dealWires(["p1", "p2"], "p1", 8);
+      expect(wires.filter((w) => w.color === "blue")).toHaveLength(16);
+      expect(wires.filter((w) => w.color === "yellow")).toHaveLength(12);
+      expect(wires.filter((w) => w.color === "red")).toHaveLength(8);
+    });
+  });
+
+  describe("dealWires — invalid mission", () => {
+    it("throws for unknown mission number", () => {
+      expect(() => dealWires(["p1", "p2"], "p1", 9)).toThrow("Unknown mission");
     });
   });
 });
