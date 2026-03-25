@@ -1,6 +1,7 @@
 import type { WebSocket } from 'ws';
 import type { ClientMessage, ServerMessage } from '@tabletop/shared';
 import * as engine from '../engine/game-engine.js';
+import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
 import * as connManager from './connection-manager.js';
 import { broadcastGameState, buildPlayerView } from './state-broadcaster.js';
@@ -98,7 +99,7 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
         await handleStartGame(socket, msg.mission ?? 1);
         break;
       case 'place_info_token':
-        // Handled during setup phase — for now just acknowledge
+        await handlePlaceInfoToken(socket, msg.wireId);
         break;
       case 'duo_cut':
         await handleDuoCut(socket, msg.targetWireId, msg.guessedValue);
@@ -127,6 +128,7 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
       'Double detector can only target your own wires', 'Target wires must be hidden',
       'Game is not active', 'Not authenticated', 'Player not found',
       'Reveal reds not available in this mission',
+      'Game is not in setup phase', 'Can only place info token on your own wire',
     ];
     sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
   }
@@ -167,6 +169,19 @@ async function handleStartGame(socket: WebSocket, mission: number): Promise<void
     const response: ServerMessage = { type: 'game_started', game, players, wires: playerWires };
     playerSocket.send(JSON.stringify(response));
   }
+}
+
+async function handlePlaceInfoToken(socket: WebSocket, wireId: string): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  await withTimeout(engine.executePlaceInfoToken(info.gameId, info.playerId, wireId), 'executePlaceInfoToken');
+
+  // Broadcast full game state so all players see the new info token
+  const game = await gamesDb.getGameById(info.gameId);
+  if (!game) throw new Error('Game not found');
+  const players = await playersDb.getPlayersByGameId(info.gameId);
+  await broadcastGameState(info.gameId, game, players);
 }
 
 async function handleDuoCut(socket: WebSocket, targetWireId: string, guessedValue: string): Promise<void> {

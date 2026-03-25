@@ -74,6 +74,25 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
   return { game: { ...updatedGame, detonatorMax }, players, wires: createdWires };
 }
 
+export async function executePlaceInfoToken(
+  gameId: string,
+  playerId: string,
+  wireId: string,
+): Promise<{ infoToken: import('@tabletop/shared').InfoToken }> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.status !== 'setup') throw new Error('Game is not in setup phase');
+
+  const wire = await wiresDb.getWireById(wireId);
+  if (!wire) throw new Error('Wire not found');
+  if (wire.gameId !== gameId) throw new Error('Wire does not belong to this game');
+  if (wire.playerId !== playerId) throw new Error('Can only place info token on your own wire');
+  if (wire.status !== 'hidden') throw new Error('Wire already cut or revealed');
+
+  const infoToken = await tokensDb.createInfoToken(gameId, wireId, wire.value!);
+  return { infoToken };
+}
+
 export async function completeSetup(gameId: string): Promise<Game> {
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');
