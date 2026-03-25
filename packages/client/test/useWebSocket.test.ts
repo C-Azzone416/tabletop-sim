@@ -136,6 +136,21 @@ describe("useWebSocket", () => {
     expect(MockWebSocket.instances).toHaveLength(3);
   });
 
+  it("does not reconnect on close code 4001 (unauthenticated)", () => {
+    const onMessage = vi.fn();
+    const { result } = renderHook(() => useWebSocket(onMessage));
+
+    act(() => result.current.connect());
+    const ws = MockWebSocket.instances[0];
+    act(() => ws.simulateOpen());
+
+    act(() => { ws.onclose?.({ code: 4001, reason: "unauthenticated" }); });
+    expect(result.current.status).toBe("disconnected");
+
+    act(() => vi.advanceTimersByTime(5000));
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
   it("disconnect sets status to disconnected", () => {
     const onMessage = vi.fn();
     const { result } = renderHook(() => useWebSocket(onMessage));

@@ -65,6 +65,8 @@ export function useWebSocket(
       console.warn("[ws] connection closed", { code: event.code, reason: event.reason });
       setStatus("disconnected");
       wsRef.current = null;
+      // Don't reconnect on auth failure — server rejected us, retrying won't help
+      if (event.code === 4001) return;
       // Exponential backoff reconnect
       const delay = reconnectDelayRef.current;
       reconnectDelayRef.current = Math.min(delay * 2, MAX_RECONNECT_DELAY);
