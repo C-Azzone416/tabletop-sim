@@ -77,7 +77,7 @@ export function useWebSocket(
       console.error("[ws] error", event);
       ws.close();
     };
-  }, [flushQueue]);
+  }, [flushQueue, profileId, playerName]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
