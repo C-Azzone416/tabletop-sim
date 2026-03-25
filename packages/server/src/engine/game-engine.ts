@@ -48,7 +48,7 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
   if (players.length < 2) throw new Error('Need at least 2 players');
 
   const missionConfig = MISSION_CONFIGS[mission];
-  if (!missionConfig) throw new Error('Invalid player count');
+  if (!missionConfig) throw new Error('Invalid mission');
 
   const detonatorMax = missionConfig.detonator[players.length];
   if (!detonatorMax) throw new Error('Invalid player count');
