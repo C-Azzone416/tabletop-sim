@@ -65,8 +65,8 @@ describe("wire-dealer", () => {
       }
     });
 
-    it("throws for invalid player count (1)", () => {
-      expect(() => dealWires(["p1"], "p1")).toThrow("Invalid player count");
+    it("throws for invalid player count (0)", () => {
+      expect(() => dealWires([], "p1")).toThrow("Invalid player count");
     });
 
     it("throws for invalid player count (5)", () => {

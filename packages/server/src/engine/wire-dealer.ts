@@ -48,8 +48,8 @@ function shuffle<T>(arr: T[]): T[] {
  */
 export function dealWires(playerIds: string[], captainId: string, missionNumber: number = 1): DealedWire[] {
   const playerCount = playerIds.length;
-  if (playerCount < 2 || playerCount > 4) {
-    throw new Error(`Invalid player count: ${playerCount}. Must be 2-4.`);
+  if (playerCount < 1 || playerCount > 4) {
+    throw new Error(`Invalid player count: ${playerCount}. Must be 1-4.`);
   }
 
   const config = MISSION_CONFIGS[missionNumber];
