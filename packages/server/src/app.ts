@@ -128,6 +128,7 @@ export async function buildApp() {
         const profile = existing ?? await profilesDb.createProfile('Dev');
         const { game, player } = await engine.createGame('Dev', profile.id);
         await engine.startGame(game.id, player.id, 1);
+        await engine.completeSetup(game.id);
         return { joinCode: game.joinCode, profileId: profile.id, playerName: 'Dev' };
       } catch (err) {
         app.log.error({ err }, '[POST /dev/seed] error');
