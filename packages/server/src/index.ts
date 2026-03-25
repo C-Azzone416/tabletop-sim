@@ -20,6 +20,7 @@ async function start() {
   await app.register(websocket, { options: { maxPayload: 4096 } });
 
   app.get('/health', async () => ({ status: 'ok' }));
+  app.get('/healthz', async () => ({ status: 'ok' })); // Render health check alias
 
   // REST: Create a game (returns join code)
   app.post('/games', async (request, reply) => {
@@ -39,62 +40,87 @@ async function start() {
       return reply.status(400).send({ error: 'name is required (1-20 chars)' });
     }
     const trimmed = name.trim();
-    const existing = await profilesDb.getProfileByName(trimmed);
-    if (existing) {
-      return { profile: existing };
+    try {
+      const existing = await profilesDb.getProfileByName(trimmed);
+      if (existing) {
+        return { profile: existing };
+      }
+      const profile = await profilesDb.createProfile(trimmed);
+      return reply.status(201).send({ profile });
+    } catch (err) {
+      app.log.error({ err }, '[POST /profiles] DB error');
+      return reply.status(500).send({ error: 'Internal server error' });
     }
-    const profile = await profilesDb.createProfile(trimmed);
-    return reply.status(201).send({ profile });
   });
 
   // REST: Get profile by ID
   app.get<{ Params: { id: string } }>('/profiles/:id', async (request, reply) => {
-    const profile = await profilesDb.getProfileById(request.params.id);
-    if (!profile) {
-      return reply.status(404).send({ error: 'Profile not found' });
+    try {
+      const profile = await profilesDb.getProfileById(request.params.id);
+      if (!profile) {
+        return reply.status(404).send({ error: 'Profile not found' });
+      }
+      return { profile };
+    } catch (err) {
+      app.log.error({ err }, '[GET /profiles/:id] DB error');
+      return reply.status(500).send({ error: 'Internal server error' });
     }
-    return { profile };
   });
 
   // REST: Get game by join code (for lobby preview)
   app.get<{ Params: { joinCode: string } }>('/games/:joinCode', async (request, reply) => {
     const { joinCode } = request.params;
-    const game = await gamesDb.getGameByJoinCode(joinCode);
-    if (!game) {
-      return reply.status(404).send({ error: 'Game not found' });
+    try {
+      const game = await gamesDb.getGameByJoinCode(joinCode);
+      if (!game) {
+        return reply.status(404).send({ error: 'Game not found' });
+      }
+      const players = await playersDb.getPlayersByGameId(game.id);
+      return { game, players };
+    } catch (err) {
+      app.log.error({ err }, '[GET /games/:joinCode] DB error');
+      return reply.status(500).send({ error: 'Internal server error' });
     }
-    const players = await playersDb.getPlayersByGameId(game.id);
-    return { game, players };
   });
 
   // WebSocket endpoint with session verification
   app.get('/ws', { websocket: true }, async (socket, request) => {
-    const user = await authenticateUpgrade(request);
-    if (!user) {
-      socket.send(JSON.stringify({ type: 'error', message: 'Authentication required' }));
-      socket.close(4001, 'Unauthenticated');
-      return;
+    try {
+      const user = await authenticateUpgrade(request);
+      if (!user) {
+        socket.send(JSON.stringify({ type: 'error', message: 'Authentication required' }));
+        socket.close(4001, 'Unauthenticated');
+        return;
+      }
+
+      setAuthenticatedUser(socket, user);
+
+      socket.on('message', async (raw: Buffer) => {
+        await handleMessage(socket, raw.toString());
+      });
+
+      socket.on('close', () => {
+        removeConnection(socket);
+      });
+
+      socket.on('error', (err: Error) => {
+        app.log.error(err, 'WebSocket error');
+        removeConnection(socket);
+      });
+    } catch (err) {
+      app.log.error({ err }, '[WS /ws] upgrade error');
+      socket.close(4000, 'Internal error');
     }
-
-    setAuthenticatedUser(socket, user);
-
-    socket.on('message', async (raw: Buffer) => {
-      await handleMessage(socket, raw.toString());
-    });
-
-    socket.on('close', () => {
-      removeConnection(socket);
-    });
-
-    socket.on('error', (err: Error) => {
-      app.log.error(err, 'WebSocket error');
-      removeConnection(socket);
-    });
   });
 
   await app.listen({ port: PORT, host: '0.0.0.0' });
   console.log(`Server listening on port ${PORT}`);
 }
+
+process.on('unhandledRejection', (err) => {
+  console.error('[server] Unhandled rejection:', err);
+  process.exit(1);
+});
 
 start().catch((err) => {
   console.error(err);
