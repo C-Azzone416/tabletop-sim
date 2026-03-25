@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useWebSocket } from "./hooks/useWebSocket";
@@ -16,6 +16,8 @@ export default function Home() {
   const [signInError, setSignInError] = useState("");
   const [signInLoading, setSignInLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const actionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const playerName = session?.user?.name ?? "";
   const profileId = session?.user?.id ?? "";
@@ -36,9 +38,26 @@ export default function Home() {
     playerName,
   );
 
+  const startActionTimeout = () => {
+    if (actionTimeoutRef.current) clearTimeout(actionTimeoutRef.current);
+    actionTimeoutRef.current = setTimeout(() => {
+      setMode("idle");
+      setActionError("Server did not respond. Please try again.");
+    }, 10_000);
+  };
+
+  useEffect(() => {
+    if (mode === "idle" && actionTimeoutRef.current) {
+      clearTimeout(actionTimeoutRef.current);
+      actionTimeoutRef.current = null;
+    }
+  }, [mode]);
+
   const handleCreate = () => {
     if (!playerName) return;
     setMode("creating");
+    setActionError("");
+    startActionTimeout();
     send({ type: "create_game", playerName });
     connect();
   };
@@ -46,6 +65,8 @@ export default function Home() {
   const handleJoin = () => {
     if (!playerName || !joinCode.trim()) return;
     setMode("joining");
+    setActionError("");
+    startActionTimeout();
     send({
       type: "join_game",
       joinCode: joinCode.trim().toUpperCase(),
@@ -169,9 +190,9 @@ export default function Home() {
         </div>
 
         <div className="space-y-6">
-          {state.error && (
+          {(state.error || actionError) && (
             <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-              {state.error}
+              {actionError || state.error}
             </div>
           )}
 

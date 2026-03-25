@@ -141,7 +141,7 @@ export function Lobby({
 
       {!isCaptain && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Waiting for the captain to start the game...
+          Waiting for the host to start the game...
         </p>
       )}
     </div>

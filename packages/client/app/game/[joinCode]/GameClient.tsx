@@ -10,11 +10,13 @@ import { GameOverOverlay } from "../../components/GameOverOverlay";
 
 interface GameClientProps {
   joinCode: string;
+  profileId: string;
+  playerName: string;
 }
 
-export function GameClient({ joinCode }: GameClientProps) {
+export function GameClient({ joinCode, profileId, playerName }: GameClientProps) {
   const { state, handleMessage } = useGameState();
-  const { status, connect, send } = useWebSocket(handleMessage);
+  const { status, connect, send } = useWebSocket(handleMessage, profileId, playerName);
   const hasConnected = useRef(false);
 
   useEffect(() => {

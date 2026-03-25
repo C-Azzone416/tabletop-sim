@@ -73,7 +73,7 @@ describe("Lobby", () => {
     props.localPlayerId = "p2";
     render(<Lobby {...props} />);
     expect(
-      screen.getByText("Waiting for the captain to start the game...")
+      screen.getByText("Waiting for the host to start the game...")
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Start Mission/ })).not.toBeInTheDocument();
   });
