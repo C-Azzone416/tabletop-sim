@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { makeProfile, resetIds } from "./fixtures.js";
+import { makeProfile, makeGame, makePlayer, resetIds } from "./fixtures.js";
 
 vi.mock("../src/db/profiles.js", () => ({
   getProfileByName: vi.fn(),
@@ -50,10 +50,23 @@ vi.mock("../src/ws/state-broadcaster.js", () => ({
   buildPlayerView: vi.fn((wires) => wires),
 }));
 
+vi.mock("../src/engine/game-engine.js", () => ({
+  createGame: vi.fn(),
+  startGame: vi.fn(),
+  joinGame: vi.fn(),
+  completeSetup: vi.fn(),
+  executeDuoCut: vi.fn(),
+  executeSoloCut: vi.fn(),
+  executeDoubleDetector: vi.fn(),
+  executeRevealReds: vi.fn(),
+}));
+
 import * as profilesDb from "../src/db/profiles.js";
+import * as engine from "../src/engine/game-engine.js";
 import { buildApp } from "../src/app.js";
 
 const mockProfilesDb = vi.mocked(profilesDb);
+const mockEngine = vi.mocked(engine);
 
 describe("routes", () => {
   let app: FastifyInstance;
@@ -153,6 +166,51 @@ describe("routes", () => {
       });
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Internal server error" });
+    });
+  });
+
+  describe("POST /dev/seed", () => {
+    it("creates a seeded game and returns joinCode + profileId", async () => {
+      const profile = makeProfile({ id: "prof-dev", name: "Dev" });
+      const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
+      const player = makePlayer({ id: "p1", gameId: "g1" });
+      const startedGame = { ...game, status: "setup" as const };
+
+      mockProfilesDb.getProfileByName.mockResolvedValue(null);
+      mockProfilesDb.createProfile.mockResolvedValue(profile);
+      mockEngine.createGame.mockResolvedValue({ game, player });
+      mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
+
+      const res = await app.inject({ method: "POST", url: "/dev/seed" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ joinCode: "DEVGAME", profileId: "prof-dev", playerName: "Dev" });
+      expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "prof-dev");
+      expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 1);
+    });
+
+    it("reuses existing Dev profile", async () => {
+      const profile = makeProfile({ id: "prof-dev", name: "Dev" });
+      const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
+      const player = makePlayer({ id: "p1", gameId: "g1" });
+      const startedGame = { ...game, status: "setup" as const };
+
+      mockProfilesDb.getProfileByName.mockResolvedValue(profile);
+      mockEngine.createGame.mockResolvedValue({ game, player });
+      mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
+
+      const res = await app.inject({ method: "POST", url: "/dev/seed" });
+
+      expect(res.statusCode).toBe(200);
+      expect(mockProfilesDb.createProfile).not.toHaveBeenCalled();
+    });
+
+    it("returns 500 on error", async () => {
+      mockProfilesDb.getProfileByName.mockRejectedValue(new Error("DB down"));
+
+      const res = await app.inject({ method: "POST", url: "/dev/seed" });
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "Seed failed" });
     });
   });
 });

@@ -4,6 +4,7 @@ import websocket from '@fastify/websocket';
 import * as gamesDb from './db/games.js';
 import * as playersDb from './db/players.js';
 import * as profilesDb from './db/profiles.js';
+import * as engine from './engine/game-engine.js';
 import { handleMessage } from './ws/message-handler.js';
 import { removeConnection, setAuthenticatedUser, registerConnection } from './ws/connection-manager.js';
 import { authenticateUpgrade } from './ws/auth.js';
@@ -119,6 +120,21 @@ export async function buildApp() {
       socket.close(4000, 'Internal error');
     }
   });
+
+  if (process.env.NODE_ENV !== 'production') {
+    app.post('/dev/seed', async (_request, reply) => {
+      try {
+        const existing = await profilesDb.getProfileByName('Dev');
+        const profile = existing ?? await profilesDb.createProfile('Dev');
+        const { game, player } = await engine.createGame('Dev', profile.id);
+        await engine.startGame(game.id, player.id, 1);
+        return { joinCode: game.joinCode, profileId: profile.id, playerName: 'Dev' };
+      } catch (err) {
+        app.log.error({ err }, '[POST /dev/seed] error');
+        return reply.status(500).send({ error: 'Seed failed' });
+      }
+    });
+  }
 
   return app;
 }
