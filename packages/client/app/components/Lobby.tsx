@@ -30,7 +30,7 @@ export function Lobby({
   onStartGame,
 }: LobbyProps) {
   const isCaptain = localPlayerId === captainId;
-  const canStart = players.length >= 2 && players.length <= 4;
+  const canStart = players.length >= 1 && players.length <= 4;
   const [selectedMission, setSelectedMission] = useState(1);
 
   return (
@@ -134,12 +134,6 @@ export function Lobby({
           >
             Start Mission {selectedMission}
           </button>
-
-          {!canStart && (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Waiting for at least 1 more player...
-            </p>
-          )}
         </>
       )}
 
