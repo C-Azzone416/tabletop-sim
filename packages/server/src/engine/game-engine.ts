@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { MISSION_CONFIGS } from '@tabletop/shared';
-import type { Game, Player, Wire, Turn } from '@tabletop/shared';
+import type { Game, Player, Wire, Turn, WireColor } from '@tabletop/shared';
 import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
 import * as wiresDb from '../db/wires.js';
@@ -124,8 +124,8 @@ export async function executeDuoCut(
     }
   }
 
-  // Check for validation (all 4 of a value cut)
-  await checkValidation(gameId, wire.value!);
+  // Check for validation (all 4 of a color+value cut)
+  await checkValidation(gameId, wire.value!, wire.color);
 
   // Check win condition
   const winResult = await checkWinCondition(gameId);
@@ -172,8 +172,11 @@ export async function executeSoloCut(
     }
   }
 
-  // Check validation for the guessed value
-  await checkValidation(gameId, wireValue);
+  // Check validation per color for any cut wires
+  const cutColors = new Set(matchingWires.map(w => w.color));
+  for (const color of cutColors) {
+    await checkValidation(gameId, wireValue, color);
+  }
 
   // Check win
   const game2 = await gamesDb.getGameById(gameId);
@@ -230,14 +233,37 @@ async function validateTurn(gameId: string, playerId: string): Promise<Game> {
   return game;
 }
 
-async function checkValidation(gameId: string, wireValue: string): Promise<boolean> {
-  const wiresOfValue = await wiresDb.getWiresByValueAndGame(gameId, wireValue);
-  const allCut = wiresOfValue.every(w => w.status === 'cut');
-  if (allCut && wiresOfValue.length === 4) {
-    await tokensDb.createValidationToken(gameId, wireValue);
+async function checkValidation(gameId: string, wireValue: string, wireColor: WireColor): Promise<boolean> {
+  const wiresOfValueColor = await wiresDb.getWiresByValueColorAndGame(gameId, wireValue, wireColor);
+  const allCut = wiresOfValueColor.every(w => w.status === 'cut');
+  if (allCut && wiresOfValueColor.length === 4) {
+    await tokensDb.createValidationToken(gameId, wireValue, wireColor);
     return true;
   }
   return false;
+}
+
+export async function executeRevealReds(
+  gameId: string,
+  playerId: string,
+): Promise<{ turn: Turn; game: Game; updatedWires: Wire[] }> {
+  const game = await validateTurn(gameId, playerId);
+
+  const missionConfig = MISSION_CONFIGS[game.mission];
+  if (!missionConfig) throw new Error('Invalid mission');
+
+  const hasRedWires = missionConfig.wireGroups.some(g => g.color === 'red');
+  if (!hasRedWires) throw new Error('Reveal reds not available in this mission');
+
+  const turn = await turnsDb.createTurn(gameId, playerId, 'reveal_reds', null, null);
+
+  // Reveal all hidden red wires across all players in the game
+  const updatedWires = await wiresDb.revealRedWires(gameId);
+
+  await turnsDb.updateTurnResult(turn.id, 'success');
+
+  const advancedGame = await advanceTurn(gameId);
+  return { turn: { ...turn, result: 'success' }, game: advancedGame, updatedWires };
 }
 
 async function checkWinCondition(gameId: string): Promise<boolean> {

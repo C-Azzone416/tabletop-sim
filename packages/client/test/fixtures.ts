@@ -75,6 +75,7 @@ export function makeValidationToken(
     id: nextId(),
     gameId: "game-1",
     wireValue: "3",
+    wireColor: "blue" as const,
     validatedAt: "2026-01-01T00:00:00Z",
     ...overrides,
   };

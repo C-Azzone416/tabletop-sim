@@ -27,6 +27,8 @@ vi.mock("../src/db/wires.js", () => ({
   getWiresByGameId: vi.fn(),
   getWiresByPlayerId: vi.fn(),
   getWiresByValueAndGame: vi.fn(),
+  getWiresByValueColorAndGame: vi.fn(),
+  revealRedWires: vi.fn(),
   updateWireStatus: vi.fn(),
 }));
 
@@ -225,7 +227,7 @@ describe("game-engine", () => {
       mockTurnsDb.createTurn.mockResolvedValue(turn);
       mockWiresDb.updateWireStatus.mockResolvedValue(cutWire);
       mockTurnsDb.updateTurnResult.mockResolvedValue({ ...turn, result: "success" });
-      mockWiresDb.getWiresByValueAndGame.mockResolvedValue([cutWire, makeWire({ status: "hidden" }), makeWire({ status: "hidden" }), makeWire({ status: "hidden" })]);
+      mockWiresDb.getWiresByValueColorAndGame.mockResolvedValue([cutWire, makeWire({ status: "hidden" }), makeWire({ status: "hidden" }), makeWire({ status: "hidden" })]);
       mockWiresDb.getWiresByGameId.mockResolvedValue([cutWire, makeWire({ status: "hidden" })]);
       mockPlayersDb.getPlayersByGameId.mockResolvedValue([
         makePlayer({ id: "p1", seatOrder: 0 }),
@@ -257,7 +259,7 @@ describe("game-engine", () => {
         id: "it1", gameId: "g1", wireId: "w1", value: "3", placedAt: "2026-01-01",
       });
       mockGamesDb.updateDetonator.mockResolvedValue({ ...game, detonatorPosition: 1 });
-      mockWiresDb.getWiresByValueAndGame.mockResolvedValue([cutWire, makeWire(), makeWire(), makeWire()]);
+      mockWiresDb.getWiresByValueColorAndGame.mockResolvedValue([cutWire, makeWire(), makeWire(), makeWire()]);
       mockWiresDb.getWiresByGameId.mockResolvedValue([cutWire, makeWire()]);
       mockPlayersDb.getPlayersByGameId.mockResolvedValue([
         makePlayer({ id: "p1", seatOrder: 0 }),
@@ -333,7 +335,7 @@ describe("game-engine", () => {
         makeWire({ id, status: "cut" })
       );
       mockTurnsDb.updateTurnResult.mockResolvedValue({ ...turn, result: "success" });
-      mockWiresDb.getWiresByValueAndGame.mockResolvedValue([
+      mockWiresDb.getWiresByValueColorAndGame.mockResolvedValue([
         makeWire({ status: "cut" }), makeWire({ status: "cut" }),
         makeWire({ status: "hidden" }), makeWire({ status: "hidden" }),
       ]);
@@ -362,7 +364,7 @@ describe("game-engine", () => {
       mockTurnsDb.createTurn.mockResolvedValue(turn);
       mockTurnsDb.updateTurnResult.mockResolvedValue({ ...turn, result: "fail" });
       mockGamesDb.updateDetonator.mockResolvedValue({ ...game, detonatorPosition: 1 });
-      mockWiresDb.getWiresByValueAndGame.mockResolvedValue([makeWire()]);
+      mockWiresDb.getWiresByValueColorAndGame.mockResolvedValue([makeWire()]);
       mockWiresDb.getWiresByGameId.mockResolvedValue([makeWire({ status: "hidden" })]);
       mockPlayersDb.getPlayersByGameId.mockResolvedValue([
         makePlayer({ id: "p1", seatOrder: 0 }),
@@ -467,6 +469,51 @@ describe("game-engine", () => {
       await expect(
         engine.executeDoubleDetector("g1", "p1", "w1", "w2")
       ).rejects.toThrow("Double detector can only target your own wires");
+    });
+  });
+
+  describe("executeRevealReds", () => {
+    it("reveals all hidden red wires in a mission 5 game", async () => {
+      const game = makeGame({ id: "g1", mission: 5, status: "active", currentTurnPlayerId: "p1" });
+      const redWire1 = makeWire({ id: "rw1", gameId: "g1", playerId: "p1", color: "red", value: "1", status: "hidden" });
+      const redWire2 = makeWire({ id: "rw2", gameId: "g1", playerId: "p2", color: "red", value: "1", status: "hidden" });
+      const turn = makeTurn({ id: "t1", actionType: "reveal_reds" });
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockTurnsDb.createTurn.mockResolvedValue(turn);
+      mockWiresDb.revealRedWires.mockResolvedValue([
+        { ...redWire1, status: "revealed" as const },
+        { ...redWire2, status: "revealed" as const },
+      ]);
+      mockTurnsDb.updateTurnResult.mockResolvedValue({ ...turn, result: "success" });
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([
+        makePlayer({ id: "p1", seatOrder: 0 }),
+        makePlayer({ id: "p2", seatOrder: 1 }),
+      ]);
+      mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...game, currentTurnPlayerId: "p2" });
+
+      const result = await engine.executeRevealReds("g1", "p1");
+
+      expect(result.turn.result).toBe("success");
+      expect(result.updatedWires).toHaveLength(2);
+      expect(result.updatedWires.every(w => w.status === "revealed")).toBe(true);
+      expect(mockWiresDb.revealRedWires).toHaveBeenCalledWith("g1");
+    });
+
+    it("rejects in a mission without red wires (mission 1)", async () => {
+      const game = makeGame({ id: "g1", mission: 1, status: "active", currentTurnPlayerId: "p1" });
+      mockGamesDb.getGameById.mockResolvedValue(game);
+
+      await expect(engine.executeRevealReds("g1", "p1")).rejects.toThrow(
+        "Reveal reds not available in this mission"
+      );
+    });
+
+    it("rejects if not the active player's turn", async () => {
+      const game = makeGame({ id: "g1", mission: 5, status: "active", currentTurnPlayerId: "p2" });
+      mockGamesDb.getGameById.mockResolvedValue(game);
+
+      await expect(engine.executeRevealReds("g1", "p1")).rejects.toThrow("Not your turn");
     });
   });
 });
