@@ -26,6 +26,7 @@ export interface Player {
   seatOrder: number;
   doubleDetectorUsed: boolean;
   ready: boolean;
+  setupDone: boolean;
   joinedAt: string;
 }
 
@@ -78,7 +79,8 @@ export type ClientMessage =
   | { type: 'solo_cut'; wireValue: string }
   | { type: 'double_detector'; targetWireId: string; targetWireId2: string }
   | { type: 'reveal_reds' }
-  | { type: 'player_ready' };
+  | { type: 'player_ready' }
+  | { type: 'complete_setup' };
 
 export type ServerMessage =
   | { type: 'game_created'; game: Game; player: Player }
@@ -90,6 +92,7 @@ export type ServerMessage =
   | { type: 'turn_result'; turn: Turn; game: Game; updatedWires: Wire[] }
   | { type: 'validation_complete'; wireValue: string; wireColor: WireColor; game: Game }
   | { type: 'wire_updated'; wire: Wire }
+  | { type: 'players_updated'; players: Player[] }
   | { type: 'game_over'; result: 'won' | 'lost'; reason: string }
   | { type: 'players_updated'; players: Player[] }
   | { type: 'error'; message: string };

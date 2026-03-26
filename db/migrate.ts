@@ -20,6 +20,7 @@ const migrations = [
   '003_player_profiles.sql',
   '004_multi_color_mission.sql',
   '005_player_ready.sql',
+  '006_setup_done.sql',
 ];
 
 async function run() {

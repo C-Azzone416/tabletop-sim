@@ -93,6 +93,29 @@ export async function executePlaceInfoToken(
   return { infoToken };
 }
 
+export async function executeCompleteSetup(
+  gameId: string,
+  playerId: string,
+): Promise<{ game: Game; players: Player[]; allDone: boolean }> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.status !== 'setup') throw new Error('Game is not in setup phase');
+
+  await playersDb.markSetupDone(playerId);
+  const players = await playersDb.getPlayersByGameId(gameId);
+  const allDone = players.every(p => p.setupDone);
+
+  if (allDone) {
+    const captain = players.find(p => p.id === game.captainId);
+    if (!captain) throw new Error('Captain not found');
+    await gamesDb.updateCurrentTurn(gameId, captain.id);
+    const activeGame = await gamesDb.updateGameStatus(gameId, 'active');
+    return { game: activeGame, players, allDone: true };
+  }
+
+  return { game, players, allDone: false };
+}
+
 export async function completeSetup(gameId: string): Promise<Game> {
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');

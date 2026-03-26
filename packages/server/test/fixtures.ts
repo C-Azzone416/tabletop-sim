@@ -33,6 +33,7 @@ export function makePlayer(overrides: Partial<Player> = {}): Player {
     seatOrder: 0,
     doubleDetectorUsed: false,
     ready: false,
+    setupDone: false,
     joinedAt: "2026-01-01T00:00:00Z",
     ...overrides,
   };
