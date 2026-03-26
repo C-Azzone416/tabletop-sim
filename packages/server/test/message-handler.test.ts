@@ -363,7 +363,6 @@ describe("message-handler", () => {
       expect(lastSent(ws)).toEqual({ type: "error", message: "Not connected to a game" });
     });
   });
-  });
 
   describe("error handling", () => {
     it("sends safe error messages for known game errors", async () => {

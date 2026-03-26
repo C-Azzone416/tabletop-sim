@@ -266,7 +266,6 @@ async function handleRevealReds(socket: WebSocket): Promise<void> {
   }
 }
 
-<<<<<<< HEAD
 async function handlePlayerReady(socket: WebSocket): Promise<void> {
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
@@ -275,7 +274,8 @@ async function handlePlayerReady(socket: WebSocket): Promise<void> {
 
   const response: ServerMessage = { type: 'players_updated', players };
   connManager.broadcastToGame(info.gameId, response);
-=======
+}
+
 async function handleCompleteSetup(socket: WebSocket): Promise<void> {
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
@@ -293,7 +293,6 @@ async function handleCompleteSetup(socket: WebSocket): Promise<void> {
     const response: ServerMessage = { type: 'players_updated', players };
     connManager.broadcastToGame(info.gameId, response);
   }
->>>>>>> 943e055 (feat: implement complete_setup message and per-player setup tracking)
 }
 
 function sendError(socket: WebSocket, message: string): void {
