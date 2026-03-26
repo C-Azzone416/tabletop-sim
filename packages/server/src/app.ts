@@ -121,12 +121,15 @@ export async function buildApp() {
     }
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.ENABLE_DEV_SEED === 'true') {
     app.post('/dev/seed', async (_request, reply) => {
       try {
         const existing = await profilesDb.getProfileByName('Dev');
         const profile = existing ?? await profilesDb.createProfile('Dev');
         const { game, player } = await engine.createGame('Dev', profile.id);
+        await engine.joinGame(game.joinCode, 'Alice');
+        await engine.joinGame(game.joinCode, 'Bob');
+        await engine.joinGame(game.joinCode, 'Carol');
         await engine.startGame(game.id, player.id, 1);
         await engine.completeSetup(game.id);
         return { joinCode: game.joinCode, profileId: profile.id, playerName: 'Dev' };
