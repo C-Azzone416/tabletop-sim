@@ -121,7 +121,7 @@ export async function buildApp() {
     }
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.ENABLE_DEV_SEED === 'true') {
     app.post('/dev/seed', async (_request, reply) => {
       try {
         const existing = await profilesDb.getProfileByName('Dev');

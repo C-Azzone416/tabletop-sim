@@ -170,6 +170,18 @@ describe("routes", () => {
   });
 
   describe("POST /dev/seed", () => {
+    let seedApp: FastifyInstance;
+
+    beforeEach(async () => {
+      process.env.ENABLE_DEV_SEED = "true";
+      seedApp = await buildApp();
+    });
+
+    afterEach(async () => {
+      await seedApp.close();
+      delete process.env.ENABLE_DEV_SEED;
+    });
+
     it("creates a 4-player seeded game and returns joinCode + profileId", async () => {
       const profile = makeProfile({ id: "prof-dev", name: "Dev" });
       const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
@@ -185,7 +197,7 @@ describe("routes", () => {
       mockEngine.startGame.mockResolvedValue({ game: startedGame, players: mockPlayers, wires: [] });
       mockEngine.completeSetup.mockResolvedValue(activeGame);
 
-      const res = await app.inject({ method: "POST", url: "/dev/seed" });
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed" });
 
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ joinCode: "DEVGAME", profileId: "prof-dev", playerName: "Dev" });
@@ -211,7 +223,7 @@ describe("routes", () => {
       mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
       mockEngine.completeSetup.mockResolvedValue(activeGame);
 
-      const res = await app.inject({ method: "POST", url: "/dev/seed" });
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed" });
 
       expect(res.statusCode).toBe(200);
       expect(mockProfilesDb.createProfile).not.toHaveBeenCalled();
@@ -220,7 +232,7 @@ describe("routes", () => {
     it("returns 500 on error", async () => {
       mockProfilesDb.getProfileByName.mockRejectedValue(new Error("DB down"));
 
-      const res = await app.inject({ method: "POST", url: "/dev/seed" });
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed" });
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Seed failed" });
     });
