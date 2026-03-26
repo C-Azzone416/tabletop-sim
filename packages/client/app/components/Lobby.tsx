@@ -30,7 +30,7 @@ export function Lobby({
   onStartGame,
 }: LobbyProps) {
   const isCaptain = localPlayerId === captainId;
-  const canStart = players.length >= 2 && players.length <= 4;
+  const canStart = players.length >= 1 && players.length <= 4;
   const [selectedMission, setSelectedMission] = useState(1);
 
   return (
