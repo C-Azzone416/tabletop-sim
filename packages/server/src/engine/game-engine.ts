@@ -245,6 +245,19 @@ export async function executeDoubleDetector(
   return { turn: { ...turn, result: sameValue ? 'success' : 'fail' }, game: advancedGame, updatedWires: [] };
 }
 
+export async function executePlayerReady(
+  gameId: string,
+  playerId: string,
+): Promise<{ players: Player[] }> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.status !== 'waiting') throw new Error('Game is not in waiting phase');
+
+  await playersDb.markPlayerReady(playerId);
+  const players = await playersDb.getPlayersByGameId(gameId);
+  return { players };
+}
+
 async function validateTurn(gameId: string, playerId: string): Promise<Game> {
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');

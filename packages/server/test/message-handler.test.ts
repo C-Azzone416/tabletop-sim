@@ -13,6 +13,7 @@ vi.mock("../src/engine/game-engine.js", () => ({
   executeSoloCut: vi.fn(),
   executeDoubleDetector: vi.fn(),
   executeRevealReds: vi.fn(),
+  executePlayerReady: vi.fn(),
 }));
 
 vi.mock("../src/db/games.js", () => ({
@@ -291,6 +292,26 @@ describe("message-handler", () => {
 
       expect(mockEngine.executePlaceInfoToken).toHaveBeenCalledWith("g1", "p1", "w1");
       expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game, players);
+    });
+  });
+
+  describe("player_ready", () => {
+    it("marks player ready and broadcasts players_updated to all players", async () => {
+      const ws = mockSocket();
+      const players = [makePlayer({ id: "p1", ready: true }), makePlayer({ id: "p2" })];
+
+      mockConnManager.getConnectionInfo.mockReturnValue({
+        playerId: "p1", gameId: "g1", socket: ws,
+      });
+      mockEngine.executePlayerReady.mockResolvedValue({ players });
+
+      await handleMessage(ws, JSON.stringify({ type: "player_ready" }));
+
+      expect(mockEngine.executePlayerReady).toHaveBeenCalledWith("g1", "p1");
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
+        "g1",
+        expect.objectContaining({ type: "players_updated", players }),
+      );
     });
   });
 
