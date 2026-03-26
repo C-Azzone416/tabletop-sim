@@ -10,6 +10,7 @@ interface SetupPhaseProps {
   wires: Wire[];
   localPlayerId: string;
   onPlaceInfoToken: (wireId: string) => void;
+  onCompleteSetup: () => void;
 }
 
 export function SetupPhase({
@@ -18,6 +19,7 @@ export function SetupPhase({
   wires,
   localPlayerId,
   onPlaceInfoToken,
+  onCompleteSetup,
 }: SetupPhaseProps) {
   const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
 
@@ -35,8 +37,8 @@ export function SetupPhase({
           Setup Phase
         </h2>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Place info tokens on other players&apos; wires. You can see the fronts
-          of their wires but not your own.
+          Select wires from your rack and place info tokens on them to share
+          information with other players.
         </p>
       </div>
 
@@ -50,14 +52,14 @@ export function SetupPhase({
           return (
             <div key={player.id}>
               <h3 className="mb-2 text-sm font-medium text-zinc-600 dark:text-zinc-400">
-                {isLocal ? "Your Rack (hidden from you)" : player.name}
+                {isLocal ? "Your Rack" : player.name}
               </h3>
               <PlayerRack
                 wires={playerWires}
                 isLocal={isLocal}
                 selectedWireId={selectedWireId}
                 onSelectWire={
-                  !isLocal ? (id) => setSelectedWireId(id) : undefined
+                  isLocal ? (id) => setSelectedWireId(id) : undefined
                 }
                 infoTokens={[]}
               />
@@ -66,14 +68,22 @@ export function SetupPhase({
         })}
       </div>
 
-      {selectedWireId && (
+      <div className="flex flex-col gap-2">
+        {selectedWireId && (
+          <button
+            onClick={handlePlaceToken}
+            className="rounded-full bg-amber-500 px-6 py-2 font-medium text-white transition-colors hover:bg-amber-600"
+          >
+            Place Info Token
+          </button>
+        )}
         <button
-          onClick={handlePlaceToken}
-          className="rounded-full bg-amber-500 px-6 py-2 font-medium text-white transition-colors hover:bg-amber-600"
+          onClick={onCompleteSetup}
+          className="rounded-full bg-blue-600 px-6 py-2 font-medium text-white transition-colors hover:bg-blue-700"
         >
-          Place Info Token
+          Done with Setup
         </button>
-      )}
+      </div>
     </div>
   );
 }

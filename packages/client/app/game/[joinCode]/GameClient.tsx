@@ -60,6 +60,7 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
           onPlaceInfoToken={(wireId) =>
             send({ type: "place_info_token", wireId })
           }
+          onCompleteSetup={() => send({ type: "complete_setup" })}
         />
       </div>
     );
