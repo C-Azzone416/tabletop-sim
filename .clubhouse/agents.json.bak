@@ -1,0 +1,45 @@
+[
+  {
+    "id": "durable_1773779392624_hgx09z",
+    "name": "zesty-cobra",
+    "color": "rose",
+    "branch": "zesty-cobra/standby",
+    "worktreePath": "/Users/cazzone/Repos/TabletopSimulator/.clubhouse/agents/zesty-cobra",
+    "createdAt": "2026-03-17T20:29:52.712Z",
+    "orchestrator": "claude-code",
+    "sessionHistory": [
+      {
+        "sessionId": "32f7054e-540a-400b-9e20-2e8ba6bb40d4",
+        "startedAt": "2026-03-24T17:07:57.564Z",
+        "lastActiveAt": "2026-03-24T17:07:57.564Z"
+      }
+    ],
+    "lastSessionId": "32f7054e-540a-400b-9e20-2e8ba6bb40d4"
+  },
+  {
+    "id": "durable_1774306445192_fn6er6",
+    "name": "epic-heron",
+    "color": "indigo",
+    "branch": "epic-heron/standby",
+    "worktreePath": "/Users/cazzone/Repos/TabletopSimulator/.clubhouse/agents/epic-heron",
+    "createdAt": "2026-03-23T22:54:05.278Z",
+    "orchestrator": "claude-code",
+    "sessionHistory": [
+      {
+        "sessionId": "7a93aaff-a68f-4d12-81ba-4cacf18dc708",
+        "startedAt": "2026-03-24T17:07:59.474Z",
+        "lastActiveAt": "2026-03-24T17:07:59.474Z"
+      }
+    ],
+    "lastSessionId": "7a93aaff-a68f-4d12-81ba-4cacf18dc708"
+  },
+  {
+    "id": "durable_1774387329670_d5yetw",
+    "name": "zippy-weasel",
+    "color": "rose",
+    "branch": "zippy-weasel/standby",
+    "worktreePath": "/Users/cazzone/Repos/TabletopSimulator/.clubhouse/agents/zippy-weasel",
+    "createdAt": "2026-03-24T21:22:09.751Z",
+    "orchestrator": "claude-code"
+  }
+]
