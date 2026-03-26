@@ -32,6 +32,7 @@ export function makePlayer(overrides: Partial<Player> = {}): Player {
     name: `Player ${idCounter}`,
     seatOrder: 0,
     doubleDetectorUsed: false,
+    ready: false,
     joinedAt: "2026-01-01T00:00:00Z",
     ...overrides,
   };

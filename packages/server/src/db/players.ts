@@ -41,6 +41,13 @@ export async function markDoubleDetectorUsed(id: string): Promise<Player> {
   return mapPlayer(rows[0]);
 }
 
+export async function markPlayerReady(id: string): Promise<Player> {
+  const rows = await sql`
+    UPDATE players SET ready = TRUE WHERE id = ${id} RETURNING *
+  `;
+  return mapPlayer(rows[0]);
+}
+
 function mapPlayer(row: Record<string, unknown>): Player {
   return {
     id: row.id as string,
@@ -48,6 +55,7 @@ function mapPlayer(row: Record<string, unknown>): Player {
     name: row.name as string,
     seatOrder: row.seat_order as number,
     doubleDetectorUsed: row.double_detector_used as boolean,
+    ready: (row.ready as boolean) ?? false,
     joinedAt: row.joined_at as string,
   };
 }

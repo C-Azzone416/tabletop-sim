@@ -54,6 +54,8 @@ function validateMessage(parsed: unknown): ClientMessage | null {
       return { type: 'double_detector', targetWireId: msg.targetWireId, targetWireId2: msg.targetWireId2 };
     case 'reveal_reds':
       return { type: 'reveal_reds' };
+    case 'player_ready':
+      return { type: 'player_ready' };
     default:
       return null;
   }
@@ -113,6 +115,9 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
       case 'reveal_reds':
         await handleRevealReds(socket);
         break;
+      case 'player_ready':
+        await handlePlayerReady(socket);
+        break;
       default:
         sendError(socket, 'Unknown message type');
     }
@@ -129,6 +134,7 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
       'Game is not active', 'Not authenticated', 'Player not found',
       'Reveal reds not available in this mission',
       'Game is not in setup phase', 'Can only place info token on your own wire',
+      'Game is not in waiting phase',
     ];
     sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
   }
@@ -253,6 +259,16 @@ async function handleRevealReds(socket: WebSocket): Promise<void> {
     const response: ServerMessage = { type: 'turn_result', turn, game, updatedWires: playerWireView };
     playerSocket.send(JSON.stringify(response));
   }
+}
+
+async function handlePlayerReady(socket: WebSocket): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  const { players } = await withTimeout(engine.executePlayerReady(info.gameId, info.playerId), 'executePlayerReady');
+
+  const response: ServerMessage = { type: 'players_updated', players };
+  connManager.broadcastToGame(info.gameId, response);
 }
 
 function sendError(socket: WebSocket, message: string): void {
