@@ -60,7 +60,16 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
           onPlaceInfoToken={(wireId) =>
             send({ type: "place_info_token", wireId })
           }
-          onCompleteSetup={() => send({ type: "complete_setup" })}
+          onSelectOpponentWire={(wireId) =>
+            send({ type: "select_opponent_wire", wireId })
+          }
+          onAnswerWireQuestion={(answer) =>
+            send({ type: "answer_wire_question", answer })
+          }
+          onNextTurn={() => send({ type: "next_turn" })}
+          onStartGame={() => send({ type: "start_game" })}
+          pendingWireQuestion={state.pendingWireQuestion}
+          lastInterrogationResult={state.lastInterrogationResult}
         />
       </div>
     );

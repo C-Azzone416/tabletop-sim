@@ -1,0 +1,24 @@
+<svg viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg">
+  <!-- Solid black silhouette -->
+  <g fill="black">
+    <!-- Left bunny ear -->
+    <ellipse cx="65" cy="58" rx="14" ry="26"/>
+
+    <!-- Right bunny ear -->
+    <ellipse cx="135" cy="58" rx="14" ry="26"/>
+
+    <!-- Main skull -->
+    <ellipse cx="100" cy="105" rx="45" ry="48"/>
+
+    <!-- Left eye socket (X) -->
+    <rect x="82" y="85" width="4" height="24" rx="2" fill="white" transform="rotate(-45 84 97)"/>
+    <rect x="82" y="85" width="4" height="24" rx="2" fill="white" transform="rotate(45 84 97)"/>
+
+    <!-- Right eye socket (X) -->
+    <rect x="114" y="85" width="4" height="24" rx="2" fill="white" transform="rotate(-45 116 97)"/>
+    <rect x="114" y="85" width="4" height="24" rx="2" fill="white" transform="rotate(45 116 97)"/>
+
+    <!-- Nose (small circle) -->
+    <circle cx="100" cy="120" r="5" fill="white"/>
+  </g>
+</svg>
