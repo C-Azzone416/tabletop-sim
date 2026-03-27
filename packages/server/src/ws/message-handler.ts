@@ -58,6 +58,14 @@ function validateMessage(parsed: unknown): ClientMessage | null {
       return { type: 'player_ready' };
     case 'complete_setup':
       return { type: 'complete_setup' };
+    case 'select_opponent_wire':
+      if (!isNonEmptyString(msg.wireId)) return null;
+      return { type: 'select_opponent_wire', wireId: msg.wireId };
+    case 'answer_wire_question':
+      if (msg.answer !== 'yes' && msg.answer !== 'no') return null;
+      return { type: 'answer_wire_question', answer: msg.answer };
+    case 'next_turn':
+      return { type: 'next_turn' };
     default:
       return null;
   }
@@ -123,6 +131,15 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
       case 'complete_setup':
         await handleCompleteSetup(socket);
         break;
+      case 'select_opponent_wire':
+        await handleSelectOpponentWire(socket, msg.wireId);
+        break;
+      case 'answer_wire_question':
+        await handleAnswerWireQuestion(socket, msg.answer);
+        break;
+      case 'next_turn':
+        await handleNextTurn(socket);
+        break;
       default:
         sendError(socket, 'Unknown message type');
     }
@@ -139,7 +156,9 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
       'Game is not active', 'Not authenticated', 'Player not found',
       'Reveal reds not available in this mission',
       'Game is not in setup phase', 'Can only place info token on your own wire',
-      'Game is not in waiting phase',
+      'Game is not in waiting phase', 'Cannot select your own wire',
+      'No pending question', 'This question is not for you',
+      'Cannot advance turn while question is pending', 'Asker not found',
     ];
     sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
   }
@@ -293,6 +312,70 @@ async function handleCompleteSetup(socket: WebSocket): Promise<void> {
     const response: ServerMessage = { type: 'players_updated', players };
     connManager.broadcastToGame(info.gameId, response);
   }
+}
+
+async function handleSelectOpponentWire(socket: WebSocket, wireId: string): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  const { game, wire, answererPlayer } = await withTimeout(
+    engine.executeSelectOpponentWire(info.gameId, info.playerId, wireId),
+    'executeSelectOpponentWire',
+  );
+
+  // Broadcast wire_question popup to the opponent
+  const answererSocket = connManager.getPlayerSocket(game.id, answererPlayer.id);
+  if (answererSocket) {
+    const questionMessage: ServerMessage = {
+      type: 'wire_question',
+      askerPlayerId: info.playerId,
+      wireValue: wire.value!,
+    };
+    answererSocket.send(JSON.stringify(questionMessage));
+  }
+}
+
+async function handleAnswerWireQuestion(socket: WebSocket, answer: 'yes' | 'no'): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  const { game, message, updatedWires } = await withTimeout(
+    engine.executeAnswerWireQuestion(info.gameId, info.playerId, answer),
+    'executeAnswerWireQuestion',
+  );
+
+  const success = answer === 'yes';
+
+  // Broadcast interrogation result to all players
+  const gameSockets = connManager.getGameSockets(info.gameId);
+  for (const [playerId, playerSocket] of gameSockets) {
+    const playerWireView = buildPlayerView(updatedWires, playerId);
+    const resultMessage: ServerMessage = {
+      type: 'interrogation_result',
+      success,
+      message,
+      game,
+      updatedWires: playerWireView,
+    };
+    playerSocket.send(JSON.stringify(resultMessage));
+  }
+
+  // If game over (red wire), broadcast game_over
+  if (game.status === 'lost') {
+    connManager.broadcastToGame(info.gameId, { type: 'game_over', result: 'lost', reason: 'Red wire guessed correctly!' });
+  }
+}
+
+async function handleNextTurn(socket: WebSocket): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  const { game } = await withTimeout(engine.executeNextTurn(info.gameId, info.playerId), 'executeNextTurn');
+
+  // Broadcast updated game state with new current turn player
+  const players = await playersDb.getPlayersByGameId(info.gameId);
+  const response: ServerMessage = { type: 'game_state', game, players, wires: [], infoTokens: [], validationTokens: [] };
+  connManager.broadcastToGame(info.gameId, response);
 }
 
 function sendError(socket: WebSocket, message: string): void {

@@ -51,6 +51,11 @@ export function getGameSockets(gameId: string): Map<string, WebSocket> {
   return gameConnections.get(gameId) ?? new Map();
 }
 
+export function getPlayerSocket(gameId: string, playerId: string): WebSocket | undefined {
+  const gameMap = gameConnections.get(gameId);
+  return gameMap?.get(playerId);
+}
+
 export function sendToPlayer(gameId: string, playerId: string, message: unknown): void {
   const gameMap = gameConnections.get(gameId);
   if (!gameMap) return;

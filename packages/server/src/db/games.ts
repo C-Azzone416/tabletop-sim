@@ -55,6 +55,35 @@ export async function updateDetonator(id: string, position: number): Promise<Gam
   return mapGame(rows[0]);
 }
 
+export async function setPendingInterrogation(
+  id: string,
+  askerId: string,
+  answererId: string,
+  wireId: string,
+): Promise<Game> {
+  const rows = await sql`
+    UPDATE games
+    SET pending_interrogation_asker_id = ${askerId},
+        pending_interrogation_answerer_id = ${answererId},
+        pending_interrogation_wire_id = ${wireId}
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return mapGame(rows[0]);
+}
+
+export async function clearPendingInterrogation(id: string): Promise<Game> {
+  const rows = await sql`
+    UPDATE games
+    SET pending_interrogation_asker_id = NULL,
+        pending_interrogation_answerer_id = NULL,
+        pending_interrogation_wire_id = NULL
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return mapGame(rows[0]);
+}
+
 function mapGame(row: Record<string, unknown>): Game {
   return {
     id: row.id as string,
@@ -65,6 +94,9 @@ function mapGame(row: Record<string, unknown>): Game {
     joinCode: row.join_code as string,
     detonatorPosition: row.detonator_position as number,
     detonatorMax: row.detonator_max as number,
+    pendingInterrogationAskerId: row.pending_interrogation_asker_id as string | null,
+    pendingInterrogationAnswererId: row.pending_interrogation_answerer_id as string | null,
+    pendingInterrogationWireId: row.pending_interrogation_wire_id as string | null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
