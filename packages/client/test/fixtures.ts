@@ -17,7 +17,7 @@ export function resetIds() {
 }
 
 export function makeGame(overrides: Partial<Game> = {}): Game {
-  return {
+  const defaults: Game = {
     id: nextId(),
     mission: 1,
     status: "waiting",
@@ -34,8 +34,8 @@ export function makeGame(overrides: Partial<Game> = {}): Game {
     pendingInterrogationWireId: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
-    ...overrides,
   };
+  return Object.assign(defaults, overrides);
 }
 
 export function makePlayer(overrides: Partial<Player> = {}): Player {
