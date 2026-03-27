@@ -9,7 +9,7 @@ if (!databaseUrl) {
 
 const isLocal = databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1');
 
-let sql: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown[]>;
+let sql: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<Record<string, unknown>[]>;
 
 if (isLocal) {
   const pool = new Pool({ connectionString: databaseUrl });
