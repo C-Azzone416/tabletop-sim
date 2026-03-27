@@ -42,7 +42,7 @@ describe("SetupPhase", () => {
 
   it("renders setup phase heading", () => {
     render(<SetupPhase {...setup()} />);
-    expect(screen.getByText("Setup Phase")).toBeInTheDocument();
+    expect(screen.getByText("Setup Phase - Wire Interrogation")).toBeInTheDocument();
   });
 
   it("labels local player rack as hidden", () => {
@@ -55,36 +55,32 @@ describe("SetupPhase", () => {
     expect(screen.getByText("Bob")).toBeInTheDocument();
   });
 
-  it("shows Place Info Token button after selecting a wire on another player rack", async () => {
+  it("calls onSelectOpponentWire when clicking an opponent wire", async () => {
     const user = userEvent.setup();
     const props = setup();
     render(<SetupPhase {...props} />);
-
-    expect(screen.queryByText("Place Info Token")).not.toBeInTheDocument();
 
     const wireButtons = screen.getAllByRole("button");
     const otherPlayerWireButton = wireButtons.find(
       (btn) => btn.textContent?.includes("2") || btn.textContent?.includes("4")
     );
-    if (otherPlayerWireButton) {
-      await user.click(otherPlayerWireButton);
-      expect(screen.getByText("Place Info Token")).toBeInTheDocument();
-    }
+    expect(otherPlayerWireButton).toBeDefined();
+    await user.click(otherPlayerWireButton!);
+    expect(props.onSelectOpponentWire).toHaveBeenCalledOnce();
   });
 
-  it("calls onPlaceInfoToken when placing token", async () => {
+  it("does not call onSelectOpponentWire when clicking own wire", async () => {
     const user = userEvent.setup();
     const props = setup();
     render(<SetupPhase {...props} />);
 
+    // Local player's wires show "?" (hidden), other player's wires show their value
     const wireButtons = screen.getAllByRole("button");
-    const otherPlayerWireButton = wireButtons.find(
-      (btn) => btn.textContent?.includes("2") || btn.textContent?.includes("4")
+    const localWireButton = wireButtons.find(
+      (btn) => btn.textContent === "?"
     );
-    if (otherPlayerWireButton) {
-      await user.click(otherPlayerWireButton);
-      await user.click(screen.getByText("Place Info Token"));
-      expect(props.onPlaceInfoToken).toHaveBeenCalledOnce();
-    }
+    expect(localWireButton).toBeDefined();
+    await user.click(localWireButton!);
+    expect(props.onSelectOpponentWire).not.toHaveBeenCalled();
   });
 });
