@@ -8,7 +8,7 @@ describe("SetupPhase", () => {
   beforeEach(() => resetIds());
 
   const setup = () => {
-    const game = makeGame({ id: "g1", status: "setup" });
+    const game = makeGame({ id: "g1", status: "setup", currentTurnPlayerId: "p1", captainId: "p1" });
     const localPlayer = makePlayer({ id: "p1", name: "Alice" });
     const otherPlayer = makePlayer({ id: "p2", name: "Bob" });
     const localWires = [
@@ -20,7 +20,10 @@ describe("SetupPhase", () => {
       makeWire({ id: "w4", playerId: "p2", rackPosition: 1, value: "4" }),
     ];
     const onPlaceInfoToken = vi.fn();
-    const onCompleteSetup = vi.fn();
+    const onSelectOpponentWire = vi.fn();
+    const onAnswerWireQuestion = vi.fn();
+    const onNextTurn = vi.fn();
+    const onStartGame = vi.fn();
 
     return {
       game,
@@ -28,7 +31,12 @@ describe("SetupPhase", () => {
       wires: [...localWires, ...otherWires],
       localPlayerId: "p1",
       onPlaceInfoToken,
-      onCompleteSetup,
+      onSelectOpponentWire,
+      onAnswerWireQuestion,
+      onNextTurn,
+      onStartGame,
+      pendingWireQuestion: null,
+      lastInterrogationResult: null,
     };
   };
 
@@ -37,9 +45,9 @@ describe("SetupPhase", () => {
     expect(screen.getByText("Setup Phase")).toBeInTheDocument();
   });
 
-  it("labels local player rack", () => {
+  it("labels local player rack as hidden", () => {
     render(<SetupPhase {...setup()} />);
-    expect(screen.getByText("Your Rack")).toBeInTheDocument();
+    expect(screen.getByText("Your Rack (hidden from you)")).toBeInTheDocument();
   });
 
   it("shows other player name", () => {
@@ -47,7 +55,7 @@ describe("SetupPhase", () => {
     expect(screen.getByText("Bob")).toBeInTheDocument();
   });
 
-  it("shows Place Info Token button after selecting a wire on local player rack", async () => {
+  it("shows Place Info Token button after selecting a wire on another player rack", async () => {
     const user = userEvent.setup();
     const props = setup();
     render(<SetupPhase {...props} />);
@@ -55,11 +63,11 @@ describe("SetupPhase", () => {
     expect(screen.queryByText("Place Info Token")).not.toBeInTheDocument();
 
     const wireButtons = screen.getAllByRole("button");
-    const localPlayerWireButton = wireButtons.find(
-      (btn) => btn.textContent?.includes("3") || btn.textContent?.includes("5")
+    const otherPlayerWireButton = wireButtons.find(
+      (btn) => btn.textContent?.includes("2") || btn.textContent?.includes("4")
     );
-    if (localPlayerWireButton) {
-      await user.click(localPlayerWireButton);
+    if (otherPlayerWireButton) {
+      await user.click(otherPlayerWireButton);
       expect(screen.getByText("Place Info Token")).toBeInTheDocument();
     }
   });
@@ -70,11 +78,11 @@ describe("SetupPhase", () => {
     render(<SetupPhase {...props} />);
 
     const wireButtons = screen.getAllByRole("button");
-    const localPlayerWireButton = wireButtons.find(
-      (btn) => btn.textContent?.includes("3") || btn.textContent?.includes("5")
+    const otherPlayerWireButton = wireButtons.find(
+      (btn) => btn.textContent?.includes("2") || btn.textContent?.includes("4")
     );
-    if (localPlayerWireButton) {
-      await user.click(localPlayerWireButton);
+    if (otherPlayerWireButton) {
+      await user.click(otherPlayerWireButton);
       await user.click(screen.getByText("Place Info Token"));
       expect(props.onPlaceInfoToken).toHaveBeenCalledOnce();
     }
