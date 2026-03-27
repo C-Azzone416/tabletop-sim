@@ -1,6 +1,16 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { buildPlayerView } from "../src/ws/state-broadcaster.js";
 import { makeWire, resetIds } from "./fixtures.js";
+
+vi.mock("../src/db/wires.js", () => ({ getWiresByGameId: vi.fn() }));
+vi.mock("../src/db/tokens.js", () => ({
+  getInfoTokensByGameId: vi.fn(),
+  getValidationTokensByGameId: vi.fn(),
+}));
+vi.mock("../src/ws/connection-manager.js", () => ({
+  getGameSockets: vi.fn(() => new Map()),
+  sendToPlayer: vi.fn(),
+}));
 
 describe("state-broadcaster", () => {
   beforeEach(() => resetIds());

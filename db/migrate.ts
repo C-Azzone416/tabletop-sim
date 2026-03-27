@@ -21,6 +21,7 @@ const migrations = [
   '004_multi_color_mission.sql',
   '005_player_ready.sql',
   '006_setup_done.sql',
+  '007_wire_interrogation.sql',
 ];
 
 async function run() {

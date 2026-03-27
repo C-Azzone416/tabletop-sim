@@ -15,6 +15,9 @@ export interface Game {
   joinCode: string;
   detonatorPosition: number;
   detonatorMax: number;
+  pendingInterrogationAskerId: string | null;
+  pendingInterrogationAnswererId: string | null;
+  pendingInterrogationWireId: string | null;
   createdAt: string;
   updatedAt: string;
 }

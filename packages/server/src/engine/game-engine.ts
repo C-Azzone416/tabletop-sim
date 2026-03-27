@@ -322,6 +322,95 @@ export async function executeRevealReds(
   return { turn: { ...turn, result: 'success' }, game: advancedGame, updatedWires };
 }
 
+export async function executeSelectOpponentWire(
+  gameId: string,
+  playerId: string,
+  wireId: string,
+): Promise<{ game: Game; wire: Wire; answererPlayer: Player }> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.status !== 'setup') throw new Error('Game is not in setup phase');
+  if (game.currentTurnPlayerId !== playerId) throw new Error('Not your turn');
+
+  const wire = await wiresDb.getWireById(wireId);
+  if (!wire) throw new Error('Wire not found');
+  if (wire.gameId !== gameId) throw new Error('Wire does not belong to this game');
+  if (wire.playerId === playerId) throw new Error('Cannot select your own wire');
+  if (wire.status !== 'hidden') throw new Error('Wire already revealed or cut');
+
+  const answererPlayer = await playersDb.getPlayerById(wire.playerId);
+  if (!answererPlayer) throw new Error('Player not found');
+
+  // Set pending interrogation
+  const updatedGame = await gamesDb.setPendingInterrogation(gameId, playerId, wire.playerId, wireId);
+
+  return { game: updatedGame, wire, answererPlayer };
+}
+
+export async function executeAnswerWireQuestion(
+  gameId: string,
+  playerId: string,
+  answer: 'yes' | 'no',
+): Promise<{ game: Game; message: string; updatedWires: Wire[] }> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.status !== 'setup') throw new Error('Game is not in setup phase');
+  if (!game.pendingInterrogationAnswererId) throw new Error('No pending question');
+  if (game.pendingInterrogationAnswererId !== playerId) throw new Error('This question is not for you');
+
+  const wire = await wiresDb.getWireById(game.pendingInterrogationWireId!);
+  if (!wire) throw new Error('Wire not found');
+
+  const askerPlayer = await playersDb.getPlayerById(game.pendingInterrogationAskerId!);
+  if (!askerPlayer) throw new Error('Asker not found');
+
+  const updatedWires: Wire[] = [];
+  let message = '';
+
+  if (answer === 'yes') {
+    // Answer is correct - reveal the wire and create validation token
+    const revealedWire = await wiresDb.updateWireStatus(wire.id, 'revealed');
+    updatedWires.push(revealedWire);
+
+    // Create validation token for the asker
+    await tokensDb.createValidationToken(gameId, wire.value!, wire.color);
+    message = `Correct! Wire ${wire.rackPosition + 1} is revealed as ${wire.value}`;
+  } else {
+    // Answer is incorrect
+    if (wire.color === 'red') {
+      // Game over - red wire was guessed
+      const lostGame = await gamesDb.updateGameStatus(gameId, 'lost');
+      await gamesDb.clearPendingInterrogation(gameId);
+      return { game: lostGame, message: 'Game Over! Red wire guessed!', updatedWires };
+    } else {
+      // Place info token on the wire
+      await tokensDb.createInfoToken(gameId, wire.id, wire.value!);
+      updatedWires.push(wire);
+      message = `Incorrect! Info token placed on wire ${wire.rackPosition + 1}`;
+    }
+  }
+
+  // Clear pending interrogation - answer has been given
+  const updatedGame = await gamesDb.clearPendingInterrogation(gameId);
+
+  return { game: updatedGame, message, updatedWires };
+}
+
+export async function executeNextTurn(gameId: string, playerId: string): Promise<{ game: Game }> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.status !== 'setup') throw new Error('Game is not in setup phase');
+  if (game.currentTurnPlayerId !== playerId) throw new Error('Not your turn');
+  if (game.pendingInterrogationAnswererId) throw new Error('Cannot advance turn while question is pending');
+
+  const players = await playersDb.getPlayersByGameId(gameId);
+  const currentIndex = players.findIndex(p => p.id === game.currentTurnPlayerId);
+  const nextIndex = (currentIndex + 1) % players.length;
+  const nextGame = await gamesDb.updateCurrentTurn(gameId, players[nextIndex].id);
+
+  return { game: nextGame };
+}
+
 async function checkWinCondition(gameId: string): Promise<boolean> {
   const allWires = await wiresDb.getWiresByGameId(gameId);
   return allWires.every(w => w.status === 'cut');
