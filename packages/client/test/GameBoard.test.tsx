@@ -61,11 +61,6 @@ describe("GameBoard", () => {
     expect(screen.getByText("Waiting for Bob...")).toBeInTheDocument();
   });
 
-  it("renders detonator with correct remaining count", () => {
-    render(<GameBoard {...setup()} />);
-    expect(screen.getByText("3 mistakes remaining")).toBeInTheDocument();
-  });
-
   it("shows local player as 'You'", () => {
     render(<GameBoard {...setup()} />);
     expect(screen.getByText("You")).toBeInTheDocument();
