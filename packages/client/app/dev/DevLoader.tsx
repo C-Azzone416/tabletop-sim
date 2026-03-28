@@ -14,9 +14,9 @@ export function DevLoader() {
     async function seed() {
       const res = await fetch(`${SERVER_URL}/dev/seed`, { method: "POST" });
       if (!res.ok) throw new Error("Seed failed");
-      const { joinCode, playerName } = await res.json();
+      const { joinCode, profileId, playerName } = await res.json();
       await signIn("credentials", { name: playerName, redirect: false });
-      router.push(`/game/${joinCode}`);
+      router.push(`/game/${joinCode}?profileId=${profileId}&playerName=${encodeURIComponent(playerName)}`);
     }
     seed().catch(console.error);
   }, [router]);
