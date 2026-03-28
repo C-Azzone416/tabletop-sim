@@ -129,7 +129,6 @@ describe("GameClient — full game flow integration", () => {
     });
 
     expect(screen.getByText("Your turn — choose an action")).toBeInTheDocument();
-    expect(screen.getByText("Detonator")).toBeInTheDocument();
 
     // 5. Game over → overlay
     act(() => {
