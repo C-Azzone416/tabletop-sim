@@ -9,7 +9,6 @@ import type {
   ServerMessage,
 } from "@tabletop/shared";
 import { PlayerRack } from "./PlayerRack";
-import { Detonator } from "./Detonator";
 import { ValidationTracker } from "./ValidationTracker";
 import { TurnIndicator } from "./TurnIndicator";
 import { ActionPanel } from "./ActionPanel";
@@ -58,10 +57,6 @@ export function GameBoard({
           players={players}
         />
         <div className="flex gap-6">
-          <Detonator
-            position={game.detonatorPosition}
-            max={game.detonatorMax}
-          />
           <ValidationTracker validationTokens={validationTokens} />
         </div>
       </div>
