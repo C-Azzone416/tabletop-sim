@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type {
   Game,
   Player,
@@ -11,7 +12,7 @@ import type {
 import { PlayerRack } from "./PlayerRack";
 import { ValidationTracker } from "./ValidationTracker";
 import { TurnIndicator } from "./TurnIndicator";
-import { ActionPanel } from "./ActionPanel";
+import { ActionPanel, type ActionMode } from "./ActionPanel";
 
 interface GameBoardProps {
   game: Game;
@@ -41,11 +42,84 @@ export function GameBoard({
   const isMyTurn = game.currentTurnPlayerId === localPlayerId;
   const localPlayer = players.find((p) => p.id === localPlayerId);
 
-  // Sort players: local player last so they appear at bottom
+  // Action mode state lifted here so board tiles can respond
+  const [actionMode, setActionMode] = useState<ActionMode>("idle");
+
+  // Duo Cut: selected opponent wire + modal state
+  const [duoCutWireId, setDuoCutWireId] = useState<string | null>(null);
+  const [duoCutModalOpen, setDuoCutModalOpen] = useState(false);
+  const [duoCutGuess, setDuoCutGuess] = useState("");
+
+  // Solo Cut: up to 2 selected wire IDs
+  const [soloCutSelected, setSoloCutSelected] = useState<string[]>([]);
+
+  const resetAction = () => {
+    setActionMode("idle");
+    setDuoCutWireId(null);
+    setDuoCutModalOpen(false);
+    setDuoCutGuess("");
+    setSoloCutSelected([]);
+  };
+
+  // Duo Cut handlers
+  const handleOpponentWireClick = (wireId: string) => {
+    setDuoCutWireId(wireId);
+    setDuoCutModalOpen(true);
+  };
+
+  const handleDuoCutConfirm = () => {
+    if (duoCutWireId && duoCutGuess) {
+      onDuoCut(duoCutWireId, duoCutGuess);
+      resetAction();
+    }
+  };
+
+  const handleDuoCutModalCancel = () => {
+    setDuoCutWireId(null);
+    setDuoCutModalOpen(false);
+    setDuoCutGuess("");
+  };
+
+  // Solo Cut handlers
+  const handleOwnWireClick = (wireId: string) => {
+    setSoloCutSelected((prev) => {
+      if (prev.includes(wireId)) return prev.filter((id) => id !== wireId);
+      if (prev.length >= 2) return prev;
+      return [...prev, wireId];
+    });
+  };
+
+  const soloCutMatchStatus = (): "idle" | "valid" | "mismatch" => {
+    if (soloCutSelected.length < 2) return "idle";
+    const w1 = wires.find((w) => w.id === soloCutSelected[0]);
+    const w2 = wires.find((w) => w.id === soloCutSelected[1]);
+    if (w1?.value != null && w1.value === w2?.value) return "valid";
+    return "mismatch";
+  };
+
+  const handleSoloCutConfirm = () => {
+    if (soloCutSelected.length === 2 && soloCutMatchStatus() === "valid") {
+      const w = wires.find((w) => w.id === soloCutSelected[0]);
+      if (w?.value != null) {
+        onSoloCut(String(w.value));
+        resetAction();
+      }
+    }
+  };
+
+  // Sort players: local player first
   const sortedPlayers = [
-    ...players.filter((p) => p.id !== localPlayerId),
     ...players.filter((p) => p.id === localPlayerId),
+    ...players.filter((p) => p.id !== localPlayerId),
   ];
+
+  // Find modal target wire info for duo_cut
+  const duoCutTargetWire = duoCutWireId
+    ? wires.find((w) => w.id === duoCutWireId)
+    : null;
+  const duoCutTargetOwner = duoCutTargetWire
+    ? players.find((p) => p.id === duoCutTargetWire.playerId)
+    : null;
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -87,6 +161,18 @@ export function GameBoard({
             .sort((a, b) => a.rackPosition - b.rackPosition);
           const isLocal = player.id === localPlayerId;
 
+          // Determine which wires are interactive in the current mode
+          const isDuoCutTarget = !isLocal && isMyTurn && actionMode === "duo_cut";
+          const isSoloCutLocal = isLocal && isMyTurn && actionMode === "solo_cut";
+
+          const duoCutSelectableIds = isDuoCutTarget
+            ? playerWires.filter((w) => w.status === "hidden").map((w) => w.id)
+            : undefined;
+
+          const soloCutSelectableIds = isSoloCutLocal
+            ? playerWires.filter((w) => w.value !== null && w.status === "hidden").map((w) => w.id)
+            : undefined;
+
           return (
             <div key={player.id}>
               <div className="mb-2 flex items-center gap-2">
@@ -113,7 +199,16 @@ export function GameBoard({
               <PlayerRack
                 wires={playerWires}
                 isLocal={isLocal}
-                selectedWireId={null}
+                selectedWireId={isDuoCutTarget ? duoCutWireId : null}
+                selectedWireIds={isSoloCutLocal ? soloCutSelected : undefined}
+                selectableWireIds={duoCutSelectableIds ?? soloCutSelectableIds}
+                onSelectWire={
+                  isDuoCutTarget
+                    ? handleOpponentWireClick
+                    : isSoloCutLocal
+                      ? handleOwnWireClick
+                      : undefined
+                }
                 infoTokens={infoTokens.filter((t) =>
                   playerWires.some((w) => w.id === t.wireId)
                 )}
@@ -130,10 +225,59 @@ export function GameBoard({
         wires={wires}
         localPlayerId={localPlayerId}
         doubleDetectorUsed={localPlayer?.doubleDetectorUsed ?? false}
-        onDuoCut={onDuoCut}
-        onSoloCut={onSoloCut}
+        mode={actionMode}
+        onSetMode={setActionMode}
+        onCancel={resetAction}
+        soloCutSelectedCount={soloCutSelected.length}
+        soloCutMatchStatus={soloCutMatchStatus()}
+        onSoloCutConfirm={handleSoloCutConfirm}
         onDoubleDetector={onDoubleDetector}
       />
+
+      {/* Duo Cut modal */}
+      {duoCutModalOpen && duoCutTargetWire && duoCutTargetOwner && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={handleDuoCutModalCancel}
+        >
+          <div
+            className="w-80 rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">
+              Duo Cut
+            </h2>
+            <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+              Guessing {duoCutTargetOwner.name}&apos;s wire #
+              {duoCutTargetWire.rackPosition + 1} — enter your guess (1–6):
+            </p>
+            <input
+              type="text"
+              value={duoCutGuess}
+              onChange={(e) => setDuoCutGuess(e.target.value.replace(/[^1-6]/g, ""))}
+              placeholder="1–6"
+              maxLength={1}
+              autoFocus
+              className="mb-4 w-full rounded-lg border border-zinc-300 px-3 py-2 text-center text-lg dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={handleDuoCutModalCancel}
+                className="flex-1 rounded-lg border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDuoCutConfirm}
+                disabled={!duoCutGuess}
+                className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-blue-700"
+              >
+                Confirm Cut
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

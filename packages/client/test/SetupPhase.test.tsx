@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SetupPhase } from "../app/components/SetupPhase";
 import { makeGame, makePlayer, makeWire, resetIds } from "./fixtures";
@@ -74,13 +74,12 @@ describe("SetupPhase", () => {
     const props = setup();
     render(<SetupPhase {...props} />);
 
-    // Local player's wires show "?" (hidden), other player's wires show their value
-    const wireButtons = screen.getAllByRole("button");
-    const localWireButton = wireButtons.find(
-      (btn) => btn.textContent === "?"
-    );
+    // Local rack is labeled "Your Rack (hidden from you)" — its wires have no click handler
+    const yourRackHeading = screen.getByText("Your Rack (hidden from you)");
+    const yourRackSection = yourRackHeading.closest("div")!;
+    const localWireButton = within(yourRackSection).getAllByRole("button")[0];
     expect(localWireButton).toBeDefined();
-    await user.click(localWireButton!);
+    await user.click(localWireButton);
     expect(props.onSelectOpponentWire).not.toHaveBeenCalled();
   });
 });
