@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { GameBoard } from "../app/components/GameBoard";
 import {
   makeGame,
@@ -141,6 +142,137 @@ describe("GameBoard", () => {
     });
     render(<GameBoard {...props} />);
     expect(screen.queryByText("Choose Action")).not.toBeInTheDocument();
+  });
+
+  // Helper: get the rack container div for a given player label
+  const getRackContainer = (label: string) => {
+    const span = screen.getByText(label);
+    // label span → flex div → outer player div
+    return span.closest("div")!.parentElement!;
+  };
+
+  // --- Duo Cut UX ---
+
+  it("entering duo_cut mode shows instruction text", async () => {
+    const user = userEvent.setup();
+    render(<GameBoard {...setup()} />);
+    await user.click(screen.getByRole("button", { name: "Duo Cut" }));
+    expect(
+      screen.getByText(/Click an opponent's wire on the board/i)
+    ).toBeInTheDocument();
+  });
+
+  it("clicking opponent wire in duo_cut mode opens modal", async () => {
+    const user = userEvent.setup();
+    const props = setup();
+    render(<GameBoard {...props} />);
+    await user.click(screen.getByRole("button", { name: "Duo Cut" }));
+    // Scope to Bob's rack to avoid ambiguity with ValidationTracker slots
+    const bobContainer = getRackContainer("Bob");
+    const bobWireButtons = within(bobContainer).getAllByRole("button");
+    await user.click(bobWireButtons[0]);
+    expect(screen.getByText(/Guessing Bob's wire #1/i)).toBeInTheDocument();
+  });
+
+  it("duo_cut modal confirm calls onDuoCut with correct args", async () => {
+    const user = userEvent.setup();
+    const props = setup();
+    render(<GameBoard {...props} />);
+    await user.click(screen.getByRole("button", { name: "Duo Cut" }));
+    const bobContainer = getRackContainer("Bob");
+    const bobWireButtons = within(bobContainer).getAllByRole("button");
+    await user.click(bobWireButtons[0]); // w3
+    const input = screen.getByPlaceholderText("1–6");
+    await user.type(input, "3");
+    await user.click(screen.getByRole("button", { name: "Confirm Cut" }));
+    expect(props.onDuoCut).toHaveBeenCalledWith("w3", "3");
+  });
+
+  it("duo_cut modal cancel closes modal without calling onDuoCut", async () => {
+    const user = userEvent.setup();
+    const props = setup();
+    render(<GameBoard {...props} />);
+    await user.click(screen.getByRole("button", { name: "Duo Cut" }));
+    const bobContainer = getRackContainer("Bob");
+    await user.click(within(bobContainer).getAllByRole("button")[0]);
+    const modalText = screen.getByText(/Guessing Bob/i);
+    expect(modalText).toBeInTheDocument();
+    // Scope Cancel click to the modal panel to avoid ActionPanel's Cancel button
+    const modalPanel = modalText.closest("div")!;
+    await user.click(within(modalPanel).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText(/Guessing Bob/i)).not.toBeInTheDocument();
+    expect(props.onDuoCut).not.toHaveBeenCalled();
+  });
+
+  // --- Solo Cut UX ---
+
+  it("entering solo_cut mode shows instruction text", async () => {
+    const user = userEvent.setup();
+    render(<GameBoard {...setup()} />);
+    await user.click(screen.getByRole("button", { name: "Solo Cut" }));
+    expect(
+      screen.getByText(/Select 2 matching wires on your rack/i)
+    ).toBeInTheDocument();
+  });
+
+  it("solo_cut: selecting 2 matching wires enables Confirm Solo Cut", async () => {
+    const user = userEvent.setup();
+    const props = setup();
+    // Both local wires have value "4" (revealed, so selectable)
+    props.wires = [
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "4" }),
+      makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "4" }),
+      makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: "3" }),
+    ];
+    render(<GameBoard {...props} />);
+    await user.click(screen.getByRole("button", { name: "Solo Cut" }));
+    // Scope to local rack to avoid ValidationTracker slot ambiguity
+    const youContainer = getRackContainer("You");
+    const localWireButtons = within(youContainer).getAllByRole("button");
+    await user.click(localWireButtons[0]); // w1
+    await user.click(localWireButtons[1]); // w2
+    expect(
+      screen.getByRole("button", { name: "Confirm Solo Cut" })
+    ).not.toBeDisabled();
+  });
+
+  it("solo_cut: selecting 2 mismatched wires shows error and disables confirm", async () => {
+    const user = userEvent.setup();
+    const props = setup();
+    // Local wires have different values — mismatch
+    props.wires = [
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "3" }),
+      makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "5" }),
+      makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: "2" }),
+    ];
+    render(<GameBoard {...props} />);
+    await user.click(screen.getByRole("button", { name: "Solo Cut" }));
+    const youContainer = getRackContainer("You");
+    const localWireButtons = within(youContainer).getAllByRole("button");
+    await user.click(localWireButtons[0]); // w1, value "3"
+    await user.click(localWireButtons[1]); // w2, value "5"
+    expect(screen.getByText(/don't match/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Confirm Solo Cut" })
+    ).toBeDisabled();
+  });
+
+  it("solo_cut confirm calls onSoloCut with wire value", async () => {
+    const user = userEvent.setup();
+    const props = setup();
+    props.wires = [
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "4" }),
+      makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "4" }),
+      makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: "3" }),
+    ];
+    render(<GameBoard {...props} />);
+    await user.click(screen.getByRole("button", { name: "Solo Cut" }));
+    const youContainer = getRackContainer("You");
+    const localWireButtons = within(youContainer).getAllByRole("button");
+    await user.click(localWireButtons[0]);
+    await user.click(localWireButtons[1]);
+    await user.click(screen.getByRole("button", { name: "Confirm Solo Cut" }));
+    expect(props.onSoloCut).toHaveBeenCalledWith("4");
   });
 
   it("renders validation tracker with validated values", () => {
