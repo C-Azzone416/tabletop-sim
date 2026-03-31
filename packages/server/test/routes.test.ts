@@ -24,7 +24,27 @@ vi.mock("../src/db/players.js", () => ({
   createPlayer: vi.fn(),
   getPlayersByGameId: vi.fn(),
   getPlayerById: vi.fn(),
+  getActivePlayerByProfileId: vi.fn(),
   markDoubleDetectorUsed: vi.fn(),
+}));
+
+vi.mock("../src/db/tokens.js", () => ({
+  createInfoToken: vi.fn(),
+  getInfoTokensByGameId: vi.fn(),
+  createValidationToken: vi.fn(),
+  getValidationTokensByGameId: vi.fn(),
+}));
+
+vi.mock("../src/db/wires.js", () => ({
+  getWiresByPlayerId: vi.fn(),
+  getWiresByGameId: vi.fn(),
+  createWire: vi.fn(),
+  createWiresBatch: vi.fn(),
+  getWireById: vi.fn(),
+  updateWireStatus: vi.fn(),
+  getWiresByValueAndGame: vi.fn(),
+  getWiresByValueColorAndGame: vi.fn(),
+  revealRedWires: vi.fn(),
 }));
 
 vi.mock("../src/ws/connection-manager.js", () => ({
@@ -62,10 +82,14 @@ vi.mock("../src/engine/game-engine.js", () => ({
 }));
 
 import * as profilesDb from "../src/db/profiles.js";
+import * as playersDb from "../src/db/players.js";
+import * as wiresDb from "../src/db/wires.js";
 import * as engine from "../src/engine/game-engine.js";
 import { buildApp } from "../src/app.js";
 
 const mockProfilesDb = vi.mocked(profilesDb);
+const mockPlayersDb = vi.mocked(playersDb);
+const mockWiresDb = vi.mocked(wiresDb);
 const mockEngine = vi.mocked(engine);
 
 describe("routes", () => {
@@ -196,6 +220,8 @@ describe("routes", () => {
       mockEngine.joinGame.mockResolvedValue({ game, player: mockPlayers[1], players: mockPlayers.slice(0, 2) });
       mockEngine.startGame.mockResolvedValue({ game: startedGame, players: mockPlayers, wires: [] });
       mockEngine.completeSetup.mockResolvedValue(activeGame);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(mockPlayers);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([]);
 
       const res = await seedApp.inject({ method: "POST", url: "/dev/seed" });
 
@@ -222,6 +248,8 @@ describe("routes", () => {
       mockEngine.joinGame.mockResolvedValue({ game, player, players: [player] });
       mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
       mockEngine.completeSetup.mockResolvedValue(activeGame);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([player]);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([]);
 
       const res = await seedApp.inject({ method: "POST", url: "/dev/seed" });
 

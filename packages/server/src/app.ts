@@ -4,6 +4,8 @@ import websocket from '@fastify/websocket';
 import * as gamesDb from './db/games.js';
 import * as playersDb from './db/players.js';
 import * as profilesDb from './db/profiles.js';
+import * as tokensDb from './db/tokens.js';
+import * as wiresDb from './db/wires.js';
 import * as engine from './engine/game-engine.js';
 import { handleMessage } from './ws/message-handler.js';
 import { removeConnection, setAuthenticatedUser, registerConnection } from './ws/connection-manager.js';
@@ -132,6 +134,16 @@ export async function buildApp() {
         await engine.joinGame(game.joinCode, 'Carol');
         await engine.startGame(game.id, player.id, 1);
         await engine.completeSetup(game.id);
+        // Auto-generate info tokens for each player's wires so dev games start with full knowledge
+        const gamePlayers = await playersDb.getPlayersByGameId(game.id);
+        for (const p of gamePlayers) {
+          const wires = await wiresDb.getWiresByPlayerId(p.id);
+          for (const wire of wires) {
+            if (wire.value !== null) {
+              await tokensDb.createInfoToken(game.id, wire.id, wire.value);
+            }
+          }
+        }
         return { joinCode: game.joinCode, profileId: profile.id, playerName: 'Dev' };
       } catch (err) {
         app.log.error({ err }, '[POST /dev/seed] error');
