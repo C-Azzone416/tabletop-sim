@@ -84,6 +84,28 @@ export async function clearPendingInterrogation(id: string): Promise<Game> {
   return mapGame(rows[0]);
 }
 
+export async function setPendingDuoCut(id: string, proposerId: string, wireId: string): Promise<Game> {
+  const rows = await sql`
+    UPDATE games
+    SET pending_duo_cut_proposer_id = ${proposerId},
+        pending_duo_cut_wire_id = ${wireId}
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return mapGame(rows[0]);
+}
+
+export async function clearPendingDuoCut(id: string): Promise<Game> {
+  const rows = await sql`
+    UPDATE games
+    SET pending_duo_cut_proposer_id = NULL,
+        pending_duo_cut_wire_id = NULL
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return mapGame(rows[0]);
+}
+
 function mapGame(row: Record<string, unknown>): Game {
   return {
     id: row.id as string,
@@ -97,6 +119,8 @@ function mapGame(row: Record<string, unknown>): Game {
     pendingInterrogationAskerId: row.pending_interrogation_asker_id as string | null,
     pendingInterrogationAnswererId: row.pending_interrogation_answerer_id as string | null,
     pendingInterrogationWireId: row.pending_interrogation_wire_id as string | null,
+    pendingDuoCutWireId: row.pending_duo_cut_wire_id as string | null,
+    pendingDuoCutProposerId: row.pending_duo_cut_proposer_id as string | null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
