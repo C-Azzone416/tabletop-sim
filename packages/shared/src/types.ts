@@ -18,6 +18,8 @@ export interface Game {
   pendingInterrogationAskerId: string | null;
   pendingInterrogationAnswererId: string | null;
   pendingInterrogationWireId: string | null;
+  pendingDuoCutWireId: string | null;
+  pendingDuoCutProposerId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -79,6 +81,8 @@ export type ClientMessage =
   | { type: 'start_game'; mission?: number }
   | { type: 'place_info_token'; wireId: string }
   | { type: 'duo_cut'; targetWireId: string; guessedValue: string }
+  | { type: 'propose_duo_cut'; targetWireId: string }
+  | { type: 'respond_duo_cut'; accepted: boolean }
   | { type: 'solo_cut'; wireValue: string }
   | { type: 'double_detector'; targetWireId: string; targetWireId2: string }
   | { type: 'reveal_reds' }
@@ -93,8 +97,9 @@ export type ServerMessage =
   | { type: 'joined_game'; game: Game; player: Player; players: Player[] }
   | { type: 'game_started'; game: Game; players: Player[]; wires: Wire[] }
   | { type: 'setup_complete'; game: Game }
-  | { type: 'game_state'; game: Game; players: Player[]; wires: Wire[]; infoTokens: InfoToken[]; validationTokens: ValidationToken[] }
+  | { type: 'game_state'; game: Game; players: Player[]; wires: Wire[]; infoTokens: InfoToken[]; validationTokens: ValidationToken[]; localPlayerId: string }
   | { type: 'player_joined'; player: Player }
+  | { type: 'duo_cut_proposed'; proposingPlayerId: string; targetPlayerId: string; targetWireId: string; targetWireRackPosition: number }
   | { type: 'turn_result'; turn: Turn; game: Game; updatedWires: Wire[] }
   | { type: 'validation_complete'; wireValue: string; wireColor: WireColor; game: Game }
   | { type: 'wire_updated'; wire: Wire }

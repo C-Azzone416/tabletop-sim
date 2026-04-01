@@ -46,6 +46,12 @@ function validateMessage(parsed: unknown): ClientMessage | null {
     case 'duo_cut':
       if (!isNonEmptyString(msg.targetWireId) || !isNonEmptyString(msg.guessedValue)) return null;
       return { type: 'duo_cut', targetWireId: msg.targetWireId, guessedValue: msg.guessedValue };
+    case 'propose_duo_cut':
+      if (!isNonEmptyString(msg.targetWireId)) return null;
+      return { type: 'propose_duo_cut', targetWireId: msg.targetWireId };
+    case 'respond_duo_cut':
+      if (typeof msg.accepted !== 'boolean') return null;
+      return { type: 'respond_duo_cut', accepted: msg.accepted };
     case 'solo_cut':
       if (!isNonEmptyString(msg.wireValue)) return null;
       return { type: 'solo_cut', wireValue: msg.wireValue };
@@ -116,6 +122,12 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
       case 'duo_cut':
         await handleDuoCut(socket, msg.targetWireId, msg.guessedValue);
         break;
+      case 'propose_duo_cut':
+        await handleProposeDuoCut(socket, msg.targetWireId);
+        break;
+      case 'respond_duo_cut':
+        await handleRespondDuoCut(socket, msg.accepted);
+        break;
       case 'solo_cut':
         await handleSoloCut(socket, msg.wireValue);
         break;
@@ -159,6 +171,8 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
       'Game is not in waiting phase', 'Cannot select your own wire',
       'No pending question', 'This question is not for you',
       'Cannot advance turn while question is pending', 'Asker not found',
+      'Duo cut already pending', 'Cannot target your own wire with duo cut',
+      'No pending duo cut', 'Not your wire to respond to',
     ];
     sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
   }
@@ -231,6 +245,57 @@ async function handleDuoCut(socket: WebSocket, targetWireId: string, guessedValu
   }
 
   // Broadcast full game state so all clients see any new info token (e.g. from a wrong duo_cut guess)
+  const updatedGame = await gamesDb.getGameById(info.gameId);
+  if (updatedGame) {
+    await broadcastGameState(info.gameId, updatedGame, players);
+  }
+
+  // If game over, broadcast
+  if (game.status === 'won' || game.status === 'lost') {
+    const reason = game.status === 'won' ? 'All wires cut!' : 'Detonator reached skull!';
+    connManager.broadcastToGame(info.gameId, { type: 'game_over', result: game.status, reason });
+  }
+}
+
+async function handleProposeDuoCut(socket: WebSocket, targetWireId: string): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  const { game, wire, targetPlayer } = await withTimeout(
+    engine.executeProposeDuoCut(info.gameId, info.playerId, targetWireId),
+    'executeProposeDuoCut',
+  );
+
+  const notification: ServerMessage = {
+    type: 'duo_cut_proposed',
+    proposingPlayerId: info.playerId,
+    targetPlayerId: targetPlayer.id,
+    targetWireId: wire.id,
+    targetWireRackPosition: wire.rackPosition,
+  };
+  connManager.broadcastToGame(info.gameId, notification);
+}
+
+async function handleRespondDuoCut(socket: WebSocket, accepted: boolean): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  const { turn, game, updatedWires } = await withTimeout(
+    engine.executeRespondDuoCut(info.gameId, info.playerId, accepted),
+    'executeRespondDuoCut',
+  );
+
+  const players = await playersDb.getPlayersByGameId(info.gameId);
+
+  // Broadcast turn result with per-player wire views
+  const gameSockets = connManager.getGameSockets(info.gameId);
+  for (const [playerId, playerSocket] of gameSockets) {
+    const playerWireView = buildPlayerView(updatedWires, playerId);
+    const response: ServerMessage = { type: 'turn_result', turn, game, updatedWires: playerWireView };
+    playerSocket.send(JSON.stringify(response));
+  }
+
+  // Broadcast full game state so all clients see any new info token (from rejected duo cut)
   const updatedGame = await gamesDb.getGameById(info.gameId);
   if (updatedGame) {
     await broadcastGameState(info.gameId, updatedGame, players);
@@ -380,8 +445,7 @@ async function handleNextTurn(socket: WebSocket): Promise<void> {
 
   // Broadcast updated game state with new current turn player
   const players = await playersDb.getPlayersByGameId(info.gameId);
-  const response: ServerMessage = { type: 'game_state', game, players, wires: [], infoTokens: [], validationTokens: [] };
-  connManager.broadcastToGame(info.gameId, response);
+  await broadcastGameState(info.gameId, game, players);
 }
 
 function sendError(socket: WebSocket, message: string): void {

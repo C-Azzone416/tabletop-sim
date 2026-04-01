@@ -41,6 +41,7 @@ export async function broadcastGameState(
       wires: playerWires,
       infoTokens,
       validationTokens,
+      localPlayerId: playerId,
     };
     sendToPlayer(gameId, playerId, message);
   }

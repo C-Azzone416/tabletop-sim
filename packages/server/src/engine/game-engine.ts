@@ -130,6 +130,83 @@ export async function completeSetup(gameId: string): Promise<Game> {
   return await gamesDb.updateGameStatus(gameId, 'active');
 }
 
+export async function executeProposeDuoCut(
+  gameId: string,
+  playerId: string,
+  targetWireId: string,
+): Promise<{ game: Game; wire: Wire; targetPlayer: Player }> {
+  const game = await validateTurn(gameId, playerId);
+  if (game.pendingDuoCutWireId) throw new Error('Duo cut already pending');
+
+  const wire = await wiresDb.getWireById(targetWireId);
+  if (!wire) throw new Error('Wire not found');
+  if (wire.gameId !== gameId) throw new Error('Wire does not belong to this game');
+  if (wire.playerId === playerId) throw new Error('Cannot target your own wire with duo cut');
+  if (wire.status !== 'hidden') throw new Error('Wire already cut or revealed');
+  if (wire.value === null) throw new Error('Wire has no value');
+
+  const targetPlayer = await playersDb.getPlayerById(wire.playerId);
+  if (!targetPlayer) throw new Error('Player not found');
+
+  const updatedGame = await gamesDb.setPendingDuoCut(gameId, playerId, targetWireId);
+  return { game: updatedGame, wire, targetPlayer };
+}
+
+export async function executeRespondDuoCut(
+  gameId: string,
+  playerId: string,
+  accepted: boolean,
+): Promise<{ turn: Turn; game: Game; updatedWires: Wire[] }> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.status !== 'active') throw new Error('Game is not active');
+  if (!game.pendingDuoCutWireId || !game.pendingDuoCutProposerId) throw new Error('No pending duo cut');
+
+  const wire = await wiresDb.getWireById(game.pendingDuoCutWireId);
+  if (!wire) throw new Error('Wire not found');
+  if (wire.playerId !== playerId) throw new Error('Not your wire to respond to');
+
+  const proposerId = game.pendingDuoCutProposerId;
+  const turn = await turnsDb.createTurn(gameId, proposerId, 'duo_cut', game.pendingDuoCutWireId, accepted ? wire.value : 'rejected');
+
+  // Clear pending state before executing cut logic
+  await gamesDb.clearPendingDuoCut(gameId);
+
+  const updatedWire = await wiresDb.updateWireStatus(wire.id, 'cut');
+  const updatedWires = [updatedWire];
+
+  let updatedGame: Game;
+  if (accepted) {
+    // Success — wire cut, no detonator advance
+    await turnsDb.updateTurnResult(turn.id, 'success');
+    updatedGame = await gamesDb.getGameById(gameId) as Game;
+  } else {
+    // Fail — detonator advances, info token placed
+    await turnsDb.updateTurnResult(turn.id, 'fail');
+    await tokensDb.createInfoToken(gameId, wire.id, wire.value!);
+    const newPosition = game.detonatorPosition + 1;
+    updatedGame = await gamesDb.updateDetonator(gameId, newPosition);
+
+    if (newPosition >= game.detonatorMax) {
+      updatedGame = await gamesDb.updateGameStatus(gameId, 'lost');
+      return { turn: { ...turn, result: 'fail' }, game: updatedGame, updatedWires };
+    }
+  }
+
+  // Check for validation (all 4 of a color+value cut)
+  await checkValidation(gameId, wire.value!, wire.color);
+
+  // Check win condition
+  const winResult = await checkWinCondition(gameId);
+  if (winResult) {
+    updatedGame = await gamesDb.updateGameStatus(gameId, 'won');
+  } else {
+    updatedGame = await advanceTurn(gameId);
+  }
+
+  return { turn: { ...turn, result: accepted ? 'success' : 'fail' }, game: updatedGame, updatedWires };
+}
+
 export async function executeDuoCut(
   gameId: string,
   playerId: string,

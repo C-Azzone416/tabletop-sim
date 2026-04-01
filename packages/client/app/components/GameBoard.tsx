@@ -22,7 +22,9 @@ interface GameBoardProps {
   validationTokens: ValidationToken[];
   localPlayerId: string;
   lastTurnResult: Extract<ServerMessage, { type: "turn_result" }> | null;
-  onDuoCut: (targetWireId: string, guessedValue: string) => void;
+  pendingDuoCut: Extract<ServerMessage, { type: "duo_cut_proposed" }> | null;
+  onProposeDuoCut: (targetWireId: string) => void;
+  onRespondDuoCut: (accepted: boolean) => void;
   onSoloCut: (wireValue: string) => void;
   onDoubleDetector: (targetWireId: string, targetWireId2: string) => void;
 }
@@ -35,7 +37,9 @@ export function GameBoard({
   validationTokens,
   localPlayerId,
   lastTurnResult,
-  onDuoCut,
+  pendingDuoCut,
+  onProposeDuoCut,
+  onRespondDuoCut,
   onSoloCut,
   onDoubleDetector,
 }: GameBoardProps) {
@@ -45,10 +49,9 @@ export function GameBoard({
   // Action mode state lifted here so board tiles can respond
   const [actionMode, setActionMode] = useState<ActionMode>("idle");
 
-  // Duo Cut: selected opponent wire + modal state
+  // Duo Cut: selected opponent wire + confirmation modal
   const [duoCutWireId, setDuoCutWireId] = useState<string | null>(null);
   const [duoCutModalOpen, setDuoCutModalOpen] = useState(false);
-  const [duoCutGuess, setDuoCutGuess] = useState("");
 
   // Solo Cut: up to 2 selected wire IDs
   const [soloCutSelected, setSoloCutSelected] = useState<string[]>([]);
@@ -57,19 +60,18 @@ export function GameBoard({
     setActionMode("idle");
     setDuoCutWireId(null);
     setDuoCutModalOpen(false);
-    setDuoCutGuess("");
     setSoloCutSelected([]);
   };
 
-  // Duo Cut handlers
+  // Duo Cut — proposer flow
   const handleOpponentWireClick = (wireId: string) => {
     setDuoCutWireId(wireId);
     setDuoCutModalOpen(true);
   };
 
   const handleDuoCutConfirm = () => {
-    if (duoCutWireId && duoCutGuess) {
-      onDuoCut(duoCutWireId, duoCutGuess);
+    if (duoCutWireId) {
+      onProposeDuoCut(duoCutWireId);
       resetAction();
     }
   };
@@ -77,7 +79,6 @@ export function GameBoard({
   const handleDuoCutModalCancel = () => {
     setDuoCutWireId(null);
     setDuoCutModalOpen(false);
-    setDuoCutGuess("");
   };
 
   // Solo Cut handlers
@@ -113,12 +114,22 @@ export function GameBoard({
     ...players.filter((p) => p.id !== localPlayerId),
   ];
 
-  // Find modal target wire info for duo_cut
+  // Duo cut modal target wire info
   const duoCutTargetWire = duoCutWireId
     ? wires.find((w) => w.id === duoCutWireId)
     : null;
   const duoCutTargetOwner = duoCutTargetWire
     ? players.find((p) => p.id === duoCutTargetWire.playerId)
+    : null;
+
+  // Pending duo cut state (from server broadcast)
+  const isProposer = pendingDuoCut?.proposingPlayerId === localPlayerId;
+  const isTarget = pendingDuoCut?.targetPlayerId === localPlayerId;
+  const pendingTargetPlayer = pendingDuoCut
+    ? players.find((p) => p.id === pendingDuoCut.targetPlayerId)
+    : null;
+  const pendingProposerPlayer = pendingDuoCut
+    ? players.find((p) => p.id === pendingDuoCut.proposingPlayerId)
     : null;
 
   return (
@@ -153,6 +164,13 @@ export function GameBoard({
         </div>
       )}
 
+      {/* Waiting indicator for duo cut proposer */}
+      {isProposer && pendingTargetPlayer && (
+        <div className="rounded-lg bg-blue-50 px-4 py-3 text-center text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+          Waiting for {pendingTargetPlayer.name} to respond to your cut…
+        </div>
+      )}
+
       {/* Player racks */}
       <div className="space-y-4">
         {sortedPlayers.map((player) => {
@@ -161,7 +179,6 @@ export function GameBoard({
             .sort((a, b) => a.rackPosition - b.rackPosition);
           const isLocal = player.id === localPlayerId;
 
-          // Determine which wires are interactive in the current mode
           const isDuoCutTarget = !isLocal && isMyTurn && actionMode === "duo_cut";
           const isSoloCutLocal = isLocal && isMyTurn && actionMode === "solo_cut";
 
@@ -172,6 +189,12 @@ export function GameBoard({
           const soloCutSelectableIds = isSoloCutLocal
             ? playerWires.filter((w) => w.value !== null && w.status === "hidden").map((w) => w.id)
             : undefined;
+
+          // Keep the pending duo cut wire highlighted on target's rack
+          const pendingSelectedId =
+            pendingDuoCut && player.id === pendingDuoCut.targetPlayerId
+              ? pendingDuoCut.targetWireId
+              : null;
 
           return (
             <div key={player.id}>
@@ -199,7 +222,9 @@ export function GameBoard({
               <PlayerRack
                 wires={playerWires}
                 isLocal={isLocal}
-                selectedWireId={isDuoCutTarget ? duoCutWireId : null}
+                selectedWireId={
+                  pendingSelectedId ?? (isDuoCutTarget ? duoCutWireId : null)
+                }
                 selectedWireIds={isSoloCutLocal ? soloCutSelected : undefined}
                 selectableWireIds={duoCutSelectableIds ?? soloCutSelectableIds}
                 onSelectWire={
@@ -218,23 +243,25 @@ export function GameBoard({
         })}
       </div>
 
-      {/* Action panel */}
-      <ActionPanel
-        isMyTurn={isMyTurn}
-        players={players}
-        wires={wires}
-        localPlayerId={localPlayerId}
-        doubleDetectorUsed={localPlayer?.doubleDetectorUsed ?? false}
-        mode={actionMode}
-        onSetMode={setActionMode}
-        onCancel={resetAction}
-        soloCutSelectedCount={soloCutSelected.length}
-        soloCutMatchStatus={soloCutMatchStatus()}
-        onSoloCutConfirm={handleSoloCutConfirm}
-        onDoubleDetector={onDoubleDetector}
-      />
+      {/* Action panel — hidden while a duo cut is pending */}
+      {!pendingDuoCut && (
+        <ActionPanel
+          isMyTurn={isMyTurn}
+          players={players}
+          wires={wires}
+          localPlayerId={localPlayerId}
+          doubleDetectorUsed={localPlayer?.doubleDetectorUsed ?? false}
+          mode={actionMode}
+          onSetMode={setActionMode}
+          onCancel={resetAction}
+          soloCutSelectedCount={soloCutSelected.length}
+          soloCutMatchStatus={soloCutMatchStatus()}
+          onSoloCutConfirm={handleSoloCutConfirm}
+          onDoubleDetector={onDoubleDetector}
+        />
+      )}
 
-      {/* Duo Cut modal */}
+      {/* Duo Cut confirmation modal (proposer selects wire) */}
       {duoCutModalOpen && duoCutTargetWire && duoCutTargetOwner && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -247,19 +274,11 @@ export function GameBoard({
             <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">
               Duo Cut
             </h2>
-            <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
-              Guessing {duoCutTargetOwner.name}&apos;s wire #
-              {duoCutTargetWire.rackPosition + 1} — enter your guess (1–6):
+            <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
+              Cut {duoCutTargetOwner.name}&apos;s wire #
+              {duoCutTargetWire.rackPosition + 1}?{" "}
+              {duoCutTargetOwner.name} will need to confirm.
             </p>
-            <input
-              type="text"
-              value={duoCutGuess}
-              onChange={(e) => setDuoCutGuess(e.target.value.replace(/[^1-6]/g, ""))}
-              placeholder="1–6"
-              maxLength={1}
-              autoFocus
-              className="mb-4 w-full rounded-lg border border-zinc-300 px-3 py-2 text-center text-lg dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-            />
             <div className="flex gap-3">
               <button
                 onClick={handleDuoCutModalCancel}
@@ -269,10 +288,38 @@ export function GameBoard({
               </button>
               <button
                 onClick={handleDuoCutConfirm}
-                disabled={!duoCutGuess}
-                className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-blue-700"
+                className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
                 Confirm Cut
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duo Cut respond popup (target player) */}
+      {isTarget && pendingDuoCut && pendingProposerPlayer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-80 rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-900">
+            <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">
+              Incoming Cut
+            </h2>
+            <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
+              {pendingProposerPlayer.name} wants to cut your wire #
+              {pendingDuoCut.targetWireRackPosition + 1}.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => onRespondDuoCut(false)}
+                className="flex-1 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+              >
+                Reject
+              </button>
+              <button
+                onClick={() => onRespondDuoCut(true)}
+                className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+              >
+                Confirm
               </button>
             </div>
           </div>
