@@ -198,6 +198,9 @@ async function handleJoinGame(socket: WebSocket, joinCode: string, _playerName: 
   // Notify others
   const notification: ServerMessage = { type: 'player_joined', player };
   connManager.broadcastToGame(game.id, notification, player.id);
+
+  // Broadcast full game state so all connected players receive current tokens
+  await broadcastGameState(game.id, game, players);
 }
 
 async function handleStartGame(socket: WebSocket, mission: number): Promise<void> {
