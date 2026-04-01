@@ -29,6 +29,8 @@ export function makeGame(overrides: Partial<Game> = {}): Game {
     pendingInterrogationAskerId: null,
     pendingInterrogationAnswererId: null,
     pendingInterrogationWireId: null,
+    pendingDuoCutWireId: null,
+    pendingDuoCutProposerId: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   };
