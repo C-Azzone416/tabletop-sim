@@ -40,7 +40,9 @@ describe("GameBoard", () => {
       validationTokens: [],
       localPlayerId: "p1",
       lastTurnResult: null,
-      onDuoCut: vi.fn(),
+      pendingDuoCut: null,
+      onProposeDuoCut: vi.fn(),
+      onRespondDuoCut: vi.fn(),
       onSoloCut: vi.fn(),
       onDoubleDetector: vi.fn(),
       ...overrides,
@@ -171,10 +173,10 @@ describe("GameBoard", () => {
     const bobContainer = getRackContainer("Bob");
     const bobWireButtons = within(bobContainer).getAllByRole("button");
     await user.click(bobWireButtons[0]);
-    expect(screen.getByText(/Guessing Bob's wire #1/i)).toBeInTheDocument();
+    expect(screen.getByText(/Cut Bob's wire #1/i)).toBeInTheDocument();
   });
 
-  it("duo_cut modal confirm calls onDuoCut with correct args", async () => {
+  it("duo_cut modal confirm calls onProposeDuoCut with wire id", async () => {
     const user = userEvent.setup();
     const props = setup();
     render(<GameBoard {...props} />);
@@ -182,26 +184,76 @@ describe("GameBoard", () => {
     const bobContainer = getRackContainer("Bob");
     const bobWireButtons = within(bobContainer).getAllByRole("button");
     await user.click(bobWireButtons[0]); // w3
-    const input = screen.getByPlaceholderText("1–6");
-    await user.type(input, "3");
     await user.click(screen.getByRole("button", { name: "Confirm Cut" }));
-    expect(props.onDuoCut).toHaveBeenCalledWith("w3", "3");
+    expect(props.onProposeDuoCut).toHaveBeenCalledWith("w3");
   });
 
-  it("duo_cut modal cancel closes modal without calling onDuoCut", async () => {
+  it("duo_cut modal cancel closes modal without calling onProposeDuoCut", async () => {
     const user = userEvent.setup();
     const props = setup();
     render(<GameBoard {...props} />);
     await user.click(screen.getByRole("button", { name: "Duo Cut" }));
     const bobContainer = getRackContainer("Bob");
     await user.click(within(bobContainer).getAllByRole("button")[0]);
-    const modalText = screen.getByText(/Guessing Bob/i);
+    const modalText = screen.getByText(/Cut Bob/i);
     expect(modalText).toBeInTheDocument();
     // Scope Cancel click to the modal panel to avoid ActionPanel's Cancel button
     const modalPanel = modalText.closest("div")!;
     await user.click(within(modalPanel).getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByText(/Guessing Bob/i)).not.toBeInTheDocument();
-    expect(props.onDuoCut).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Cut Bob/i)).not.toBeInTheDocument();
+    expect(props.onProposeDuoCut).not.toHaveBeenCalled();
+  });
+
+  // --- Pending Duo Cut (server broadcast) ---
+
+  it("shows waiting indicator to proposer when duo_cut_proposed", () => {
+    const props = setup({
+      pendingDuoCut: {
+        type: "duo_cut_proposed" as const,
+        proposingPlayerId: "p1",
+        targetPlayerId: "p2",
+        targetWireId: "w3",
+        targetWireRackPosition: 0,
+      },
+    });
+    render(<GameBoard {...props} />);
+    expect(screen.getByText(/Waiting for Bob to respond/i)).toBeInTheDocument();
+  });
+
+  it("shows confirm/reject popup to target player when duo_cut_proposed", async () => {
+    const user = userEvent.setup();
+    const props = setup({
+      // p2 is the local player (target)
+      localPlayerId: "p2",
+      pendingDuoCut: {
+        type: "duo_cut_proposed" as const,
+        proposingPlayerId: "p1",
+        targetPlayerId: "p2",
+        targetWireId: "w3",
+        targetWireRackPosition: 0,
+      },
+    });
+    render(<GameBoard {...props} />);
+    expect(screen.getByText(/Alice wants to cut your wire #1/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    expect(props.onRespondDuoCut).toHaveBeenCalledWith(true);
+  });
+
+  it("reject button sends respond_duo_cut with accepted=false", async () => {
+    const user = userEvent.setup();
+    const props = setup({
+      localPlayerId: "p2",
+      pendingDuoCut: {
+        type: "duo_cut_proposed" as const,
+        proposingPlayerId: "p1",
+        targetPlayerId: "p2",
+        targetWireId: "w3",
+        targetWireRackPosition: 0,
+      },
+    });
+    render(<GameBoard {...props} />);
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+    expect(props.onRespondDuoCut).toHaveBeenCalledWith(false);
   });
 
   // --- Solo Cut UX ---
