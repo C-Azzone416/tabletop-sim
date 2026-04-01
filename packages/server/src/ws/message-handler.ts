@@ -230,6 +230,12 @@ async function handleDuoCut(socket: WebSocket, targetWireId: string, guessedValu
     playerSocket.send(JSON.stringify(response));
   }
 
+  // Broadcast full game state so all clients see any new info token (e.g. from a wrong duo_cut guess)
+  const updatedGame = await gamesDb.getGameById(info.gameId);
+  if (updatedGame) {
+    await broadcastGameState(info.gameId, updatedGame, players);
+  }
+
   // If game over, broadcast
   if (game.status === 'won' || game.status === 'lost') {
     const reason = game.status === 'won' ? 'All wires cut!' : 'Detonator reached skull!';
