@@ -575,6 +575,31 @@ describe("game-engine", () => {
 
       await expect(engine.executeProposeDuoCut("g1", "p1", "w1")).rejects.toThrow("Wire already cut or revealed");
     });
+
+    it("rejects if wire has no value (null-value guard)", async () => {
+      const game = makeGame({ id: "g1", status: "active", currentTurnPlayerId: "p1" });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p2", status: "hidden", value: null as unknown as string });
+      const targetPlayer = makePlayer({ id: "p2", gameId: "g1" });
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWireById.mockResolvedValue(wire);
+      mockPlayersDb.getPlayerById.mockResolvedValue(targetPlayer);
+
+      await expect(engine.executeProposeDuoCut("g1", "p1", "w1")).rejects.toThrow("Wire has no value");
+    });
+
+    it("rejects if DB rejects concurrent propose (TOCTOU guard)", async () => {
+      const game = makeGame({ id: "g1", status: "active", currentTurnPlayerId: "p1" });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p2", status: "hidden" });
+      const targetPlayer = makePlayer({ id: "p2", gameId: "g1" });
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWireById.mockResolvedValue(wire);
+      mockPlayersDb.getPlayerById.mockResolvedValue(targetPlayer);
+      mockGamesDb.setPendingDuoCut.mockRejectedValueOnce(new Error("Duo cut already pending"));
+
+      await expect(engine.executeProposeDuoCut("g1", "p1", "w1")).rejects.toThrow("Duo cut already pending");
+    });
   });
 
   describe("executeRespondDuoCut", () => {

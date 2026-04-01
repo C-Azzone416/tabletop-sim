@@ -90,8 +90,10 @@ export async function setPendingDuoCut(id: string, proposerId: string, wireId: s
     SET pending_duo_cut_proposer_id = ${proposerId},
         pending_duo_cut_wire_id = ${wireId}
     WHERE id = ${id}
+      AND pending_duo_cut_wire_id IS NULL
     RETURNING *
   `;
+  if (!rows[0]) throw new Error('Duo cut already pending');
   return mapGame(rows[0]);
 }
 

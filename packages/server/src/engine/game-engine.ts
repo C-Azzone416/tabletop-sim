@@ -143,6 +143,7 @@ export async function executeProposeDuoCut(
   if (wire.gameId !== gameId) throw new Error('Wire does not belong to this game');
   if (wire.playerId === playerId) throw new Error('Cannot target your own wire with duo cut');
   if (wire.status !== 'hidden') throw new Error('Wire already cut or revealed');
+  if (wire.value === null) throw new Error('Wire has no value');
 
   const targetPlayer = await playersDb.getPlayerById(wire.playerId);
   if (!targetPlayer) throw new Error('Player not found');
