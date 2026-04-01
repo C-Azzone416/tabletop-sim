@@ -215,7 +215,7 @@ describe("useGameState", () => {
     const validationTokens = [{ id: "v1", gameId: "g1", wireValue: "3", wireColor: "blue" as const, validatedAt: "2026-01-01T00:00:00Z" }];
 
     act(() => {
-      result.current.handleMessage({ type: "game_state", game, players, wires, infoTokens, validationTokens });
+      result.current.handleMessage({ type: "game_state", game, players, wires, infoTokens, validationTokens, localPlayerId: "p1" });
     });
 
     expect(result.current.state.game).toEqual(game);
