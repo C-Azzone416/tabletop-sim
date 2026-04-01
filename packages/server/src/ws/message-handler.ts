@@ -445,8 +445,7 @@ async function handleNextTurn(socket: WebSocket): Promise<void> {
 
   // Broadcast updated game state with new current turn player
   const players = await playersDb.getPlayersByGameId(info.gameId);
-  const response: ServerMessage = { type: 'game_state', game, players, wires: [], infoTokens: [], validationTokens: [] };
-  connManager.broadcastToGame(info.gameId, response);
+  await broadcastGameState(info.gameId, game, players);
 }
 
 function sendError(socket: WebSocket, message: string): void {
