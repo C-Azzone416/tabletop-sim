@@ -124,6 +124,27 @@ export async function buildApp() {
   });
 
   if (process.env.ENABLE_DEV_SEED === 'true') {
+    app.post('/dev/advance-turn', async (request, reply) => {
+      try {
+        const { joinCode } = request.body as { joinCode?: string };
+        if (!joinCode) return reply.status(400).send({ error: 'joinCode is required' });
+
+        const game = await gamesDb.getGameByJoinCode(joinCode);
+        if (!game) return reply.status(404).send({ error: 'Game not found' });
+        if (game.status !== 'active') return reply.status(400).send({ error: 'Game is not active' });
+
+        const updatedGame = await engine.advanceTurn(game.id);
+        const players = await playersDb.getPlayersByGameId(game.id);
+        await broadcastGameState(game.id, updatedGame, players);
+
+        const currentPlayer = players.find(p => p.id === updatedGame.currentTurnPlayerId);
+        return { currentTurnPlayerId: updatedGame.currentTurnPlayerId, playerName: currentPlayer?.name ?? '' };
+      } catch (err) {
+        app.log.error({ err }, '[POST /dev/advance-turn] error');
+        return reply.status(500).send({ error: 'Failed to advance turn' });
+      }
+    });
+
     app.post('/dev/seed', async (_request, reply) => {
       try {
         const existing = await profilesDb.getProfileByName('Dev');

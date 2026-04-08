@@ -493,7 +493,7 @@ async function checkWinCondition(gameId: string): Promise<boolean> {
   return allWires.every(w => w.status === 'cut');
 }
 
-async function advanceTurn(gameId: string): Promise<Game> {
+export async function advanceTurn(gameId: string): Promise<Game> {
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');
 

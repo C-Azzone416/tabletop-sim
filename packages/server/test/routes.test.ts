@@ -79,17 +79,20 @@ vi.mock("../src/engine/game-engine.js", () => ({
   executeSoloCut: vi.fn(),
   executeDoubleDetector: vi.fn(),
   executeRevealReds: vi.fn(),
+  advanceTurn: vi.fn(),
 }));
 
 import * as profilesDb from "../src/db/profiles.js";
 import * as playersDb from "../src/db/players.js";
 import * as wiresDb from "../src/db/wires.js";
+import * as gamesDb from "../src/db/games.js";
 import * as engine from "../src/engine/game-engine.js";
 import { buildApp } from "../src/app.js";
 
 const mockProfilesDb = vi.mocked(profilesDb);
 const mockPlayersDb = vi.mocked(playersDb);
 const mockWiresDb = vi.mocked(wiresDb);
+const mockGamesDb = vi.mocked(gamesDb);
 const mockEngine = vi.mocked(engine);
 
 describe("routes", () => {
@@ -263,6 +266,94 @@ describe("routes", () => {
       const res = await seedApp.inject({ method: "POST", url: "/dev/seed" });
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Seed failed" });
+    });
+  });
+
+  describe("POST /dev/advance-turn", () => {
+    let devApp: FastifyInstance;
+
+    beforeEach(async () => {
+      process.env.ENABLE_DEV_SEED = "true";
+      devApp = await buildApp();
+    });
+
+    afterEach(async () => {
+      await devApp.close();
+      delete process.env.ENABLE_DEV_SEED;
+    });
+
+    it("advances the turn and returns currentTurnPlayerId and playerName", async () => {
+      const game = makeGame({ id: "g1", joinCode: "ABCD", status: "active", currentTurnPlayerId: "p1" });
+      const updatedGame = { ...game, currentTurnPlayerId: "p2" };
+      const players = [
+        makePlayer({ id: "p1", name: "Alice", gameId: "g1" }),
+        makePlayer({ id: "p2", name: "Bob", gameId: "g1" }),
+      ];
+
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(game);
+      mockEngine.advanceTurn.mockResolvedValue(updatedGame);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+
+      const res = await devApp.inject({
+        method: "POST",
+        url: "/dev/advance-turn",
+        payload: { joinCode: "ABCD" },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ currentTurnPlayerId: "p2", playerName: "Bob" });
+      expect(mockEngine.advanceTurn).toHaveBeenCalledWith("g1");
+    });
+
+    it("returns 404 when game is not found", async () => {
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(null);
+
+      const res = await devApp.inject({
+        method: "POST",
+        url: "/dev/advance-turn",
+        payload: { joinCode: "XXXX" },
+      });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: "Game not found" });
+    });
+
+    it("returns 400 when game is not active", async () => {
+      const game = makeGame({ id: "g1", joinCode: "ABCD", status: "setup" });
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(game);
+
+      const res = await devApp.inject({
+        method: "POST",
+        url: "/dev/advance-turn",
+        payload: { joinCode: "ABCD" },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: "Game is not active" });
+    });
+
+    it("returns 400 when joinCode is missing", async () => {
+      const res = await devApp.inject({
+        method: "POST",
+        url: "/dev/advance-turn",
+        payload: {},
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: "joinCode is required" });
+    });
+
+    it("returns 500 on unexpected error", async () => {
+      mockGamesDb.getGameByJoinCode.mockRejectedValue(new Error("DB down"));
+
+      const res = await devApp.inject({
+        method: "POST",
+        url: "/dev/advance-turn",
+        payload: { joinCode: "ABCD" },
+      });
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "Failed to advance turn" });
     });
   });
 });
