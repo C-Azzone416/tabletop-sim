@@ -103,6 +103,23 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
             })
           }
         />
+        {process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS === "true" && (
+          <div className="fixed bottom-4 right-4">
+            <button
+              onClick={() => {
+                const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:3001";
+                fetch(`${serverUrl}/dev/advance-turn`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ joinCode }),
+                });
+              }}
+              className="rounded border border-amber-400 bg-amber-50 px-3 py-1.5 text-xs font-mono text-amber-700 opacity-70 hover:opacity-100 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-400"
+            >
+              [DEV] Skip Turn
+            </button>
+          </div>
+        )}
         {state.error && (
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg dark:bg-red-900/20 dark:text-red-400">
             {state.error}
