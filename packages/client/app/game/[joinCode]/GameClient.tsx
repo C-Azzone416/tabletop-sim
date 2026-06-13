@@ -67,7 +67,7 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
             send({ type: "answer_wire_question", answer })
           }
           onNextTurn={() => send({ type: "next_turn" })}
-          onStartGame={() => send({ type: "start_game" })}
+          onStartGame={() => send({ type: "complete_setup" })}
           pendingWireQuestion={state.pendingWireQuestion}
           lastInterrogationResult={state.lastInterrogationResult}
         />
