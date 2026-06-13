@@ -6,6 +6,9 @@ import * as playersDb from '../db/players.js';
 import * as connManager from './connection-manager.js';
 import { broadcastGameState, buildPlayerView } from './state-broadcaster.js';
 
+type ActionLogger = { info: (data: object) => void };
+type ActionResult = 'success' | 'fail' | 'explosion' | 'won';
+
 function getAuthenticatedUser(socket: WebSocket) {
   const user = connManager.getAuthenticatedUser(socket);
   if (!user) throw new Error('Not authenticated');
@@ -88,7 +91,7 @@ function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   ]);
 }
 
-export async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
+export async function handleMessage(socket: WebSocket, raw: string, log?: ActionLogger): Promise<void> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -105,6 +108,9 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
 
   console.log('[ws] message:', msg.type);
 
+  const priorInfo = connManager.getConnectionInfo(socket);
+  let actionResult: ActionResult = 'success';
+
   try {
     switch (msg.type) {
       case 'create_game':
@@ -120,16 +126,16 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
         await handlePlaceInfoToken(socket, msg.wireId);
         break;
       case 'duo_cut':
-        await handleDuoCut(socket, msg.targetWireId, msg.guessedValue);
+        actionResult = await handleDuoCut(socket, msg.targetWireId, msg.guessedValue);
         break;
       case 'propose_duo_cut':
         await handleProposeDuoCut(socket, msg.targetWireId);
         break;
       case 'respond_duo_cut':
-        await handleRespondDuoCut(socket, msg.accepted);
+        actionResult = await handleRespondDuoCut(socket, msg.accepted);
         break;
       case 'solo_cut':
-        await handleSoloCut(socket, msg.wireValue);
+        actionResult = await handleSoloCut(socket, msg.wireValue);
         break;
       case 'double_detector':
         await handleDoubleDetector(socket, msg.targetWireId, msg.targetWireId2);
@@ -147,7 +153,7 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
         await handleSelectOpponentWire(socket, msg.wireId);
         break;
       case 'answer_wire_question':
-        await handleAnswerWireQuestion(socket, msg.answer);
+        actionResult = await handleAnswerWireQuestion(socket, msg.answer);
         break;
       case 'next_turn':
         await handleNextTurn(socket);
@@ -156,6 +162,7 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
         sendError(socket, 'Unknown message type');
     }
   } catch (err) {
+    actionResult = 'fail';
     console.error('[ws] handleMessage error:', err);
     const message = err instanceof Error ? err.message : 'Unknown error';
     const safeMessages = [
@@ -175,6 +182,10 @@ export async function handleMessage(socket: WebSocket, raw: string): Promise<voi
       'No pending duo cut', 'Not your wire to respond to',
     ];
     sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
+  } finally {
+    const postInfo = connManager.getConnectionInfo(socket);
+    const info = priorInfo ?? postInfo;
+    log?.info({ gameId: info?.gameId, playerId: info?.playerId, action: msg.type, result: actionResult });
   }
 }
 
@@ -231,7 +242,7 @@ async function handlePlaceInfoToken(socket: WebSocket, wireId: string): Promise<
   await broadcastGameState(info.gameId, game, players);
 }
 
-async function handleDuoCut(socket: WebSocket, targetWireId: string, guessedValue: string): Promise<void> {
+async function handleDuoCut(socket: WebSocket, targetWireId: string, guessedValue: string): Promise<ActionResult> {
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
@@ -258,6 +269,10 @@ async function handleDuoCut(socket: WebSocket, targetWireId: string, guessedValu
     const reason = game.status === 'won' ? 'All wires cut!' : 'Detonator reached skull!';
     connManager.broadcastToGame(info.gameId, { type: 'game_over', result: game.status, reason });
   }
+
+  if (game.status === 'lost') return 'explosion';
+  if (game.status === 'won') return 'won';
+  return 'success';
 }
 
 async function handleProposeDuoCut(socket: WebSocket, targetWireId: string): Promise<void> {
@@ -279,7 +294,7 @@ async function handleProposeDuoCut(socket: WebSocket, targetWireId: string): Pro
   connManager.broadcastToGame(info.gameId, notification);
 }
 
-async function handleRespondDuoCut(socket: WebSocket, accepted: boolean): Promise<void> {
+async function handleRespondDuoCut(socket: WebSocket, accepted: boolean): Promise<ActionResult> {
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
@@ -309,9 +324,13 @@ async function handleRespondDuoCut(socket: WebSocket, accepted: boolean): Promis
     const reason = game.status === 'won' ? 'All wires cut!' : 'Detonator reached skull!';
     connManager.broadcastToGame(info.gameId, { type: 'game_over', result: game.status, reason });
   }
+
+  if (game.status === 'lost') return 'explosion';
+  if (game.status === 'won') return 'won';
+  return 'success';
 }
 
-async function handleSoloCut(socket: WebSocket, wireValue: string): Promise<void> {
+async function handleSoloCut(socket: WebSocket, wireValue: string): Promise<ActionResult> {
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
@@ -328,6 +347,10 @@ async function handleSoloCut(socket: WebSocket, wireValue: string): Promise<void
     const reason = game.status === 'won' ? 'All wires cut!' : 'Detonator reached skull!';
     connManager.broadcastToGame(info.gameId, { type: 'game_over', result: game.status, reason });
   }
+
+  if (game.status === 'lost') return 'explosion';
+  if (game.status === 'won') return 'won';
+  return 'success';
 }
 
 async function handleDoubleDetector(socket: WebSocket, targetWireId: string, targetWireId2: string): Promise<void> {
@@ -409,7 +432,7 @@ async function handleSelectOpponentWire(socket: WebSocket, wireId: string): Prom
   }
 }
 
-async function handleAnswerWireQuestion(socket: WebSocket, answer: 'yes' | 'no'): Promise<void> {
+async function handleAnswerWireQuestion(socket: WebSocket, answer: 'yes' | 'no'): Promise<ActionResult> {
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
@@ -437,7 +460,9 @@ async function handleAnswerWireQuestion(socket: WebSocket, answer: 'yes' | 'no')
   // If game over (red wire), broadcast game_over
   if (game.status === 'lost') {
     connManager.broadcastToGame(info.gameId, { type: 'game_over', result: 'lost', reason: 'Red wire guessed correctly!' });
+    return 'explosion';
   }
+  return 'success';
 }
 
 async function handleNextTurn(socket: WebSocket): Promise<void> {

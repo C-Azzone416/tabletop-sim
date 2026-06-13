@@ -89,6 +89,7 @@ export function useWebSocket(
   }, []);
 
   const send = useCallback((message: ClientMessage) => {
+    console.log('[ws] send:', message.type);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
     } else {
