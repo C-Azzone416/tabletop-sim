@@ -101,7 +101,7 @@ describe("useGameState", () => {
     });
 
     const cutWire = { ...wire1, status: "cut" as const };
-    const turn = makeTurn({ actionType: "duo_cut", targetWireId: "w1", guessedValue: "3", result: "success" });
+    const turn = makeTurn({ actionType: "dual_cut", targetWireId: "w1", guessedValue: "3", result: "success" });
 
     act(() => {
       result.current.handleMessage({ type: "turn_result", turn, game, updatedWires: [cutWire] });

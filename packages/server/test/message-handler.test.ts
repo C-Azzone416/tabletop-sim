@@ -9,7 +9,9 @@ vi.mock("../src/engine/game-engine.js", () => ({
   startGame: vi.fn(),
   completeSetup: vi.fn(),
   executePlaceInfoToken: vi.fn(),
-  executeDuoCut: vi.fn(),
+  executeProposeDualCut: vi.fn(),
+  executeRespondDualCut: vi.fn(),
+  executeCompleteDualCut: vi.fn(),
   executeSoloCut: vi.fn(),
   executeDoubleDetector: vi.fn(),
   executeRevealReds: vi.fn(),
@@ -118,9 +120,9 @@ describe("message-handler", () => {
       expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
     });
 
-    it("rejects duo_cut with missing targetWireId", async () => {
+    it("rejects propose_dual_cut with missing guessedValue", async () => {
       const ws = mockSocket();
-      await handleMessage(ws, JSON.stringify({ type: "duo_cut", guessedValue: "3" }));
+      await handleMessage(ws, JSON.stringify({ type: "propose_dual_cut", targetWireId: "w1" }));
       expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
     });
 
@@ -250,27 +252,90 @@ describe("message-handler", () => {
     });
   });
 
-  describe("duo_cut", () => {
-    it("executes a duo cut and broadcasts result", async () => {
+  describe("propose_dual_cut", () => {
+    it("sends dual_cut_proposed broadcast with guess to all players", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", status: "active", pendingDualCutWireId: "w1", pendingDualCutProposerId: "p1", pendingDualCutGuessedValue: "5" });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p2", rackPosition: 2 });
+      const targetPlayer = makePlayer({ id: "p2", gameId: "g1" });
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeProposeDualCut.mockResolvedValue({ game, wire, targetPlayer });
+
+      await handleMessage(ws, JSON.stringify({ type: "propose_dual_cut", targetWireId: "w1", guessedValue: "5" }));
+
+      expect(mockEngine.executeProposeDualCut).toHaveBeenCalledWith("g1", "p1", "w1", "5");
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
+        "g1",
+        expect.objectContaining({ type: "dual_cut_proposed", guessedValue: "5" }),
+      );
+    });
+  });
+
+  describe("respond_dual_cut", () => {
+    it("phase=completing: reveals wire, broadcasts dual_cut_correct", async () => {
       const ws = mockSocket();
       const game = makeGame({ id: "g1", status: "active" });
-      const turn = makeTurn({ result: "success" });
-      const updatedWires = [makeWire({ status: "cut" })];
+      const revealedWire = makeWire({ id: "w1", status: "revealed", color: "blue", rackPosition: 3 });
       const players = [makePlayer({ id: "p1" }), makePlayer({ id: "p2" })];
-
       const gameSockets = new Map<string, WebSocket>();
       gameSockets.set("p1", ws);
 
-      mockConnManager.getConnectionInfo.mockReturnValue({
-        playerId: "p1", gameId: "g1", socket: ws,
-      });
-      mockEngine.executeDuoCut.mockResolvedValue({ turn, game, updatedWires });
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
+      mockEngine.executeRespondDualCut.mockResolvedValue({ phase: "completing", game, updatedWires: [revealedWire] });
       mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
       mockConnManager.getGameSockets.mockReturnValue(gameSockets);
+      mockGamesDb.getGameById.mockResolvedValue(game);
 
-      await handleMessage(ws, JSON.stringify({ type: "duo_cut", targetWireId: "w1", guessedValue: "3" }));
+      await handleMessage(ws, JSON.stringify({ type: "respond_dual_cut", accepted: true }));
 
-      expect(mockEngine.executeDuoCut).toHaveBeenCalledWith("g1", "p1", "w1", "3");
+      expect(mockEngine.executeRespondDualCut).toHaveBeenCalledWith("g1", "p2", true);
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
+        "g1",
+        expect.objectContaining({ type: "dual_cut_correct" }),
+      );
+    });
+
+    it("phase=fail: broadcasts turn_result fail", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", status: "active" });
+      const turn = makeTurn({ result: "fail" });
+      const players = [makePlayer({ id: "p1" }), makePlayer({ id: "p2" })];
+      const gameSockets = new Map<string, WebSocket>();
+      gameSockets.set("p2", ws);
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
+      mockEngine.executeRespondDualCut.mockResolvedValue({ phase: "fail", turn, game, updatedWires: [] });
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      mockConnManager.getGameSockets.mockReturnValue(gameSockets);
+      mockGamesDb.getGameById.mockResolvedValue(game);
+
+      await handleMessage(ws, JSON.stringify({ type: "respond_dual_cut", accepted: false }));
+
+      const sent = lastSent(ws) as { type: string };
+      expect(sent.type).toBe("turn_result");
+    });
+  });
+
+  describe("complete_dual_cut", () => {
+    it("cuts both wires and broadcasts turn_result", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", status: "active" });
+      const turn = makeTurn({ result: "success" });
+      const updatedWires = [makeWire({ status: "cut" }), makeWire({ status: "cut" })];
+      const players = [makePlayer({ id: "p1" }), makePlayer({ id: "p2" })];
+      const gameSockets = new Map<string, WebSocket>();
+      gameSockets.set("p1", ws);
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeCompleteDualCut.mockResolvedValue({ turn, game, updatedWires });
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      mockConnManager.getGameSockets.mockReturnValue(gameSockets);
+      mockGamesDb.getGameById.mockResolvedValue(game);
+
+      await handleMessage(ws, JSON.stringify({ type: "complete_dual_cut", ownWireId: "w2" }));
+
+      expect(mockEngine.executeCompleteDualCut).toHaveBeenCalledWith("g1", "p1", "w2");
       const sent = lastSent(ws) as { type: string };
       expect(sent.type).toBe("turn_result");
     });

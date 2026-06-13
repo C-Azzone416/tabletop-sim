@@ -50,9 +50,8 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
   const missionConfig = MISSION_CONFIGS[mission];
   if (!missionConfig) throw new Error('Invalid mission');
 
-  // For solo testing, fall back to the 2-player detonator when player count has no config entry
-  const detonatorMax = missionConfig.detonator[players.length] ?? missionConfig.detonator[2];
-  if (!detonatorMax) throw new Error('Invalid player count');
+  // Lives = players − 1 (spec rule: 2p = 1 life, 3p = 2 lives, 4p = 3 lives)
+  const detonatorMax = Math.max(1, players.length - 1);
 
   // Store the selected mission
   await gamesDb.updateMission(gameId, mission);
@@ -130,73 +129,130 @@ export async function completeSetup(gameId: string): Promise<Game> {
   return await gamesDb.updateGameStatus(gameId, 'active');
 }
 
-export async function executeProposeDuoCut(
+export async function executeProposeDualCut(
   gameId: string,
   playerId: string,
   targetWireId: string,
+  guessedValue: string,
 ): Promise<{ game: Game; wire: Wire; targetPlayer: Player }> {
   const game = await validateTurn(gameId, playerId);
-  if (game.pendingDuoCutWireId) throw new Error('Duo cut already pending');
+  if (game.pendingDualCutWireId) throw new Error('Dual cut already pending');
 
   const wire = await wiresDb.getWireById(targetWireId);
   if (!wire) throw new Error('Wire not found');
   if (wire.gameId !== gameId) throw new Error('Wire does not belong to this game');
-  if (wire.playerId === playerId) throw new Error('Cannot target your own wire with duo cut');
+  if (wire.playerId === playerId) throw new Error('Cannot target your own wire with dual cut');
   if (wire.status !== 'hidden') throw new Error('Wire already cut or revealed');
   if (wire.value === null) throw new Error('Wire has no value');
 
   const targetPlayer = await playersDb.getPlayerById(wire.playerId);
   if (!targetPlayer) throw new Error('Player not found');
 
-  const updatedGame = await gamesDb.setPendingDuoCut(gameId, playerId, targetWireId);
+  const updatedGame = await gamesDb.setPendingDualCut(gameId, playerId, targetWireId, guessedValue);
   return { game: updatedGame, wire, targetPlayer };
 }
 
-export async function executeRespondDuoCut(
+type RespondDualCutResult =
+  | { phase: 'completing'; game: Game; updatedWires: Wire[] }
+  | { phase: 'fail' | 'game_over'; turn: Turn; game: Game; updatedWires: Wire[] };
+
+export async function executeRespondDualCut(
   gameId: string,
   playerId: string,
   accepted: boolean,
+): Promise<RespondDualCutResult> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.status !== 'active') throw new Error('Game is not active');
+  if (!game.pendingDualCutWireId || !game.pendingDualCutProposerId) throw new Error('No pending dual cut');
+
+  const wire = await wiresDb.getWireById(game.pendingDualCutWireId);
+  if (!wire) throw new Error('Wire not found');
+  if (wire.playerId !== playerId) throw new Error('Not your wire to respond to');
+
+  if (accepted) {
+    // Correct guess — reveal the target wire; proposer must still complete their half
+    const revealedWire = await wiresDb.updateWireStatus(wire.id, 'revealed');
+    const updatedGame = await gamesDb.getGameById(gameId) as Game;
+    return { phase: 'completing', game: updatedGame, updatedWires: [revealedWire] };
+  }
+
+  // Wrong guess — check wire color for response
+  const proposerId = game.pendingDualCutProposerId;
+
+  if (wire.color === 'red') {
+    // Red wrong guess = immediate game over
+    const turn = await turnsDb.createTurn(gameId, proposerId, 'dual_cut', wire.id, game.pendingDualCutGuessedValue);
+    await turnsDb.updateTurnResult(turn.id, 'fail');
+    await gamesDb.clearPendingDualCut(gameId);
+    const lostGame = await gamesDb.updateGameStatus(gameId, 'lost');
+    return { phase: 'game_over', turn: { ...turn, result: 'fail' }, game: lostGame, updatedWires: [] };
+  }
+
+  // Blue or yellow wrong guess — place info token (color-aware) + lose 1 life
+  const tokenValue = wire.color === 'yellow' ? 'YELLOW' : wire.value!;
+  await tokensDb.createInfoToken(gameId, wire.id, tokenValue);
+
+  const turn = await turnsDb.createTurn(gameId, proposerId, 'dual_cut', wire.id, game.pendingDualCutGuessedValue);
+  await turnsDb.updateTurnResult(turn.id, 'fail');
+  await gamesDb.clearPendingDualCut(gameId);
+
+  const newPosition = game.detonatorPosition + 1;
+  let updatedGame = await gamesDb.updateDetonator(gameId, newPosition);
+
+  if (newPosition >= game.detonatorMax) {
+    updatedGame = await gamesDb.updateGameStatus(gameId, 'lost');
+    return { phase: 'game_over', turn: { ...turn, result: 'fail' }, game: updatedGame, updatedWires: [] };
+  }
+
+  updatedGame = await advanceTurn(gameId);
+  return { phase: 'fail', turn: { ...turn, result: 'fail' }, game: updatedGame, updatedWires: [] };
+}
+
+export async function executeCompleteDualCut(
+  gameId: string,
+  playerId: string,
+  ownWireId: string,
 ): Promise<{ turn: Turn; game: Game; updatedWires: Wire[] }> {
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');
   if (game.status !== 'active') throw new Error('Game is not active');
-  if (!game.pendingDuoCutWireId || !game.pendingDuoCutProposerId) throw new Error('No pending duo cut');
+  if (!game.pendingDualCutWireId || !game.pendingDualCutProposerId) throw new Error('No pending dual cut');
+  if (game.pendingDualCutProposerId !== playerId) throw new Error('Not your turn to complete dual cut');
 
-  const wire = await wiresDb.getWireById(game.pendingDuoCutWireId);
-  if (!wire) throw new Error('Wire not found');
-  if (wire.playerId !== playerId) throw new Error('Not your wire to respond to');
+  const targetWire = await wiresDb.getWireById(game.pendingDualCutWireId);
+  if (!targetWire) throw new Error('Wire not found');
+  if (targetWire.status !== 'revealed') throw new Error('Target wire is not revealed');
 
-  const proposerId = game.pendingDuoCutProposerId;
-  const turn = await turnsDb.createTurn(gameId, proposerId, 'duo_cut', game.pendingDuoCutWireId, accepted ? wire.value : 'rejected');
+  const ownWire = await wiresDb.getWireById(ownWireId);
+  if (!ownWire) throw new Error('Wire not found');
+  if (ownWire.playerId !== playerId) throw new Error('Wire does not belong to you');
+  if (ownWire.gameId !== gameId) throw new Error('Wire does not belong to this game');
+  if (ownWire.status !== 'hidden') throw new Error('Wire already cut or revealed');
 
-  // Clear pending state before executing cut logic
-  await gamesDb.clearPendingDuoCut(gameId);
-
-  const updatedWire = await wiresDb.updateWireStatus(wire.id, 'cut');
-  const updatedWires = [updatedWire];
-
-  let updatedGame: Game;
-  if (accepted) {
-    // Success — wire cut, no detonator advance
-    await turnsDb.updateTurnResult(turn.id, 'success');
-    updatedGame = await gamesDb.getGameById(gameId) as Game;
-  } else {
-    // Fail — detonator advances, info token placed
-    await turnsDb.updateTurnResult(turn.id, 'fail');
-    await tokensDb.createInfoToken(gameId, wire.id, wire.value!);
-    const newPosition = game.detonatorPosition + 1;
-    updatedGame = await gamesDb.updateDetonator(gameId, newPosition);
-
-    if (newPosition >= game.detonatorMax) {
-      updatedGame = await gamesDb.updateGameStatus(gameId, 'lost');
-      return { turn: { ...turn, result: 'fail' }, game: updatedGame, updatedWires };
-    }
+  // Validate the selected own wire matches target wire rules
+  if (targetWire.color === 'blue') {
+    if (ownWire.value !== targetWire.value) throw new Error('Must reveal a wire with the same number');
+  } else if (targetWire.color === 'yellow') {
+    if (ownWire.color !== 'yellow') throw new Error('Must reveal a yellow wire');
   }
 
-  // Check for validation (all 4 of a color+value cut)
-  await checkValidation(gameId, wire.value!, wire.color);
+  // Cut both wires
+  const cutTargetWire = await wiresDb.updateWireStatus(targetWire.id, 'cut');
+  const cutOwnWire = await wiresDb.updateWireStatus(ownWireId, 'cut');
+  const updatedWires = [cutTargetWire, cutOwnWire];
+
+  const turn = await turnsDb.createTurn(gameId, playerId, 'dual_cut', targetWire.id, targetWire.value, ownWireId);
+  await turnsDb.updateTurnResult(turn.id, 'success');
+
+  await gamesDb.clearPendingDualCut(gameId);
+
+  // Check validation for both wires
+  await checkValidation(gameId, targetWire.value!, targetWire.color);
+  await checkValidation(gameId, ownWire.value!, ownWire.color);
 
   // Check win condition
+  let updatedGame: Game;
   const winResult = await checkWinCondition(gameId);
   if (winResult) {
     updatedGame = await gamesDb.updateGameStatus(gameId, 'won');
@@ -204,58 +260,7 @@ export async function executeRespondDuoCut(
     updatedGame = await advanceTurn(gameId);
   }
 
-  return { turn: { ...turn, result: accepted ? 'success' : 'fail' }, game: updatedGame, updatedWires };
-}
-
-export async function executeDuoCut(
-  gameId: string,
-  playerId: string,
-  targetWireId: string,
-  guessedValue: string,
-): Promise<{ turn: Turn; game: Game; updatedWires: Wire[] }> {
-  const game = await validateTurn(gameId, playerId);
-  const wire = await wiresDb.getWireById(targetWireId);
-  if (!wire) throw new Error('Wire not found');
-  if (wire.gameId !== gameId) throw new Error('Wire does not belong to this game');
-  if (wire.playerId === playerId) throw new Error('Cannot cut your own wire with duo cut');
-  if (wire.status !== 'hidden') throw new Error('Wire already cut or revealed');
-
-  const turn = await turnsDb.createTurn(gameId, playerId, 'duo_cut', targetWireId, guessedValue);
-
-  const isCorrect = wire.value === guessedValue;
-  const updatedWire = await wiresDb.updateWireStatus(targetWireId, 'cut');
-  const updatedWires = [updatedWire];
-
-  let updatedGame: Game;
-  if (isCorrect) {
-    await turnsDb.updateTurnResult(turn.id, 'success');
-    updatedGame = game;
-  } else {
-    await turnsDb.updateTurnResult(turn.id, 'fail');
-    // Place info token on the wire
-    await tokensDb.createInfoToken(gameId, targetWireId, wire.value!);
-    // Advance detonator
-    const newPosition = game.detonatorPosition + 1;
-    updatedGame = await gamesDb.updateDetonator(gameId, newPosition);
-
-    if (newPosition >= game.detonatorMax) {
-      updatedGame = await gamesDb.updateGameStatus(gameId, 'lost');
-      return { turn: { ...turn, result: 'fail' }, game: updatedGame, updatedWires };
-    }
-  }
-
-  // Check for validation (all 4 of a color+value cut)
-  await checkValidation(gameId, wire.value!, wire.color);
-
-  // Check win condition
-  const winResult = await checkWinCondition(gameId);
-  if (winResult) {
-    updatedGame = await gamesDb.updateGameStatus(gameId, 'won');
-  } else {
-    updatedGame = await advanceTurn(gameId);
-  }
-
-  return { turn: { ...turn, result: isCorrect ? 'success' : 'fail' }, game: updatedGame, updatedWires };
+  return { turn: { ...turn, result: 'success' }, game: updatedGame, updatedWires };
 }
 
 export async function executeSoloCut(
