@@ -23,6 +23,7 @@ const migrations = [
   '006_setup_done.sql',
   '007_wire_interrogation.sql',
   '008_duo_cut_pending.sql',
+  '009_dual_cut.sql',
 ];
 
 async function run() {
