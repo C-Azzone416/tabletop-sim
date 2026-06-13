@@ -45,6 +45,7 @@ describe("GameBoard", () => {
       onRespondDuoCut: vi.fn(),
       onSoloCut: vi.fn(),
       onDoubleDetector: vi.fn(),
+      onRevealReds: vi.fn(),
       ...overrides,
     };
   };

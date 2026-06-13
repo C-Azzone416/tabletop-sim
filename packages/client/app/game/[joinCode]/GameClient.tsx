@@ -102,6 +102,7 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
               targetWireId2,
             })
           }
+          onRevealReds={() => send({ type: "reveal_reds" })}
         />
         {process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS === "true" && (
           <div className="fixed bottom-4 right-4">
@@ -146,6 +147,7 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
           onRespondDuoCut={() => {}}
           onSoloCut={() => {}}
           onDoubleDetector={() => {}}
+          onRevealReds={() => {}}
         />
         <GameOverOverlay
           result={gameStatus}
