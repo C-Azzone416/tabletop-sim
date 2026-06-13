@@ -13,7 +13,7 @@ import { authenticateUpgrade } from './ws/auth.js';
 import { broadcastGameState } from './ws/state-broadcaster.js';
 
 export async function buildApp() {
-  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
+  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.url'] } });
 
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
