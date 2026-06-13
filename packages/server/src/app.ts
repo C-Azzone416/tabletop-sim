@@ -80,6 +80,29 @@ export async function buildApp() {
   });
 
   app.get('/ws', { websocket: true }, async (socket, request) => {
+    // Register handlers synchronously before any awaits so messages sent
+    // immediately on client onopen aren't silently dropped. Messages arriving
+    // before auth + reconnect complete are buffered and replayed afterward.
+    const pendingMessages: Buffer[] = [];
+    let authComplete = false;
+
+    socket.on('message', async (raw: Buffer) => {
+      if (!authComplete) {
+        pendingMessages.push(raw);
+        return;
+      }
+      await handleMessage(socket, raw.toString());
+    });
+
+    socket.on('close', () => {
+      removeConnection(socket);
+    });
+
+    socket.on('error', (err: Error) => {
+      app.log.error(err, 'WebSocket error');
+      removeConnection(socket);
+    });
+
     try {
       const user = await authenticateUpgrade(request);
       if (!user) {
@@ -105,18 +128,11 @@ export async function buildApp() {
         app.log.error({ err }, '[WS /ws] reconnect lookup error');
       }
 
-      socket.on('message', async (raw: Buffer) => {
-        await handleMessage(socket, raw.toString());
-      });
-
-      socket.on('close', () => {
-        removeConnection(socket);
-      });
-
-      socket.on('error', (err: Error) => {
-        app.log.error(err, 'WebSocket error');
-        removeConnection(socket);
-      });
+      // Auth and reconnect complete — replay buffered messages in order
+      authComplete = true;
+      for (const buffered of pendingMessages) {
+        await handleMessage(socket, buffered.toString());
+      }
     } catch (err) {
       app.log.error({ err }, '[WS /ws] upgrade error');
       socket.close(4000, 'Internal error');
