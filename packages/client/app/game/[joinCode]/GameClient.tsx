@@ -87,12 +87,16 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
           validationTokens={state.validationTokens}
           localPlayerId={state.localPlayer?.id ?? ""}
           lastTurnResult={state.lastTurnResult}
-          pendingDuoCut={state.pendingDuoCut}
-          onProposeDuoCut={(targetWireId) =>
-            send({ type: "propose_duo_cut", targetWireId })
+          pendingDualCut={state.pendingDualCut}
+          pendingDualCutCorrect={state.pendingDualCutCorrect}
+          onProposeDualCut={(targetWireId, guessedValue) =>
+            send({ type: "propose_dual_cut", targetWireId, guessedValue })
           }
-          onRespondDuoCut={(accepted) =>
-            send({ type: "respond_duo_cut", accepted })
+          onRespondDualCut={(accepted) =>
+            send({ type: "respond_dual_cut", accepted })
+          }
+          onCompleteDualCut={(ownWireId) =>
+            send({ type: "complete_dual_cut", ownWireId })
           }
           onSoloCut={(wireValue) => send({ type: "solo_cut", wireValue })}
           onDoubleDetector={(targetWireId, targetWireId2) =>
@@ -142,9 +146,11 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
           validationTokens={state.validationTokens}
           localPlayerId={state.localPlayer?.id ?? ""}
           lastTurnResult={state.lastTurnResult}
-          pendingDuoCut={state.pendingDuoCut}
-          onProposeDuoCut={() => {}}
-          onRespondDuoCut={() => {}}
+          pendingDualCut={state.pendingDualCut}
+          pendingDualCutCorrect={state.pendingDualCutCorrect}
+          onProposeDualCut={() => {}}
+          onRespondDualCut={() => {}}
+          onCompleteDualCut={() => {}}
           onSoloCut={() => {}}
           onDoubleDetector={() => {}}
           onRevealReds={() => {}}

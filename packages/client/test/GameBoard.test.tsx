@@ -6,6 +6,7 @@ import {
   makeGame,
   makePlayer,
   makeWire,
+  makeInfoToken,
   makeValidationToken,
   makeTurn,
   resetIds,
@@ -40,9 +41,11 @@ describe("GameBoard", () => {
       validationTokens: [],
       localPlayerId: "p1",
       lastTurnResult: null,
-      pendingDuoCut: null,
-      onProposeDuoCut: vi.fn(),
-      onRespondDuoCut: vi.fn(),
+      pendingDualCut: null,
+      pendingDualCutCorrect: null,
+      onProposeDualCut: vi.fn(),
+      onRespondDualCut: vi.fn(),
+      onCompleteDualCut: vi.fn(),
       onSoloCut: vi.fn(),
       onDoubleDetector: vi.fn(),
       onRevealReds: vi.fn(),
@@ -132,7 +135,7 @@ describe("GameBoard", () => {
   it("shows action panel when it is local player's turn", () => {
     render(<GameBoard {...setup()} />);
     expect(screen.getByText("Choose Action")).toBeInTheDocument();
-    expect(screen.getByText("Duo Cut")).toBeInTheDocument();
+    expect(screen.getByText("Dual Cut")).toBeInTheDocument();
     expect(screen.getByText("Solo Cut")).toBeInTheDocument();
     expect(screen.getByText("Double Detector")).toBeInTheDocument();
   });
@@ -154,107 +157,137 @@ describe("GameBoard", () => {
     return span.closest("div")!.parentElement!;
   };
 
-  // --- Duo Cut UX ---
+  // --- Dual Cut UX ---
 
-  it("entering duo_cut mode shows instruction text", async () => {
+  it("entering dual_cut mode shows instruction text", async () => {
     const user = userEvent.setup();
     render(<GameBoard {...setup()} />);
-    await user.click(screen.getByRole("button", { name: "Duo Cut" }));
+    await user.click(screen.getByRole("button", { name: "Dual Cut" }));
     expect(
-      screen.getByText(/Click an opponent's wire on the board/i)
+      screen.getByText(/Click an opponent's wire.*guess its value/i)
     ).toBeInTheDocument();
   });
 
-  it("clicking opponent wire in duo_cut mode opens modal", async () => {
+  it("clicking opponent wire in dual_cut mode opens guess popup", async () => {
     const user = userEvent.setup();
     const props = setup();
     render(<GameBoard {...props} />);
-    await user.click(screen.getByRole("button", { name: "Duo Cut" }));
-    // Scope to Bob's rack to avoid ambiguity with ValidationTracker slots
+    await user.click(screen.getByRole("button", { name: "Dual Cut" }));
     const bobContainer = getRackContainer("Bob");
     const bobWireButtons = within(bobContainer).getAllByRole("button");
     await user.click(bobWireButtons[0]);
-    expect(screen.getByText(/Cut Bob's wire #1/i)).toBeInTheDocument();
+    expect(screen.getByText(/Guess the value of Bob's wire #1/i)).toBeInTheDocument();
   });
 
-  it("duo_cut modal confirm calls onProposeDuoCut with wire id", async () => {
+  it("guess popup Propose Cut calls onProposeDualCut with wire id and guess", async () => {
     const user = userEvent.setup();
     const props = setup();
     render(<GameBoard {...props} />);
-    await user.click(screen.getByRole("button", { name: "Duo Cut" }));
+    await user.click(screen.getByRole("button", { name: "Dual Cut" }));
     const bobContainer = getRackContainer("Bob");
-    const bobWireButtons = within(bobContainer).getAllByRole("button");
-    await user.click(bobWireButtons[0]); // w3
-    await user.click(screen.getByRole("button", { name: "Confirm Cut" }));
-    expect(props.onProposeDuoCut).toHaveBeenCalledWith("w3");
+    await user.click(within(bobContainer).getAllByRole("button")[0]); // w3
+    await user.type(screen.getByPlaceholderText("Enter value…"), "3");
+    await user.click(screen.getByRole("button", { name: "Propose Cut" }));
+    expect(props.onProposeDualCut).toHaveBeenCalledWith("w3", "3");
   });
 
-  it("duo_cut modal cancel closes modal without calling onProposeDuoCut", async () => {
+  it("guess popup Cancel closes popup without calling onProposeDualCut", async () => {
     const user = userEvent.setup();
     const props = setup();
     render(<GameBoard {...props} />);
-    await user.click(screen.getByRole("button", { name: "Duo Cut" }));
+    await user.click(screen.getByRole("button", { name: "Dual Cut" }));
     const bobContainer = getRackContainer("Bob");
     await user.click(within(bobContainer).getAllByRole("button")[0]);
-    const modalText = screen.getByText(/Cut Bob/i);
-    expect(modalText).toBeInTheDocument();
-    // Scope Cancel click to the modal panel to avoid ActionPanel's Cancel button
-    const modalPanel = modalText.closest("div")!;
-    await user.click(within(modalPanel).getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByText(/Cut Bob/i)).not.toBeInTheDocument();
-    expect(props.onProposeDuoCut).not.toHaveBeenCalled();
+    expect(screen.getByText(/Guess the value of Bob/i)).toBeInTheDocument();
+    const popupText = screen.getByText(/Guess the value of Bob/i);
+    await user.click(within(popupText.closest("div")!.parentElement!).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText(/Guess the value of Bob/i)).not.toBeInTheDocument();
+    expect(props.onProposeDualCut).not.toHaveBeenCalled();
   });
 
-  // --- Pending Duo Cut (server broadcast) ---
+  // --- Pending Dual Cut (server broadcast) ---
 
-  it("shows waiting indicator to proposer when duo_cut_proposed", () => {
+  it("shows waiting indicator to proposer when dual_cut_proposed", () => {
     const props = setup({
-      pendingDuoCut: {
-        type: "duo_cut_proposed" as const,
+      pendingDualCut: {
+        type: "dual_cut_proposed" as const,
         proposingPlayerId: "p1",
         targetPlayerId: "p2",
         targetWireId: "w3",
         targetWireRackPosition: 0,
+        guessedValue: "3",
       },
     });
     render(<GameBoard {...props} />);
     expect(screen.getByText(/Waiting for Bob to respond/i)).toBeInTheDocument();
   });
 
-  it("shows confirm/reject popup to target player when duo_cut_proposed", async () => {
+  it("shows Yes/No popup to target player when dual_cut_proposed", async () => {
     const user = userEvent.setup();
     const props = setup({
-      // p2 is the local player (target)
       localPlayerId: "p2",
-      pendingDuoCut: {
-        type: "duo_cut_proposed" as const,
+      pendingDualCut: {
+        type: "dual_cut_proposed" as const,
         proposingPlayerId: "p1",
         targetPlayerId: "p2",
         targetWireId: "w3",
         targetWireRackPosition: 0,
+        guessedValue: "3",
       },
     });
     render(<GameBoard {...props} />);
-    expect(screen.getByText(/Alice wants to cut your wire #1/i)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Confirm" }));
-    expect(props.onRespondDuoCut).toHaveBeenCalledWith(true);
+    expect(screen.getByText(/Alice guesses your wire #1 has value/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+    expect(props.onRespondDualCut).toHaveBeenCalledWith(true);
   });
 
-  it("reject button sends respond_duo_cut with accepted=false", async () => {
+  it("No button sends respond_dual_cut with accepted=false", async () => {
     const user = userEvent.setup();
     const props = setup({
       localPlayerId: "p2",
-      pendingDuoCut: {
-        type: "duo_cut_proposed" as const,
+      pendingDualCut: {
+        type: "dual_cut_proposed" as const,
         proposingPlayerId: "p1",
         targetPlayerId: "p2",
         targetWireId: "w3",
         targetWireRackPosition: 0,
+        guessedValue: "3",
       },
     });
     render(<GameBoard {...props} />);
-    await user.click(screen.getByRole("button", { name: "Reject" }));
-    expect(props.onRespondDuoCut).toHaveBeenCalledWith(false);
+    await user.click(screen.getByRole("button", { name: "No" }));
+    expect(props.onRespondDualCut).toHaveBeenCalledWith(false);
+  });
+
+  it("shows pick-own-wire prompt to proposer when dual_cut_correct", async () => {
+    const user = userEvent.setup();
+    const props = setup({
+      pendingDualCut: {
+        type: "dual_cut_proposed" as const,
+        proposingPlayerId: "p1",
+        targetPlayerId: "p2",
+        targetWireId: "w3",
+        targetWireRackPosition: 0,
+        guessedValue: "3",
+      },
+      pendingDualCutCorrect: {
+        type: "dual_cut_correct" as const,
+        targetWireId: "w3",
+        targetWireRackPosition: 0,
+        targetWireColor: "blue" as const,
+      },
+      // local wires need a value to be selectable
+      wires: [
+        makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "3" }),
+        makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "5" }),
+        makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: null }),
+        makeWire({ id: "w4", playerId: "p2", rackPosition: 1, value: null }),
+      ],
+    });
+    render(<GameBoard {...props} />);
+    expect(screen.getByText(/Correct Guess!/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Wire #1" }));
+    expect(props.onCompleteDualCut).toHaveBeenCalledWith("w1");
   });
 
   // --- Solo Cut UX ---
@@ -326,6 +359,26 @@ describe("GameBoard", () => {
     await user.click(localWireButtons[1]);
     await user.click(screen.getByRole("button", { name: "Confirm Solo Cut" }));
     expect(props.onSoloCut).toHaveBeenCalledWith("4");
+  });
+
+  it("shows info token badge on opponent wire", () => {
+    const props = setup({
+      infoTokens: [makeInfoToken({ wireId: "w3", value: "3" })],
+    });
+    render(<GameBoard {...props} />);
+    // Scope to Bob's rack — the badge "1" must appear there
+    const bobContainer = getRackContainer("Bob");
+    expect(within(bobContainer).getByText("1")).toBeInTheDocument();
+  });
+
+  it("does not show info token badge on local player's own wire", () => {
+    const props = setup({
+      infoTokens: [makeInfoToken({ wireId: "w1", value: "3" })],
+    });
+    render(<GameBoard {...props} />);
+    // w1 belongs to p1 (local) — badge must not appear in "You" rack
+    const youContainer = getRackContainer("You");
+    expect(within(youContainer).queryByText("1")).not.toBeInTheDocument();
   });
 
   it("renders validation tracker with validated values", () => {

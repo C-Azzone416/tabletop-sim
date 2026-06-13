@@ -18,7 +18,8 @@ export interface GameState {
   infoTokens: InfoToken[];
   validationTokens: ValidationToken[];
   lastTurnResult: Extract<ServerMessage, { type: "turn_result" }> | null;
-  pendingDuoCut: Extract<ServerMessage, { type: "duo_cut_proposed" }> | null;
+  pendingDualCut: Extract<ServerMessage, { type: "dual_cut_proposed" }> | null;
+  pendingDualCutCorrect: Extract<ServerMessage, { type: "dual_cut_correct" }> | null;
   gameOverReason: string | null;
   error: string | null;
   pendingWireQuestion: Extract<ServerMessage, { type: "wire_question" }> | null;
@@ -33,7 +34,8 @@ const initialState: GameState = {
   infoTokens: [],
   validationTokens: [],
   lastTurnResult: null,
-  pendingDuoCut: null,
+  pendingDualCut: null,
+  pendingDualCutCorrect: null,
   gameOverReason: null,
   error: null,
   pendingWireQuestion: null,
@@ -114,10 +116,16 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
       };
     }
 
-    case "duo_cut_proposed":
+    case "dual_cut_proposed":
       return {
         ...state,
-        pendingDuoCut: msg,
+        pendingDualCut: msg,
+      };
+
+    case "dual_cut_correct":
+      return {
+        ...state,
+        pendingDualCutCorrect: msg,
       };
 
     case "turn_result": {
@@ -130,7 +138,8 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
         game: msg.game,
         wires: updatedWires,
         lastTurnResult: msg,
-        pendingDuoCut: null,
+        pendingDualCut: null,
+        pendingDualCutCorrect: null,
       };
     }
 

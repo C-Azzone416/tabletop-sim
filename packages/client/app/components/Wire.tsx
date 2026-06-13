@@ -50,7 +50,7 @@ export function Wire({
       )}
 
 
-      {infoTokens.length > 0 && (
+      {!isLocal && infoTokens.length > 0 && (
         <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white">
           {infoTokens.length}
         </div>

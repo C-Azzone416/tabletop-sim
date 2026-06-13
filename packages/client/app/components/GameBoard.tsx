@@ -22,9 +22,11 @@ interface GameBoardProps {
   validationTokens: ValidationToken[];
   localPlayerId: string;
   lastTurnResult: Extract<ServerMessage, { type: "turn_result" }> | null;
-  pendingDuoCut: Extract<ServerMessage, { type: "duo_cut_proposed" }> | null;
-  onProposeDuoCut: (targetWireId: string) => void;
-  onRespondDuoCut: (accepted: boolean) => void;
+  pendingDualCut: Extract<ServerMessage, { type: "dual_cut_proposed" }> | null;
+  pendingDualCutCorrect: Extract<ServerMessage, { type: "dual_cut_correct" }> | null;
+  onProposeDualCut: (targetWireId: string, guessedValue: string) => void;
+  onRespondDualCut: (accepted: boolean) => void;
+  onCompleteDualCut: (ownWireId: string) => void;
   onSoloCut: (wireValue: string) => void;
   onDoubleDetector: (targetWireId: string, targetWireId2: string) => void;
   onRevealReds: () => void;
@@ -38,9 +40,11 @@ export function GameBoard({
   validationTokens,
   localPlayerId,
   lastTurnResult,
-  pendingDuoCut,
-  onProposeDuoCut,
-  onRespondDuoCut,
+  pendingDualCut,
+  pendingDualCutCorrect,
+  onProposeDualCut,
+  onRespondDualCut,
+  onCompleteDualCut,
   onSoloCut,
   onDoubleDetector,
   onRevealReds,
@@ -48,39 +52,42 @@ export function GameBoard({
   const isMyTurn = game.currentTurnPlayerId === localPlayerId;
   const localPlayer = players.find((p) => p.id === localPlayerId);
 
-  // Action mode state lifted here so board tiles can respond
   const [actionMode, setActionMode] = useState<ActionMode>("idle");
 
-  // Duo Cut: selected opponent wire + confirmation modal
-  const [duoCutWireId, setDuoCutWireId] = useState<string | null>(null);
-  const [duoCutModalOpen, setDuoCutModalOpen] = useState(false);
+  // Step 1: dual cut — which wire was clicked + guess popup state
+  const [dualCutWireId, setDualCutWireId] = useState<string | null>(null);
+  const [dualCutGuess, setDualCutGuess] = useState("");
+  const [dualCutGuessOpen, setDualCutGuessOpen] = useState(false);
 
   // Solo Cut: up to 2 selected wire IDs
   const [soloCutSelected, setSoloCutSelected] = useState<string[]>([]);
 
   const resetAction = () => {
     setActionMode("idle");
-    setDuoCutWireId(null);
-    setDuoCutModalOpen(false);
+    setDualCutWireId(null);
+    setDualCutGuess("");
+    setDualCutGuessOpen(false);
     setSoloCutSelected([]);
   };
 
-  // Duo Cut — proposer flow
+  // Step 1: proposer clicks an opponent wire tile → open guess popup
   const handleOpponentWireClick = (wireId: string) => {
-    setDuoCutWireId(wireId);
-    setDuoCutModalOpen(true);
+    setDualCutWireId(wireId);
+    setDualCutGuess("");
+    setDualCutGuessOpen(true);
   };
 
-  const handleDuoCutConfirm = () => {
-    if (duoCutWireId) {
-      onProposeDuoCut(duoCutWireId);
+  const handleDualCutGuessSubmit = () => {
+    if (dualCutWireId && dualCutGuess.trim()) {
+      onProposeDualCut(dualCutWireId, dualCutGuess.trim());
       resetAction();
     }
   };
 
-  const handleDuoCutModalCancel = () => {
-    setDuoCutWireId(null);
-    setDuoCutModalOpen(false);
+  const handleDualCutGuessCancel = () => {
+    setDualCutWireId(null);
+    setDualCutGuess("");
+    setDualCutGuessOpen(false);
   };
 
   // Solo Cut handlers
@@ -116,23 +123,30 @@ export function GameBoard({
     ...players.filter((p) => p.id !== localPlayerId),
   ];
 
-  // Duo cut modal target wire info
-  const duoCutTargetWire = duoCutWireId
-    ? wires.find((w) => w.id === duoCutWireId)
+  // Dual cut state derivations
+  const isProposer = pendingDualCut?.proposingPlayerId === localPlayerId;
+  const isTarget = pendingDualCut?.targetPlayerId === localPlayerId;
+  const pendingTargetPlayer = pendingDualCut
+    ? players.find((p) => p.id === pendingDualCut.targetPlayerId)
     : null;
-  const duoCutTargetOwner = duoCutTargetWire
-    ? players.find((p) => p.id === duoCutTargetWire.playerId)
+  const pendingProposerPlayer = pendingDualCut
+    ? players.find((p) => p.id === pendingDualCut.proposingPlayerId)
+    : null;
+  const dualCutTargetWire = dualCutWireId
+    ? wires.find((w) => w.id === dualCutWireId)
+    : null;
+  const dualCutTargetOwner = dualCutTargetWire
+    ? players.find((p) => p.id === dualCutTargetWire.playerId)
     : null;
 
-  // Pending duo cut state (from server broadcast)
-  const isProposer = pendingDuoCut?.proposingPlayerId === localPlayerId;
-  const isTarget = pendingDuoCut?.targetPlayerId === localPlayerId;
-  const pendingTargetPlayer = pendingDuoCut
-    ? players.find((p) => p.id === pendingDuoCut.targetPlayerId)
-    : null;
-  const pendingProposerPlayer = pendingDuoCut
-    ? players.find((p) => p.id === pendingDuoCut.proposingPlayerId)
-    : null;
+  // Step 3: proposer picks own wire after correct guess
+  const isCompletingDualCut = !!(pendingDualCutCorrect && isProposer);
+  const localWires = wires
+    .filter((w) => w.playerId === localPlayerId && w.status === "hidden")
+    .sort((a, b) => a.rackPosition - b.rackPosition);
+
+  // Hide action panel while a dual cut is in flight (pending or completing)
+  const dualCutInFlight = !!(pendingDualCut || isCompletingDualCut);
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -173,10 +187,10 @@ export function GameBoard({
         </div>
       )}
 
-      {/* Waiting indicator for duo cut proposer */}
-      {isProposer && pendingTargetPlayer && (
+      {/* Dual cut: waiting indicator for proposer while owner responds */}
+      {pendingDualCut && isProposer && !pendingDualCutCorrect && pendingTargetPlayer && (
         <div className="rounded-lg bg-blue-50 px-4 py-3 text-center text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
-          Waiting for {pendingTargetPlayer.name} to respond to your cut…
+          Waiting for {pendingTargetPlayer.name} to respond to your guess…
         </div>
       )}
 
@@ -188,10 +202,10 @@ export function GameBoard({
             .sort((a, b) => a.rackPosition - b.rackPosition);
           const isLocal = player.id === localPlayerId;
 
-          const isDuoCutTarget = !isLocal && isMyTurn && actionMode === "duo_cut";
+          const isDualCutTarget = !isLocal && isMyTurn && actionMode === "dual_cut";
           const isSoloCutLocal = isLocal && isMyTurn && actionMode === "solo_cut";
 
-          const duoCutSelectableIds = isDuoCutTarget
+          const dualCutSelectableIds = isDualCutTarget
             ? playerWires.filter((w) => w.status === "hidden").map((w) => w.id)
             : undefined;
 
@@ -199,10 +213,10 @@ export function GameBoard({
             ? playerWires.filter((w) => w.value !== null && w.status === "hidden").map((w) => w.id)
             : undefined;
 
-          // Keep the pending duo cut wire highlighted on target's rack
-          const pendingSelectedId =
-            pendingDuoCut && player.id === pendingDuoCut.targetPlayerId
-              ? pendingDuoCut.targetWireId
+          // Highlight the pending dual cut target wire
+          const pendingDualCutSelectedId =
+            pendingDualCut && player.id === pendingDualCut.targetPlayerId
+              ? pendingDualCut.targetWireId
               : null;
 
           return (
@@ -231,13 +245,11 @@ export function GameBoard({
               <PlayerRack
                 wires={playerWires}
                 isLocal={isLocal}
-                selectedWireId={
-                  pendingSelectedId ?? (isDuoCutTarget ? duoCutWireId : null)
-                }
+                selectedWireId={pendingDualCutSelectedId ?? (isDualCutTarget ? dualCutWireId : null)}
                 selectedWireIds={isSoloCutLocal ? soloCutSelected : undefined}
-                selectableWireIds={duoCutSelectableIds ?? soloCutSelectableIds}
+                selectableWireIds={dualCutSelectableIds ?? soloCutSelectableIds}
                 onSelectWire={
-                  isDuoCutTarget
+                  isDualCutTarget
                     ? handleOpponentWireClick
                     : isSoloCutLocal
                       ? handleOwnWireClick
@@ -252,8 +264,8 @@ export function GameBoard({
         })}
       </div>
 
-      {/* Action panel — hidden while a duo cut is pending */}
-      {!pendingDuoCut && (
+      {/* Action panel — hidden while a dual cut is in flight */}
+      {!dualCutInFlight && (
         <ActionPanel
           isMyTurn={isMyTurn}
           players={players}
@@ -272,66 +284,104 @@ export function GameBoard({
         />
       )}
 
-      {/* Duo Cut confirmation modal (proposer selects wire) */}
-      {duoCutModalOpen && duoCutTargetWire && duoCutTargetOwner && (
+      {/* Step 1: Dual Cut guess popup (proposer enters value guess) */}
+      {dualCutGuessOpen && dualCutTargetWire && dualCutTargetOwner && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={handleDuoCutModalCancel}
+          onClick={handleDualCutGuessCancel}
         >
           <div
             className="w-80 rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-900"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              Duo Cut
+              Dual Cut
             </h2>
-            <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
-              Cut {duoCutTargetOwner.name}&apos;s wire #
-              {duoCutTargetWire.rackPosition + 1}?{" "}
-              {duoCutTargetOwner.name} will need to confirm.
+            <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+              Guess the value of {dualCutTargetOwner.name}&apos;s wire #
+              {dualCutTargetWire.rackPosition + 1}.
             </p>
+            <input
+              type="text"
+              value={dualCutGuess}
+              onChange={(e) => setDualCutGuess(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleDualCutGuessSubmit()}
+              placeholder="Enter value…"
+              autoFocus
+              className="mb-4 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+            />
             <div className="flex gap-3">
               <button
-                onClick={handleDuoCutModalCancel}
+                onClick={handleDualCutGuessCancel}
                 className="flex-1 rounded-lg border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
               >
                 Cancel
               </button>
               <button
-                onClick={handleDuoCutConfirm}
-                className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                onClick={handleDualCutGuessSubmit}
+                disabled={!dualCutGuess.trim()}
+                className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                Confirm Cut
+                Propose Cut
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Duo Cut respond popup (target player) */}
-      {isTarget && pendingDuoCut && pendingProposerPlayer && (
+      {/* Step 2: Owner confirm/deny popup */}
+      {isTarget && pendingDualCut && !pendingDualCutCorrect && pendingProposerPlayer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-80 rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-900">
             <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              Incoming Cut
+              Dual Cut — Incoming Guess
             </h2>
             <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
-              {pendingProposerPlayer.name} wants to cut your wire #
-              {pendingDuoCut.targetWireRackPosition + 1}.
+              {pendingProposerPlayer.name} guesses your wire #
+              {pendingDualCut.targetWireRackPosition + 1} has value{" "}
+              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                {pendingDualCut.guessedValue}
+              </span>
+              . Is that correct?
             </p>
             <div className="flex gap-3">
               <button
-                onClick={() => onRespondDuoCut(false)}
+                onClick={() => onRespondDualCut(false)}
                 className="flex-1 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
               >
-                Reject
+                No
               </button>
               <button
-                onClick={() => onRespondDuoCut(true)}
+                onClick={() => onRespondDualCut(true)}
                 className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
               >
-                Confirm
+                Yes
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Proposer picks own matching wire after correct guess */}
+      {isCompletingDualCut && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-80 rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-900">
+            <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">
+              Correct Guess!
+            </h2>
+            <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+              Pick a matching wire from your rack to cut both.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {localWires.map((w) => (
+                <button
+                  key={w.id}
+                  onClick={() => onCompleteDualCut(w.id)}
+                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:border-blue-500 hover:bg-blue-50 dark:border-zinc-600 dark:hover:border-blue-400 dark:hover:bg-blue-900/20"
+                >
+                  Wire #{w.rackPosition + 1}
+                </button>
+              ))}
             </div>
           </div>
         </div>
