@@ -6,6 +6,7 @@ import {
   makeGame,
   makePlayer,
   makeWire,
+  makeInfoToken,
   makeValidationToken,
   makeTurn,
   resetIds,
@@ -326,6 +327,26 @@ describe("GameBoard", () => {
     await user.click(localWireButtons[1]);
     await user.click(screen.getByRole("button", { name: "Confirm Solo Cut" }));
     expect(props.onSoloCut).toHaveBeenCalledWith("4");
+  });
+
+  it("shows info token badge on opponent wire", () => {
+    const props = setup({
+      infoTokens: [makeInfoToken({ wireId: "w3", value: "3" })],
+    });
+    render(<GameBoard {...props} />);
+    // Scope to Bob's rack — the badge "1" must appear there
+    const bobContainer = getRackContainer("Bob");
+    expect(within(bobContainer).getByText("1")).toBeInTheDocument();
+  });
+
+  it("does not show info token badge on local player's own wire", () => {
+    const props = setup({
+      infoTokens: [makeInfoToken({ wireId: "w1", value: "3" })],
+    });
+    render(<GameBoard {...props} />);
+    // w1 belongs to p1 (local) — badge must not appear in "You" rack
+    const youContainer = getRackContainer("You");
+    expect(within(youContainer).queryByText("1")).not.toBeInTheDocument();
   });
 
   it("renders validation tracker with validated values", () => {
