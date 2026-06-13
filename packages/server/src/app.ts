@@ -13,7 +13,7 @@ import { authenticateUpgrade } from './ws/auth.js';
 import { broadcastGameState } from './ws/state-broadcaster.js';
 
 export async function buildApp() {
-  const app = Fastify({ logger: true });
+  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.url'] } });
 
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
@@ -91,7 +91,7 @@ export async function buildApp() {
         pendingMessages.push(raw);
         return;
       }
-      await handleMessage(socket, raw.toString());
+      await handleMessage(socket, raw.toString(), app.log);
     });
 
     socket.on('close', () => {
@@ -131,7 +131,7 @@ export async function buildApp() {
       // Auth and reconnect complete — replay buffered messages in order
       authComplete = true;
       for (const buffered of pendingMessages) {
-        await handleMessage(socket, buffered.toString());
+        await handleMessage(socket, buffered.toString(), app.log);
       }
     } catch (err) {
       app.log.error({ err }, '[WS /ws] upgrade error');
