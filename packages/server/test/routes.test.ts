@@ -229,7 +229,7 @@ describe("routes", () => {
       const res = await seedApp.inject({ method: "POST", url: "/dev/seed" });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ joinCode: "DEVGAME", profileId: "prof-dev", playerName: "Dev" });
+      expect(res.json()).toEqual({ joinCode: "DEVGAME", profileId: "prof-dev", playerName: "Dev", mission: 1 });
       expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "prof-dev");
       expect(mockEngine.joinGame).toHaveBeenCalledTimes(3);
       expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Alice");
@@ -237,6 +237,46 @@ describe("routes", () => {
       expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Carol");
       expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 1);
       expect(mockEngine.completeSetup).toHaveBeenCalledWith("g1");
+    });
+
+    it("accepts a mission param and seeds that mission", async () => {
+      const profile = makeProfile({ id: "prof-dev", name: "Dev" });
+      const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
+      const player = makePlayer({ id: "p1", gameId: "g1" });
+      const startedGame = { ...game, status: "setup" as const };
+      const activeGame = { ...game, status: "active" as const };
+
+      mockProfilesDb.getProfileByName.mockResolvedValue(null);
+      mockProfilesDb.createProfile.mockResolvedValue(profile);
+      mockEngine.createGame.mockResolvedValue({ game, player });
+      mockEngine.joinGame.mockResolvedValue({ game, player, players: [player] });
+      mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
+      mockEngine.completeSetup.mockResolvedValue(activeGame);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([player]);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([]);
+
+      const res = await seedApp.inject({
+        method: "POST", url: "/dev/seed",
+        payload: { mission: 5 },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ mission: 5 });
+      expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 5);
+    });
+
+    it.each([
+      { mission: 0, label: "below range" },
+      { mission: 9, label: "above range" },
+      { mission: 1.5, label: "non-integer" },
+      { mission: "five", label: "non-number" },
+    ])("returns 400 for invalid mission ($label)", async ({ mission }) => {
+      const res = await seedApp.inject({
+        method: "POST", url: "/dev/seed",
+        payload: { mission },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: "mission must be an integer between 1 and 8" });
     });
 
     it("reuses existing Dev profile", async () => {
