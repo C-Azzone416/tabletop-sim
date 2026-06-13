@@ -27,6 +27,7 @@ interface GameBoardProps {
   onRespondDuoCut: (accepted: boolean) => void;
   onSoloCut: (wireValue: string) => void;
   onDoubleDetector: (targetWireId: string, targetWireId2: string) => void;
+  onRevealReds: () => void;
 }
 
 export function GameBoard({
@@ -42,6 +43,7 @@ export function GameBoard({
   onRespondDuoCut,
   onSoloCut,
   onDoubleDetector,
+  onRevealReds,
 }: GameBoardProps) {
   const isMyTurn = game.currentTurnPlayerId === localPlayerId;
   const localPlayer = players.find((p) => p.id === localPlayerId);
@@ -141,8 +143,15 @@ export function GameBoard({
           localPlayerId={localPlayerId}
           players={players}
         />
-        <div className="flex gap-6">
-          <ValidationTracker validationTokens={validationTokens} />
+        <div className="flex items-start gap-6">
+          <ValidationTracker
+            validationTokens={validationTokens}
+            missionNumber={game.mission}
+          />
+          <DetonatorDisplay
+            position={game.detonatorPosition}
+            max={game.detonatorMax}
+          />
         </div>
       </div>
 
@@ -251,6 +260,7 @@ export function GameBoard({
           wires={wires}
           localPlayerId={localPlayerId}
           doubleDetectorUsed={localPlayer?.doubleDetectorUsed ?? false}
+          hasRedWires={game.mission >= 5}
           mode={actionMode}
           onSetMode={setActionMode}
           onCancel={resetAction}
@@ -258,6 +268,7 @@ export function GameBoard({
           soloCutMatchStatus={soloCutMatchStatus()}
           onSoloCutConfirm={handleSoloCutConfirm}
           onDoubleDetector={onDoubleDetector}
+          onRevealReds={onRevealReds}
         />
       )}
 
@@ -325,6 +336,34 @@ export function GameBoard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function DetonatorDisplay({
+  position,
+  max,
+}: {
+  position: number;
+  max: number;
+}) {
+  const urgent = position >= max - 1;
+  const warning = !urgent && position >= Math.ceil(max / 2);
+
+  const colorClass = urgent
+    ? "text-red-600 dark:text-red-400 font-bold"
+    : warning
+      ? "text-amber-600 dark:text-amber-400"
+      : "text-zinc-500 dark:text-zinc-400";
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <h3 className="text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        Detonator
+      </h3>
+      <span className={`text-sm tabular-nums ${colorClass}`}>
+        {position} / {max}
+      </span>
     </div>
   );
 }
