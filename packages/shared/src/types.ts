@@ -3,7 +3,7 @@
 export type GameStatus = 'waiting' | 'setup' | 'active' | 'won' | 'lost';
 export type WireColor = 'blue' | 'yellow' | 'red';
 export type WireStatus = 'hidden' | 'cut' | 'revealed';
-export type ActionType = 'duo_cut' | 'solo_cut' | 'double_detector' | 'reveal_reds';
+export type ActionType = 'dual_cut' | 'solo_cut' | 'double_detector' | 'reveal_reds';
 export type TurnResult = 'success' | 'fail' | 'explosion';
 
 export interface Game {
@@ -18,8 +18,9 @@ export interface Game {
   pendingInterrogationAskerId: string | null;
   pendingInterrogationAnswererId: string | null;
   pendingInterrogationWireId: string | null;
-  pendingDuoCutWireId: string | null;
-  pendingDuoCutProposerId: string | null;
+  pendingDualCutWireId: string | null;
+  pendingDualCutProposerId: string | null;
+  pendingDualCutGuessedValue: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -80,9 +81,9 @@ export type ClientMessage =
   | { type: 'join_game'; joinCode: string; playerName: string }
   | { type: 'start_game'; mission?: number }
   | { type: 'place_info_token'; wireId: string }
-  | { type: 'duo_cut'; targetWireId: string; guessedValue: string }
-  | { type: 'propose_duo_cut'; targetWireId: string }
-  | { type: 'respond_duo_cut'; accepted: boolean }
+  | { type: 'propose_dual_cut'; targetWireId: string; guessedValue: string }
+  | { type: 'respond_dual_cut'; accepted: boolean }
+  | { type: 'complete_dual_cut'; ownWireId: string }
   | { type: 'solo_cut'; wireValue: string }
   | { type: 'double_detector'; targetWireId: string; targetWireId2: string }
   | { type: 'reveal_reds' }
@@ -99,7 +100,8 @@ export type ServerMessage =
   | { type: 'setup_complete'; game: Game }
   | { type: 'game_state'; game: Game; players: Player[]; wires: Wire[]; infoTokens: InfoToken[]; validationTokens: ValidationToken[]; localPlayerId: string }
   | { type: 'player_joined'; player: Player }
-  | { type: 'duo_cut_proposed'; proposingPlayerId: string; targetPlayerId: string; targetWireId: string; targetWireRackPosition: number }
+  | { type: 'dual_cut_proposed'; proposingPlayerId: string; targetPlayerId: string; targetWireId: string; targetWireRackPosition: number; guessedValue: string }
+  | { type: 'dual_cut_correct'; targetWireId: string; targetWireRackPosition: number; targetWireColor: WireColor }
   | { type: 'turn_result'; turn: Turn; game: Game; updatedWires: Wire[] }
   | { type: 'validation_complete'; wireValue: string; wireColor: WireColor; game: Game }
   | { type: 'wire_updated'; wire: Wire }

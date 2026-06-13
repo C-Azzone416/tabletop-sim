@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Wire, Player } from "@tabletop/shared";
 
-export type ActionMode = "idle" | "duo_cut" | "solo_cut" | "double_detector" | "reveal_reds";
+export type ActionMode = "idle" | "dual_cut" | "solo_cut" | "double_detector" | "reveal_reds";
 
 interface ActionPanelProps {
   isMyTurn: boolean;
@@ -72,10 +72,10 @@ export function ActionPanel({
         </h3>
         <div className="flex gap-2">
           <button
-            onClick={() => onSetMode("duo_cut")}
+            onClick={() => onSetMode("dual_cut")}
             className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
           >
-            Duo Cut
+            Dual Cut
           </button>
           <button
             onClick={() => onSetMode("solo_cut")}
@@ -108,7 +108,7 @@ export function ActionPanel({
     <div className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          {mode === "duo_cut" && "Duo Cut — Click an opponent's wire on the board"}
+          {mode === "dual_cut" && "Dual Cut — Click an opponent's wire to guess its value"}
           {mode === "solo_cut" && "Solo Cut — Select 2 matching wires on your rack"}
           {mode === "double_detector" && "Double Detector — Pick 2 wires to compare"}
           {mode === "reveal_reds" && "Reveal Reds"}
@@ -121,9 +121,9 @@ export function ActionPanel({
         </button>
       </div>
 
-      {mode === "duo_cut" && (
+      {mode === "dual_cut" && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Click any opponent wire tile on the board above to select it.
+          Click any opponent wire tile on the board above to open the guess popup.
         </p>
       )}
 
