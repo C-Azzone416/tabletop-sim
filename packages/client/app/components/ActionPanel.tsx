@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Wire, Player } from "@tabletop/shared";
 
-export type ActionMode = "idle" | "duo_cut" | "solo_cut" | "double_detector";
+export type ActionMode = "idle" | "duo_cut" | "solo_cut" | "double_detector" | "reveal_reds";
 
 interface ActionPanelProps {
   isMyTurn: boolean;
@@ -11,6 +11,7 @@ interface ActionPanelProps {
   wires: Wire[];
   localPlayerId: string;
   doubleDetectorUsed: boolean;
+  hasRedWires: boolean;
   mode: ActionMode;
   onSetMode: (mode: ActionMode) => void;
   onCancel: () => void;
@@ -20,6 +21,8 @@ interface ActionPanelProps {
   onSoloCutConfirm: () => void;
   // Double detector — wire selection stays in this panel
   onDoubleDetector: (targetWireId: string, targetWireId2: string) => void;
+  // Reveal reds — one-click action
+  onRevealReds: () => void;
 }
 
 export function ActionPanel({
@@ -27,6 +30,7 @@ export function ActionPanel({
   wires,
   localPlayerId,
   doubleDetectorUsed,
+  hasRedWires,
   mode,
   onSetMode,
   onCancel,
@@ -34,6 +38,7 @@ export function ActionPanel({
   soloCutMatchStatus,
   onSoloCutConfirm,
   onDoubleDetector,
+  onRevealReds,
 }: ActionPanelProps) {
   const [ddWire1, setDdWire1] = useState<string | null>(null);
   const [ddWire2, setDdWire2] = useState<string | null>(null);
@@ -86,6 +91,14 @@ export function ActionPanel({
               Double Detector
             </button>
           )}
+          {hasRedWires && (
+            <button
+              onClick={onRevealReds}
+              className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
+            >
+              Reveal Reds
+            </button>
+          )}
         </div>
       </div>
     );
@@ -98,6 +111,7 @@ export function ActionPanel({
           {mode === "duo_cut" && "Duo Cut — Click an opponent's wire on the board"}
           {mode === "solo_cut" && "Solo Cut — Select 2 matching wires on your rack"}
           {mode === "double_detector" && "Double Detector — Pick 2 wires to compare"}
+          {mode === "reveal_reds" && "Reveal Reds"}
         </h3>
         <button
           onClick={handleCancelAll}
