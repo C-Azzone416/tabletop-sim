@@ -186,6 +186,9 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
       };
     }
 
+    case "players_updated":
+      return { ...state, players: msg.players };
+
     case "error":
       return { ...state, error: msg.message };
 

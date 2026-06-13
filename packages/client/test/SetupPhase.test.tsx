@@ -45,9 +45,9 @@ describe("SetupPhase", () => {
     expect(screen.getByText("Setup Phase - Wire Interrogation")).toBeInTheDocument();
   });
 
-  it("labels local player rack as hidden", () => {
+  it("labels local player rack", () => {
     render(<SetupPhase {...setup()} />);
-    expect(screen.getByText("Your Rack (hidden from you)")).toBeInTheDocument();
+    expect(screen.getByText("Your Rack")).toBeInTheDocument();
   });
 
   it("shows other player name", () => {
@@ -74,8 +74,8 @@ describe("SetupPhase", () => {
     const props = setup();
     render(<SetupPhase {...props} />);
 
-    // Local rack is labeled "Your Rack (hidden from you)" — its wires have no click handler
-    const yourRackHeading = screen.getByText("Your Rack (hidden from you)");
+    // Local rack is labeled "Your Rack" — its wires have no click handler
+    const yourRackHeading = screen.getByText("Your Rack");
     const yourRackSection = yourRackHeading.closest("div")!;
     const localWireButton = within(yourRackSection).getAllByRole("button")[0];
     expect(localWireButton).toBeDefined();

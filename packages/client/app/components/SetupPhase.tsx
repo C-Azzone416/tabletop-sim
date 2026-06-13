@@ -54,7 +54,7 @@ export function SetupPhase({
           <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
             {isLocalPlayerActive
               ? "Your Turn - Select an opponent's wire"
-              : `Waiting for ${activePlayer?.name}'s turn`}
+              : `Waiting for ${activePlayer?.name ?? "..."}...`}
           </p>
         </div>
       </div>
@@ -70,7 +70,7 @@ export function SetupPhase({
           return (
             <div key={player.id}>
               <h3 className="mb-2 text-sm font-medium text-zinc-600 dark:text-zinc-400">
-                {isLocal ? "Your Rack (hidden from you)" : player.name}
+                {isLocal ? "Your Rack" : player.name}
               </h3>
               <PlayerRack
                 wires={playerWires}

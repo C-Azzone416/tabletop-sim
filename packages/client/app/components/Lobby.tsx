@@ -32,6 +32,13 @@ export function Lobby({
   const isCaptain = localPlayerId === captainId;
   const canStart = players.length >= 1 && players.length <= 4;
   const [selectedMission, setSelectedMission] = useState(1);
+  const [isStarting, setIsStarting] = useState(false);
+
+  const handleStartGame = () => {
+    if (isStarting) return;
+    setIsStarting(true);
+    onStartGame(selectedMission);
+  };
 
   return (
     <div className="flex flex-col items-center gap-8 p-8">
@@ -128,11 +135,11 @@ export function Lobby({
           </div>
 
           <button
-            onClick={() => onStartGame(selectedMission)}
-            disabled={!canStart}
+            onClick={handleStartGame}
+            disabled={!canStart || isStarting}
             className="rounded-full bg-green-600 px-8 py-3 font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Start Mission {selectedMission}
+            {isStarting ? "Starting..." : `Start Mission ${selectedMission}`}
           </button>
 
           {!canStart && (
