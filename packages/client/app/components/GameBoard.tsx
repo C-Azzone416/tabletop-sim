@@ -151,17 +151,19 @@ export function GameBoard({
   return (
     <div className="flex flex-col gap-6 p-6">
       {/* Status bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="grid grid-cols-3 items-center gap-4">
         <TurnIndicator
           currentTurnPlayerId={game.currentTurnPlayerId}
           localPlayerId={localPlayerId}
           players={players}
         />
-        <div className="flex items-start gap-6">
+        <div className="flex justify-center">
           <ValidationTracker
             validationTokens={validationTokens}
             missionNumber={game.mission}
           />
+        </div>
+        <div className="flex justify-end">
           <DetonatorDisplay
             position={game.detonatorPosition}
             max={game.detonatorMax}
