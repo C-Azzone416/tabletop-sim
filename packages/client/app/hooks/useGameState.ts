@@ -18,8 +18,12 @@ export interface GameState {
   infoTokens: InfoToken[];
   validationTokens: ValidationToken[];
   lastTurnResult: Extract<ServerMessage, { type: "turn_result" }> | null;
+  pendingDualCut: Extract<ServerMessage, { type: "dual_cut_proposed" }> | null;
+  pendingDualCutCorrect: Extract<ServerMessage, { type: "dual_cut_correct" }> | null;
   gameOverReason: string | null;
   error: string | null;
+  pendingWireQuestion: Extract<ServerMessage, { type: "wire_question" }> | null;
+  lastInterrogationResult: Extract<ServerMessage, { type: "interrogation_result" }> | null;
 }
 
 const initialState: GameState = {
@@ -30,8 +34,12 @@ const initialState: GameState = {
   infoTokens: [],
   validationTokens: [],
   lastTurnResult: null,
+  pendingDualCut: null,
+  pendingDualCutCorrect: null,
   gameOverReason: null,
   error: null,
+  pendingWireQuestion: null,
+  lastInterrogationResult: null,
 };
 
 type Action =
@@ -93,14 +101,31 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
         game: msg.game,
       };
 
-    case "game_state":
+    case "game_state": {
+      const localPlayer =
+        msg.players.find((p) => p.id === msg.localPlayerId) ??
+        state.localPlayer;
       return {
         ...state,
         game: msg.game,
+        localPlayer,
         players: msg.players,
         wires: msg.wires,
         infoTokens: msg.infoTokens,
         validationTokens: msg.validationTokens,
+      };
+    }
+
+    case "dual_cut_proposed":
+      return {
+        ...state,
+        pendingDualCut: msg,
+      };
+
+    case "dual_cut_correct":
+      return {
+        ...state,
+        pendingDualCutCorrect: msg,
       };
 
     case "turn_result": {
@@ -113,6 +138,8 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
         game: msg.game,
         wires: updatedWires,
         lastTurnResult: msg,
+        pendingDualCut: null,
+        pendingDualCutCorrect: null,
       };
     }
 
@@ -126,6 +153,7 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
             id: crypto.randomUUID(),
             gameId: msg.game.id,
             wireValue: msg.wireValue,
+            wireColor: msg.wireColor,
             validatedAt: new Date().toISOString(),
           },
         ],
@@ -146,6 +174,29 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
           : null,
         gameOverReason: msg.reason,
       };
+
+    case "wire_question":
+      return {
+        ...state,
+        pendingWireQuestion: msg,
+      };
+
+    case "interrogation_result": {
+      const updatedWires = state.wires.map((w) => {
+        const updated = msg.updatedWires.find((uw) => uw.id === w.id);
+        return updated ?? w;
+      });
+      return {
+        ...state,
+        game: msg.game,
+        wires: updatedWires,
+        lastInterrogationResult: msg,
+        pendingWireQuestion: null,
+      };
+    }
+
+    case "players_updated":
+      return { ...state, players: msg.players };
 
     case "error":
       return { ...state, error: msg.message };

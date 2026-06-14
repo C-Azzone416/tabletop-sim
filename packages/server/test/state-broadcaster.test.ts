@@ -1,20 +1,30 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { buildPlayerView } from "../src/ws/state-broadcaster.js";
 import { makeWire, resetIds } from "./fixtures.js";
+
+vi.mock("../src/db/wires.js", () => ({ getWiresByGameId: vi.fn() }));
+vi.mock("../src/db/tokens.js", () => ({
+  getInfoTokensByGameId: vi.fn(),
+  getValidationTokensByGameId: vi.fn(),
+}));
+vi.mock("../src/ws/connection-manager.js", () => ({
+  getGameSockets: vi.fn(() => new Map()),
+  sendToPlayer: vi.fn(),
+}));
 
 describe("state-broadcaster", () => {
   beforeEach(() => resetIds());
 
   describe("buildPlayerView", () => {
-    it("redacts values for the requesting player's own hidden wires", () => {
+    it("shows own hidden wires and redacts other players' hidden wires", () => {
       const wires = [
         makeWire({ id: "w1", playerId: "p1", value: "3", status: "hidden" }),
         makeWire({ id: "w2", playerId: "p2", value: "5", status: "hidden" }),
       ];
 
       const view = buildPlayerView(wires, "p1");
-      expect(view[0].value).toBeNull(); // own wire — redacted
-      expect(view[1].value).toBe("5"); // other's wire — visible
+      expect(view[0].value).toBe("3"); // own wire — visible
+      expect(view[1].value).toBeNull(); // other's wire — redacted
     });
 
     it("does not redact own cut wires", () => {
@@ -35,7 +45,7 @@ describe("state-broadcaster", () => {
       expect(view[0].value).toBe("3");
     });
 
-    it("shows all other players' wires regardless of status", () => {
+    it("shows cut wires from other players (not hidden)", () => {
       const wires = [
         makeWire({ id: "w1", playerId: "p2", value: "1", status: "hidden" }),
         makeWire({ id: "w2", playerId: "p2", value: "2", status: "cut" }),
@@ -43,9 +53,9 @@ describe("state-broadcaster", () => {
       ];
 
       const view = buildPlayerView(wires, "p1");
-      expect(view[0].value).toBe("1");
-      expect(view[1].value).toBe("2");
-      expect(view[2].value).toBe("4");
+      expect(view[0].value).toBeNull(); // other player's hidden wire — redacted
+      expect(view[1].value).toBe("2");  // other player's cut wire — visible
+      expect(view[2].value).toBeNull(); // other player's hidden wire — redacted
     });
 
     it("handles empty wire array", () => {
@@ -55,11 +65,11 @@ describe("state-broadcaster", () => {
 
     it("does not mutate the original wires", () => {
       const wires = [
-        makeWire({ id: "w1", playerId: "p1", value: "3", status: "hidden" }),
+        makeWire({ id: "w1", playerId: "p2", value: "3", status: "hidden" }),
       ];
 
       buildPlayerView(wires, "p1");
-      expect(wires[0].value).toBe("3"); // original unchanged
+      expect(wires[0].value).toBe("3"); // original unchanged even though view redacts it
     });
   });
 });

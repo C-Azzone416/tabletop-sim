@@ -5,12 +5,13 @@ import { getGameSockets, sendToPlayer } from './connection-manager.js';
 
 /**
  * Build a player-specific view of the game state.
- * CRITICAL: Redacts wire values for the requesting player's own hidden wires.
+ * CRITICAL: Redacts wire values for OTHER players' hidden wires.
+ * Each player can see their own wire values but not other players' hidden values.
  * This is the hidden information security boundary.
  */
 export function buildPlayerView(wires: Wire[], requestingPlayerId: string): Wire[] {
   return wires.map(wire => {
-    if (wire.playerId === requestingPlayerId && wire.status === 'hidden') {
+    if (wire.playerId !== requestingPlayerId && wire.status === 'hidden') {
       return { ...wire, value: null };
     }
     return wire;
@@ -40,6 +41,7 @@ export async function broadcastGameState(
       wires: playerWires,
       infoTokens,
       validationTokens,
+      localPlayerId: playerId,
     };
     sendToPlayer(gameId, playerId, message);
   }

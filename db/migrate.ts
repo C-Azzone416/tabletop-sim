@@ -18,6 +18,12 @@ const migrations = [
   '001_initial_schema.sql',
   '002_mission1_updates.sql',
   '003_player_profiles.sql',
+  '004_multi_color_mission.sql',
+  '005_player_ready.sql',
+  '006_setup_done.sql',
+  '007_wire_interrogation.sql',
+  '008_duo_cut_pending.sql',
+  '009_dual_cut.sql',
 ];
 
 async function run() {

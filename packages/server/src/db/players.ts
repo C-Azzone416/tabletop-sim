@@ -1,13 +1,25 @@
 import { sql } from './client.js';
 import type { Player } from '@tabletop/shared';
 
-export async function createPlayer(gameId: string, name: string, seatOrder: number): Promise<Player> {
+export async function createPlayer(gameId: string, name: string, seatOrder: number, profileId?: string): Promise<Player> {
   const rows = await sql`
-    INSERT INTO players (game_id, name, seat_order)
-    VALUES (${gameId}, ${name}, ${seatOrder})
+    INSERT INTO players (game_id, name, seat_order, profile_id)
+    VALUES (${gameId}, ${name}, ${seatOrder}, ${profileId ?? null})
     RETURNING *
   `;
   return mapPlayer(rows[0]);
+}
+
+export async function getActivePlayerByProfileId(profileId: string): Promise<Player | null> {
+  const rows = await sql`
+    SELECT p.* FROM players p
+    JOIN games g ON g.id = p.game_id
+    WHERE p.profile_id = ${profileId}
+      AND g.status IN ('waiting', 'setup', 'active')
+    ORDER BY p.joined_at DESC
+    LIMIT 1
+  `;
+  return rows[0] ? mapPlayer(rows[0]) : null;
 }
 
 export async function getPlayersByGameId(gameId: string): Promise<Player[]> {
@@ -29,6 +41,20 @@ export async function markDoubleDetectorUsed(id: string): Promise<Player> {
   return mapPlayer(rows[0]);
 }
 
+export async function markPlayerReady(id: string): Promise<Player> {
+  const rows = await sql`
+    UPDATE players SET ready = TRUE WHERE id = ${id} RETURNING *
+  `;
+  return mapPlayer(rows[0]);
+}
+
+export async function markSetupDone(id: string): Promise<Player> {
+  const rows = await sql`
+    UPDATE players SET setup_done = TRUE WHERE id = ${id} RETURNING *
+  `;
+  return mapPlayer(rows[0]);
+}
+
 function mapPlayer(row: Record<string, unknown>): Player {
   return {
     id: row.id as string,
@@ -36,6 +62,8 @@ function mapPlayer(row: Record<string, unknown>): Player {
     name: row.name as string,
     seatOrder: row.seat_order as number,
     doubleDetectorUsed: row.double_detector_used as boolean,
+    ready: (row.ready as boolean) ?? false,
+    setupDone: (row.setup_done as boolean) ?? false,
     joinedAt: row.joined_at as string,
   };
 }

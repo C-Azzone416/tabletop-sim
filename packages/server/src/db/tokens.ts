@@ -1,5 +1,5 @@
 import { sql } from './client.js';
-import type { InfoToken, ValidationToken } from '@tabletop/shared';
+import type { InfoToken, ValidationToken, WireColor } from '@tabletop/shared';
 
 export async function createInfoToken(gameId: string, wireId: string, value: string): Promise<InfoToken> {
   const rows = await sql`
@@ -17,10 +17,10 @@ export async function getInfoTokensByGameId(gameId: string): Promise<InfoToken[]
   return rows.map(mapInfoToken);
 }
 
-export async function createValidationToken(gameId: string, wireValue: string): Promise<ValidationToken> {
+export async function createValidationToken(gameId: string, wireValue: string, wireColor: WireColor): Promise<ValidationToken> {
   const rows = await sql`
-    INSERT INTO validation_tokens (game_id, wire_value)
-    VALUES (${gameId}, ${wireValue})
+    INSERT INTO validation_tokens (game_id, wire_value, wire_color)
+    VALUES (${gameId}, ${wireValue}, ${wireColor})
     RETURNING *
   `;
   return mapValidationToken(rows[0]);
@@ -48,6 +48,7 @@ function mapValidationToken(row: Record<string, unknown>): ValidationToken {
     id: row.id as string,
     gameId: row.game_id as string,
     wireValue: row.wire_value as string,
+    wireColor: row.wire_color as WireColor,
     validatedAt: row.validated_at as string,
   };
 }

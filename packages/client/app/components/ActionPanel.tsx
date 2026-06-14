@@ -3,68 +3,64 @@
 import { useState } from "react";
 import type { Wire, Player } from "@tabletop/shared";
 
+export type ActionMode = "idle" | "dual_cut" | "solo_cut" | "double_detector" | "reveal_reds";
+
 interface ActionPanelProps {
   isMyTurn: boolean;
   players: Player[];
   wires: Wire[];
   localPlayerId: string;
   doubleDetectorUsed: boolean;
-  onDuoCut: (targetWireId: string, guessedValue: string) => void;
-  onSoloCut: (wireValue: string) => void;
+  hasRedWires: boolean;
+  mode: ActionMode;
+  onSetMode: (mode: ActionMode) => void;
+  onCancel: () => void;
+  // Solo cut — wire selection happens on board tiles
+  soloCutSelectedCount: number;
+  soloCutMatchStatus: "idle" | "valid" | "mismatch";
+  onSoloCutConfirm: () => void;
+  // Double detector — wire selection stays in this panel
   onDoubleDetector: (targetWireId: string, targetWireId2: string) => void;
+  // Reveal reds — one-click action
+  onRevealReds: () => void;
 }
-
-type ActionMode = "idle" | "duo_cut" | "solo_cut" | "double_detector";
 
 export function ActionPanel({
   isMyTurn,
-  players,
   wires,
   localPlayerId,
   doubleDetectorUsed,
-  onDuoCut,
-  onSoloCut,
+  hasRedWires,
+  mode,
+  onSetMode,
+  onCancel,
+  soloCutSelectedCount,
+  soloCutMatchStatus,
+  onSoloCutConfirm,
   onDoubleDetector,
+  onRevealReds,
 }: ActionPanelProps) {
-  const [mode, setMode] = useState<ActionMode>("idle");
-  const [selectedWire1, setSelectedWire1] = useState<string | null>(null);
-  const [selectedWire2, setSelectedWire2] = useState<string | null>(null);
-  const [guessedValue, setGuessedValue] = useState("");
+  const [ddWire1, setDdWire1] = useState<string | null>(null);
+  const [ddWire2, setDdWire2] = useState<string | null>(null);
 
   if (!isMyTurn) return null;
 
-  const otherPlayerWires = wires.filter(
-    (w) => w.playerId !== localPlayerId && w.status === "hidden"
-  );
-  const myWires = wires.filter(
+  const myHiddenWires = wires.filter(
     (w) => w.playerId === localPlayerId && w.status === "hidden"
   );
 
-  const reset = () => {
-    setMode("idle");
-    setSelectedWire1(null);
-    setSelectedWire2(null);
-    setGuessedValue("");
-  };
-
-  const handleSubmitDuoCut = () => {
-    if (selectedWire1 && guessedValue) {
-      onDuoCut(selectedWire1, guessedValue);
-      reset();
-    }
-  };
-
-  const handleSubmitSoloCut = () => {
-    if (guessedValue) {
-      onSoloCut(guessedValue);
-      reset();
-    }
+  const handleCancelAll = () => {
+    setDdWire1(null);
+    setDdWire2(null);
+    onCancel();
   };
 
   const handleSubmitDoubleDetector = () => {
-    if (selectedWire1 && selectedWire2) {
-      onDoubleDetector(selectedWire1, selectedWire2);
-      reset();
+    if (ddWire1 && ddWire2) {
+      onDoubleDetector(ddWire1, ddWire2);
+      setDdWire1(null);
+      setDdWire2(null);
+      onCancel();
     }
   };
 
@@ -76,23 +72,31 @@ export function ActionPanel({
         </h3>
         <div className="flex gap-2">
           <button
-            onClick={() => setMode("duo_cut")}
+            onClick={() => onSetMode("dual_cut")}
             className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
           >
-            Duo Cut
+            Dual Cut
           </button>
           <button
-            onClick={() => setMode("solo_cut")}
+            onClick={() => onSetMode("solo_cut")}
             className="flex-1 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
           >
             Solo Cut
           </button>
           {!doubleDetectorUsed && (
             <button
-              onClick={() => setMode("double_detector")}
+              onClick={() => onSetMode("double_detector")}
               className="flex-1 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-700"
             >
               Double Detector
+            </button>
+          )}
+          {hasRedWires && (
+            <button
+              onClick={onRevealReds}
+              className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
+            >
+              Reveal Reds
             </button>
           )}
         </div>
@@ -104,75 +108,41 @@ export function ActionPanel({
     <div className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          {mode === "duo_cut" && "Duo Cut — Pick a wire and guess its value"}
-          {mode === "solo_cut" && "Solo Cut — Name a value to cut from your rack"}
+          {mode === "dual_cut" && "Dual Cut — Click an opponent's wire to guess its value"}
+          {mode === "solo_cut" && "Solo Cut — Select 2 matching wires on your rack"}
           {mode === "double_detector" && "Double Detector — Pick 2 wires to compare"}
+          {mode === "reveal_reds" && "Reveal Reds"}
         </h3>
         <button
-          onClick={reset}
+          onClick={handleCancelAll}
           className="text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
         >
           Cancel
         </button>
       </div>
 
-      {mode === "duo_cut" && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {otherPlayerWires.map((w) => {
-              const owner = players.find((p) => p.id === w.playerId);
-              return (
-                <button
-                  key={w.id}
-                  onClick={() => setSelectedWire1(w.id)}
-                  className={`rounded-lg border px-3 py-2 text-sm ${
-                    selectedWire1 === w.id
-                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30"
-                      : "border-zinc-300 dark:border-zinc-600"
-                  }`}
-                >
-                  {owner?.name} #{w.rackPosition + 1} ({w.value ?? "?"})
-                </button>
-              );
-            })}
-          </div>
-          <input
-            type="text"
-            value={guessedValue}
-            onChange={(e) => setGuessedValue(e.target.value)}
-            placeholder="Guess value (1-6)"
-            maxLength={1}
-            className="w-24 rounded-lg border border-zinc-300 px-3 py-2 text-center dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
-          />
-          <button
-            onClick={handleSubmitDuoCut}
-            disabled={!selectedWire1 || !guessedValue}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            Cut Wire
-          </button>
-        </div>
+      {mode === "dual_cut" && (
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Click any opponent wire tile on the board above to open the guess popup.
+        </p>
       )}
 
       {mode === "solo_cut" && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            You have {myWires.length} hidden wires on your rack.
+            {soloCutSelectedCount === 0 && "Select a revealed wire from your rack."}
+            {soloCutSelectedCount === 1 && "Select one more matching wire."}
+            {soloCutSelectedCount >= 2 && soloCutMatchStatus === "valid" && "Wires match — ready to cut!"}
+            {soloCutSelectedCount >= 2 && soloCutMatchStatus === "mismatch" && (
+              <span className="text-red-500 dark:text-red-400">Selected wires don&apos;t match.</span>
+            )}
           </p>
-          <input
-            type="text"
-            value={guessedValue}
-            onChange={(e) => setGuessedValue(e.target.value)}
-            placeholder="Value to cut (1-6)"
-            maxLength={1}
-            className="w-24 rounded-lg border border-zinc-300 px-3 py-2 text-center dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
-          />
           <button
-            onClick={handleSubmitSoloCut}
-            disabled={!guessedValue}
+            onClick={onSoloCutConfirm}
+            disabled={soloCutMatchStatus !== "valid"}
             className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
-            Solo Cut
+            Confirm Solo Cut
           </button>
         </div>
       )}
@@ -183,21 +153,20 @@ export function ActionPanel({
             Select 2 of your own wires to check if they share the same value.
           </p>
           <div className="flex flex-wrap gap-2">
-            {myWires.map((w) => {
-              const isSelected =
-                selectedWire1 === w.id || selectedWire2 === w.id;
+            {myHiddenWires.map((w) => {
+              const isSelected = ddWire1 === w.id || ddWire2 === w.id;
               return (
                 <button
                   key={w.id}
                   onClick={() => {
-                    if (selectedWire1 === w.id) {
-                      setSelectedWire1(null);
-                    } else if (selectedWire2 === w.id) {
-                      setSelectedWire2(null);
-                    } else if (!selectedWire1) {
-                      setSelectedWire1(w.id);
-                    } else if (!selectedWire2) {
-                      setSelectedWire2(w.id);
+                    if (ddWire1 === w.id) {
+                      setDdWire1(null);
+                    } else if (ddWire2 === w.id) {
+                      setDdWire2(null);
+                    } else if (!ddWire1) {
+                      setDdWire1(w.id);
+                    } else if (!ddWire2) {
+                      setDdWire2(w.id);
                     }
                   }}
                   className={`rounded-lg border px-3 py-2 text-sm ${
@@ -213,7 +182,7 @@ export function ActionPanel({
           </div>
           <button
             onClick={handleSubmitDoubleDetector}
-            disabled={!selectedWire1 || !selectedWire2}
+            disabled={!ddWire1 || !ddWire2}
             className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             Check Wires

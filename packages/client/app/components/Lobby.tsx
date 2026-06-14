@@ -30,8 +30,15 @@ export function Lobby({
   onStartGame,
 }: LobbyProps) {
   const isCaptain = localPlayerId === captainId;
-  const canStart = players.length >= 2 && players.length <= 4;
+  const canStart = players.length >= 1 && players.length <= 4;
   const [selectedMission, setSelectedMission] = useState(1);
+  const [isStarting, setIsStarting] = useState(false);
+
+  const handleStartGame = () => {
+    if (isStarting) return;
+    setIsStarting(true);
+    onStartGame(selectedMission);
+  };
 
   return (
     <div className="flex flex-col items-center gap-8 p-8">
@@ -128,20 +135,24 @@ export function Lobby({
           </div>
 
           <button
-            onClick={() => onStartGame(selectedMission)}
-            disabled={!canStart}
+            onClick={handleStartGame}
+            disabled={!canStart || isStarting}
             className="rounded-full bg-green-600 px-8 py-3 font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {canStart
-              ? `Start Mission ${selectedMission}`
-              : `Need ${2 - players.length} more player${players.length === 0 ? "s" : ""}`}
+            {isStarting ? "Starting..." : `Start Mission ${selectedMission}`}
           </button>
+
+          {!canStart && (
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Waiting for at least 1 more player...
+            </p>
+          )}
         </>
       )}
 
       {!isCaptain && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Waiting for the captain to start the game...
+          Waiting for the host to start the game...
         </p>
       )}
     </div>

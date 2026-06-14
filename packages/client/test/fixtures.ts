@@ -17,7 +17,7 @@ export function resetIds() {
 }
 
 export function makeGame(overrides: Partial<Game> = {}): Game {
-  return {
+  const defaults: Game = {
     id: nextId(),
     mission: 1,
     status: "waiting",
@@ -26,10 +26,16 @@ export function makeGame(overrides: Partial<Game> = {}): Game {
     joinCode: "ABC123",
     detonatorPosition: 0,
     detonatorMax: 4,
+    pendingInterrogationAskerId: null,
+    pendingInterrogationAnswererId: null,
+    pendingInterrogationWireId: null,
+    pendingDualCutWireId: null,
+    pendingDualCutProposerId: null,
+    pendingDualCutGuessedValue: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
-    ...overrides,
   };
+  return Object.assign(defaults, overrides);
 }
 
 export function makePlayer(overrides: Partial<Player> = {}): Player {
@@ -39,6 +45,8 @@ export function makePlayer(overrides: Partial<Player> = {}): Player {
     name: `Player ${idCounter}`,
     seatOrder: 0,
     doubleDetectorUsed: false,
+    ready: false,
+    setupDone: false,
     joinedAt: "2026-01-01T00:00:00Z",
     ...overrides,
   };
@@ -75,6 +83,7 @@ export function makeValidationToken(
     id: nextId(),
     gameId: "game-1",
     wireValue: "3",
+    wireColor: "blue" as const,
     validatedAt: "2026-01-01T00:00:00Z",
     ...overrides,
   };
@@ -85,7 +94,7 @@ export function makeTurn(overrides: Partial<Turn> = {}): Turn {
     id: nextId(),
     gameId: "game-1",
     playerId: "player-1",
-    actionType: "duo_cut",
+    actionType: "dual_cut",
     targetWireId: null,
     targetWireId2: null,
     guessedValue: null,

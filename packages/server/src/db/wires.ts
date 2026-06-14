@@ -59,6 +59,22 @@ export async function getWiresByValueAndGame(gameId: string, value: string): Pro
   return rows.map(mapWire);
 }
 
+export async function getWiresByValueColorAndGame(gameId: string, value: string, color: WireColor): Promise<Wire[]> {
+  const rows = await sql`
+    SELECT * FROM wires WHERE game_id = ${gameId} AND value = ${value} AND color = ${color}
+  `;
+  return rows.map(mapWire);
+}
+
+export async function revealRedWires(gameId: string): Promise<Wire[]> {
+  const rows = await sql`
+    UPDATE wires SET status = 'revealed'
+    WHERE game_id = ${gameId} AND color = 'red' AND status = 'hidden'
+    RETURNING *
+  `;
+  return rows.map(mapWire);
+}
+
 function mapWire(row: Record<string, unknown>): Wire {
   return {
     id: row.id as string,
