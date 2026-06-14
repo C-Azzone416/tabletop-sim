@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SetupPhase } from "../app/components/SetupPhase";
-import { makeGame, makePlayer, makeWire, resetIds } from "./fixtures";
+import type { InfoToken } from "@tabletop/shared";
+import { makeGame, makePlayer, makeWire, makeInfoToken, resetIds } from "./fixtures";
 
 describe("SetupPhase", () => {
   beforeEach(() => resetIds());
@@ -29,6 +30,7 @@ describe("SetupPhase", () => {
       game,
       players: [localPlayer, otherPlayer],
       wires: [...localWires, ...otherWires],
+      infoTokens: [] as InfoToken[],
       localPlayerId: "p1",
       onPlaceInfoToken,
       onSelectOpponentWire,
@@ -81,5 +83,54 @@ describe("SetupPhase", () => {
     expect(localWireButton).toBeDefined();
     await user.click(localWireButton);
     expect(props.onSelectOpponentWire).not.toHaveBeenCalled();
+  });
+
+  it("shows prompt to place opening info token before placement", () => {
+    render(<SetupPhase {...setup()} />);
+    expect(
+      screen.getByText(/Select one of your blue wires to place your opening info token/i)
+    ).toBeInTheDocument();
+  });
+
+  it("calls onPlaceInfoToken when clicking a local blue wire before token placed", async () => {
+    const user = userEvent.setup();
+    const props = setup();
+    render(<SetupPhase {...props} />);
+    const yourRackHeading = screen.getByText("Your Rack");
+    const yourRackSection = yourRackHeading.closest("div")!;
+    const localWireButton = within(yourRackSection).getAllByRole("button")[0];
+    await user.click(localWireButton);
+    expect(props.onPlaceInfoToken).toHaveBeenCalledWith("w1");
+  });
+
+  it("Start Game button is disabled before opening token is placed", () => {
+    render(<SetupPhase {...setup()} />);
+    expect(screen.getByRole("button", { name: "Start Game" })).toBeDisabled();
+  });
+
+  it("Start Game button is enabled after opening token is placed", () => {
+    const props = setup();
+    props.infoTokens = [makeInfoToken({ wireId: "w1" })];
+    render(<SetupPhase {...props} />);
+    expect(screen.getByRole("button", { name: "Start Game" })).not.toBeDisabled();
+  });
+
+  it("shows confirmation text after opening token is placed", () => {
+    const props = setup();
+    props.infoTokens = [makeInfoToken({ wireId: "w1" })];
+    render(<SetupPhase {...props} />);
+    expect(screen.getByText("Opening info token placed.")).toBeInTheDocument();
+  });
+
+  it("local wire not clickable after token placed", async () => {
+    const user = userEvent.setup();
+    const props = setup();
+    props.infoTokens = [makeInfoToken({ wireId: "w1" })];
+    render(<SetupPhase {...props} />);
+    const yourRackHeading = screen.getByText("Your Rack");
+    const yourRackSection = yourRackHeading.closest("div")!;
+    const localWireButton = within(yourRackSection).getAllByRole("button")[0];
+    await user.click(localWireButton);
+    expect(props.onPlaceInfoToken).not.toHaveBeenCalled();
   });
 });

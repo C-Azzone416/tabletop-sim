@@ -56,6 +56,7 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
           game={state.game}
           players={state.players}
           wires={state.wires}
+          infoTokens={state.infoTokens}
           localPlayerId={state.localPlayer?.id ?? ""}
           onPlaceInfoToken={(wireId) =>
             send({ type: "place_info_token", wireId })
