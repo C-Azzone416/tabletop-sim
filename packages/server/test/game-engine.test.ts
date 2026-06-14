@@ -224,6 +224,53 @@ describe("game-engine", () => {
     });
   });
 
+  describe("executePlaceInfoToken", () => {
+    it("places an info token on own wire during setup", async () => {
+      const game = makeGame({ id: "g1", status: "setup" });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p1", value: "3", status: "hidden" });
+      const token = { id: "t1", gameId: "g1", wireId: "w1", value: "3", createdAt: "2026-01-01T00:00:00Z" };
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWireById.mockResolvedValue(wire);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([wire]);
+      mockTokensDb.getInfoTokensByGameId.mockResolvedValue([]);
+      mockTokensDb.createInfoToken.mockResolvedValue(token);
+
+      const result = await engine.executePlaceInfoToken("g1", "p1", "w1");
+      expect(result.infoToken).toEqual(token);
+      expect(mockTokensDb.createInfoToken).toHaveBeenCalledWith("g1", "w1", "3");
+    });
+
+    it("rejects if player has already placed an info token", async () => {
+      const game = makeGame({ id: "g1", status: "setup" });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p1", value: "3", status: "hidden" });
+      const existing = { id: "t1", gameId: "g1", wireId: "w1", value: "3", createdAt: "2026-01-01T00:00:00Z" };
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWireById.mockResolvedValue(wire);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([wire]);
+      mockTokensDb.getInfoTokensByGameId.mockResolvedValue([existing]);
+
+      await expect(engine.executePlaceInfoToken("g1", "p1", "w1")).rejects.toThrow("Info token already placed");
+    });
+
+    it("rejects if game is not in setup phase", async () => {
+      const game = makeGame({ id: "g1", status: "active" });
+      mockGamesDb.getGameById.mockResolvedValue(game);
+
+      await expect(engine.executePlaceInfoToken("g1", "p1", "w1")).rejects.toThrow("Game is not in setup phase");
+    });
+
+    it("rejects if wire belongs to another player", async () => {
+      const game = makeGame({ id: "g1", status: "setup" });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p2", value: "3", status: "hidden" });
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWireById.mockResolvedValue(wire);
+
+      await expect(engine.executePlaceInfoToken("g1", "p1", "w1")).rejects.toThrow("Can only place info token on your own wire");
+    });
+  });
 
   describe("executeSoloCut", () => {
     it("succeeds when player has matching hidden wires", async () => {

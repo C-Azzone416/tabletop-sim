@@ -174,7 +174,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Double detector can only target your own wires', 'Target wires must be hidden',
       'Game is not active', 'Not authenticated', 'Player not found',
       'Reveal reds not available in this mission',
-      'Game is not in setup phase', 'Can only place info token on your own wire',
+      'Game is not in setup phase', 'Can only place info token on your own wire', 'Info token already placed',
       'Game is not in waiting phase', 'Cannot select your own wire',
       'No pending question', 'This question is not for you',
       'Cannot advance turn while question is pending', 'Asker not found',
