@@ -88,6 +88,14 @@ export async function executePlaceInfoToken(
   if (wire.playerId !== playerId) throw new Error('Can only place info token on your own wire');
   if (wire.status !== 'hidden') throw new Error('Wire already cut or revealed');
 
+  const [playerWires, existingTokens] = await Promise.all([
+    wiresDb.getWiresByPlayerId(playerId),
+    tokensDb.getInfoTokensByGameId(gameId),
+  ]);
+  const playerWireIds = new Set(playerWires.map(w => w.id));
+  const alreadyPlaced = existingTokens.some(t => playerWireIds.has(t.wireId));
+  if (alreadyPlaced) throw new Error('Info token already placed');
+
   const infoToken = await tokensDb.createInfoToken(gameId, wireId, wire.value!);
   return { infoToken };
 }
