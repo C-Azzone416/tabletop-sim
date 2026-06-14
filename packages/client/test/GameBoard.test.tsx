@@ -361,24 +361,24 @@ describe("GameBoard", () => {
     expect(props.onSoloCut).toHaveBeenCalledWith("4");
   });
 
-  it("shows info token badge on opponent wire", () => {
+  it("shows info token badge with value on opponent wire", () => {
     const props = setup({
-      infoTokens: [makeInfoToken({ wireId: "w3", value: "3" })],
+      infoTokens: [makeInfoToken({ wireId: "w3", value: "7" })],
     });
     render(<GameBoard {...props} />);
-    // Scope to Bob's rack — the badge "1" must appear there
+    // Scope to Bob's rack — badge shows token value "7" (wire itself shows "3", no collision)
     const bobContainer = getRackContainer("Bob");
-    expect(within(bobContainer).getByText("1")).toBeInTheDocument();
+    expect(within(bobContainer).getByText("7")).toBeInTheDocument();
   });
 
-  it("does not show info token badge on local player's own wire", () => {
+  it("shows info token badge on local player's own wire", () => {
     const props = setup({
-      infoTokens: [makeInfoToken({ wireId: "w1", value: "3" })],
+      infoTokens: [makeInfoToken({ wireId: "w1", value: "7" })],
     });
     render(<GameBoard {...props} />);
-    // w1 belongs to p1 (local) — badge must not appear in "You" rack
+    // w1 belongs to p1 (local), value=null — badge shows "7"
     const youContainer = getRackContainer("You");
-    expect(within(youContainer).queryByText("1")).not.toBeInTheDocument();
+    expect(within(youContainer).getByText("7")).toBeInTheDocument();
   });
 
   it("renders validation tracker with validated values", () => {

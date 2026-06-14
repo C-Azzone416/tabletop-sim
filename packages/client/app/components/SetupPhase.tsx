@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import type { Game, Player, Wire, ServerMessage } from "@tabletop/shared";
+import type { Game, Player, Wire, InfoToken, ServerMessage } from "@tabletop/shared";
 import { PlayerRack } from "./PlayerRack";
 
 interface SetupPhaseProps {
   game: Game;
   players: Player[];
   wires: Wire[];
+  infoTokens: InfoToken[];
   localPlayerId: string;
   onPlaceInfoToken: (wireId: string) => void;
   onSelectOpponentWire: (wireId: string) => void;
@@ -22,6 +23,7 @@ export function SetupPhase({
   game,
   players,
   wires,
+  infoTokens,
   localPlayerId,
   onPlaceInfoToken,
   onSelectOpponentWire,
@@ -35,6 +37,11 @@ export function SetupPhase({
   const isLocalPlayerActive = game.currentTurnPlayerId === localPlayerId;
   const isLocalPlayerCaptain = game.captainId === localPlayerId;
   const activePlayer = players.find((p) => p.id === game.currentTurnPlayerId);
+
+  const localWireIds = new Set(
+    wires.filter((w) => w.playerId === localPlayerId).map((w) => w.id)
+  );
+  const hasPlacedOpeningToken = infoTokens.some((t) => localWireIds.has(t.wireId));
 
   const handleSelectOpponentWire = (wireId: string) => {
     setSelectedWireId(wireId);
@@ -65,21 +72,37 @@ export function SetupPhase({
             .filter((w) => w.playerId === player.id)
             .sort((a, b) => a.rackPosition - b.rackPosition);
           const isLocal = player.id === localPlayerId;
-          const canSelectWires = isLocalPlayerActive && !isLocal;
+          const canSelectOpponentWires = isLocalPlayerActive && !isLocal;
+          const canPlaceOpeningToken = isLocal && !hasPlacedOpeningToken;
+          const selectableWireIds = canPlaceOpeningToken
+            ? playerWires.filter((w) => w.color === "blue").map((w) => w.id)
+            : undefined;
 
           return (
             <div key={player.id}>
               <h3 className="mb-2 text-sm font-medium text-zinc-600 dark:text-zinc-400">
                 {isLocal ? "Your Rack" : player.name}
               </h3>
+              {isLocal && (
+                <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">
+                  {hasPlacedOpeningToken
+                    ? "Opening info token placed."
+                    : "Select one of your blue wires to place your opening info token."}
+                </p>
+              )}
               <PlayerRack
                 wires={playerWires}
                 isLocal={isLocal}
                 selectedWireId={selectedWireId}
+                selectableWireIds={selectableWireIds}
                 onSelectWire={
-                  canSelectWires ? handleSelectOpponentWire : undefined
+                  canSelectOpponentWires
+                    ? handleSelectOpponentWire
+                    : canPlaceOpeningToken
+                    ? onPlaceInfoToken
+                    : undefined
                 }
-                infoTokens={[]}
+                infoTokens={infoTokens}
               />
             </div>
           );
@@ -101,7 +124,8 @@ export function SetupPhase({
         {isLocalPlayerCaptain && (
           <button
             onClick={onStartGame}
-            className="rounded-lg bg-purple-600 px-6 py-2 font-medium text-white transition-colors hover:bg-purple-700"
+            disabled={!hasPlacedOpeningToken}
+            className="rounded-lg bg-purple-600 px-6 py-2 font-medium text-white transition-colors disabled:opacity-50 hover:bg-purple-700 disabled:hover:bg-purple-600"
           >
             Start Game
           </button>
