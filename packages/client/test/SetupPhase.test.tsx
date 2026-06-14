@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SetupPhase } from "../app/components/SetupPhase";
+import type { InfoToken } from "@tabletop/shared";
 import { makeGame, makePlayer, makeWire, makeInfoToken, resetIds } from "./fixtures";
 
 describe("SetupPhase", () => {
@@ -29,7 +30,7 @@ describe("SetupPhase", () => {
       game,
       players: [localPlayer, otherPlayer],
       wires: [...localWires, ...otherWires],
-      infoTokens: [],
+      infoTokens: [] as InfoToken[],
       localPlayerId: "p1",
       onPlaceInfoToken,
       onSelectOpponentWire,
