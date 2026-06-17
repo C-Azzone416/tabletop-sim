@@ -27,6 +27,8 @@ export function Wire({
     <button
       onClick={onSelect}
       disabled={!onSelect || isCut}
+      data-wire-color={wire.color}
+      data-wire-position={wire.rackPosition}
       className={`
         relative flex flex-col items-center justify-center
         h-20 w-14 rounded-lg border-2 transition-all

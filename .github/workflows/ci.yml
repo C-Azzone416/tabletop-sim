@@ -35,5 +35,15 @@ jobs:
       - name: Test
         run: npm test --workspaces --if-present
 
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: packages/client
+
+      - name: E2E tests (staging)
+        run: npm run test:e2e -w packages/client
+        env:
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+          E2E_API_URL: ${{ secrets.E2E_API_URL }}
+
       - name: Check migrations
         run: npm run check:migrations
