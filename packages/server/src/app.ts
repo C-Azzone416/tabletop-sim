@@ -170,13 +170,22 @@ export async function buildApp() {
       return rawMission;
     };
 
+    const getOrCreateProfile = async (name: string) => {
+      const existing = await profilesDb.getProfileByName(name);
+      return existing ?? await profilesDb.createProfile(name);
+    };
+
     const seedDevGame = async (mission: number, options: { completeSetup: boolean }) => {
-      const existing = await profilesDb.getProfileByName('Dev');
-      const profile = existing ?? await profilesDb.createProfile('Dev');
-      const { game, player } = await engine.createGame('Dev', profile.id);
-      await engine.joinGame(game.joinCode, 'Alice');
-      await engine.joinGame(game.joinCode, 'Bob');
-      await engine.joinGame(game.joinCode, 'Carol');
+      const devProfile = await getOrCreateProfile('Dev');
+      const { game, player } = await engine.createGame('Dev', devProfile.id);
+
+      const aliceProfile = await getOrCreateProfile('Alice');
+      const bobProfile = await getOrCreateProfile('Bob');
+      const carolProfile = await getOrCreateProfile('Carol');
+      await engine.joinGame(game.joinCode, 'Alice', aliceProfile.id);
+      await engine.joinGame(game.joinCode, 'Bob', bobProfile.id);
+      await engine.joinGame(game.joinCode, 'Carol', carolProfile.id);
+
       await engine.startGame(game.id, player.id, mission);
       if (options.completeSetup) {
         await engine.completeSetup(game.id);
@@ -191,7 +200,21 @@ export async function buildApp() {
           }
         }
       }
-      return { joinCode: game.joinCode, profileId: profile.id, playerName: 'Dev', mission };
+      return {
+        joinCode: game.joinCode,
+        profileId: devProfile.id,
+        playerName: 'Dev',
+        mission,
+        // Real profileIds for every dev-seeded player, so a dev-mode client can connect via
+        // the standard WS auth (profileId + name) as any seat, not just the creator. Bounded
+        // strictly to the Alice/Bob/Carol/Dev rows this seed call itself creates/reuses.
+        players: [
+          { name: 'Dev', profileId: devProfile.id },
+          { name: 'Alice', profileId: aliceProfile.id },
+          { name: 'Bob', profileId: bobProfile.id },
+          { name: 'Carol', profileId: carolProfile.id },
+        ],
+      };
     };
 
     app.post('/dev/seed', async (request, reply) => {
