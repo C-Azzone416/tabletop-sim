@@ -297,7 +297,7 @@ export async function executeSoloCut(
     // Fail — advance detonator
     await turnsDb.updateTurnResult(turn.id, 'fail');
     const newPosition = game.detonatorPosition + 1;
-    const updatedGame = await gamesDb.updateDetonator(gameId, newPosition);
+    await gamesDb.updateDetonator(gameId, newPosition);
 
     if (newPosition >= game.detonatorMax) {
       const lostGame = await gamesDb.updateGameStatus(gameId, 'lost');
@@ -312,7 +312,6 @@ export async function executeSoloCut(
   }
 
   // Check win
-  const game2 = await gamesDb.getGameById(gameId);
   const winResult = await checkWinCondition(gameId);
   if (winResult) {
     const wonGame = await gamesDb.updateGameStatus(gameId, 'won');
@@ -329,7 +328,7 @@ export async function executeDoubleDetector(
   targetWireId1: string,
   targetWireId2: string,
 ): Promise<{ turn: Turn; game: Game; updatedWires: Wire[] }> {
-  const game = await validateTurn(gameId, playerId);
+  await validateTurn(gameId, playerId);
 
   const player = await playersDb.getPlayerById(playerId);
   if (!player) throw new Error('Player not found');

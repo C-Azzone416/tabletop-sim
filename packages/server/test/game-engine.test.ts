@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { makeGame, makePlayer, makeWire, makeTurn, resetIds } from "./fixtures.js";
-import type { Game, Player, Wire } from "@tabletop/shared";
 
 // Mock all DB modules
 vi.mock("../src/db/games.js", () => ({
