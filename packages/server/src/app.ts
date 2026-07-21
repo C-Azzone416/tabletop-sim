@@ -139,7 +139,7 @@ export async function buildApp() {
     }
   });
 
-  if (process.env.ENABLE_DEV_SEED === 'true') {
+  if (process.env.ENABLE_DEV_SEED === 'true' && process.env.NODE_ENV !== 'production') {
     app.post('/dev/advance-turn', async (request, reply) => {
       try {
         const { joinCode } = request.body as { joinCode?: string };
