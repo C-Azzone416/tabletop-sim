@@ -212,8 +212,7 @@ describe("routes", () => {
       delete process.env.ENABLE_DEV_SEED;
     });
 
-    it("creates a 4-player seeded game and returns joinCode + profileId", async () => {
-      const profile = makeProfile({ id: "prof-dev", name: "Dev" });
+    it("creates a 4-player seeded game, returns joinCode + profileId + all players' profileIds", async () => {
       const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
       const player = makePlayer({ id: "p1", gameId: "g1" });
       const startedGame = { ...game, status: "setup" as const };
@@ -221,7 +220,8 @@ describe("routes", () => {
       const mockPlayers = [player, makePlayer({ id: "p2" }), makePlayer({ id: "p3" }), makePlayer({ id: "p4" })];
 
       mockProfilesDb.getProfileByName.mockResolvedValue(null);
-      mockProfilesDb.createProfile.mockResolvedValue(profile);
+      mockProfilesDb.createProfile.mockImplementation(async (name: string) =>
+        makeProfile({ id: `prof-${name.toLowerCase()}`, name }));
       mockEngine.createGame.mockResolvedValue({ game, player });
       mockEngine.joinGame.mockResolvedValue({ game, player: mockPlayers[1], players: mockPlayers.slice(0, 2) });
       mockEngine.startGame.mockResolvedValue({ game: startedGame, players: mockPlayers, wires: [] });
@@ -232,25 +232,36 @@ describe("routes", () => {
       const res = await seedApp.inject({ method: "POST", url: "/dev/seed" });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ joinCode: "DEVGAME", profileId: "prof-dev", playerName: "Dev", mission: 1 });
+      expect(res.json()).toEqual({
+        joinCode: "DEVGAME",
+        profileId: "prof-dev",
+        playerName: "Dev",
+        mission: 1,
+        players: [
+          { name: "Dev", profileId: "prof-dev" },
+          { name: "Alice", profileId: "prof-alice" },
+          { name: "Bob", profileId: "prof-bob" },
+          { name: "Carol", profileId: "prof-carol" },
+        ],
+      });
       expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "prof-dev");
       expect(mockEngine.joinGame).toHaveBeenCalledTimes(3);
-      expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Alice");
-      expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Bob");
-      expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Carol");
+      expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Alice", "prof-alice");
+      expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Bob", "prof-bob");
+      expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Carol", "prof-carol");
       expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 1);
       expect(mockEngine.completeSetup).toHaveBeenCalledWith("g1");
     });
 
     it("accepts a mission param and seeds that mission", async () => {
-      const profile = makeProfile({ id: "prof-dev", name: "Dev" });
       const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
       const player = makePlayer({ id: "p1", gameId: "g1" });
       const startedGame = { ...game, status: "setup" as const };
       const activeGame = { ...game, status: "active" as const };
 
       mockProfilesDb.getProfileByName.mockResolvedValue(null);
-      mockProfilesDb.createProfile.mockResolvedValue(profile);
+      mockProfilesDb.createProfile.mockImplementation(async (name: string) =>
+        makeProfile({ id: `prof-${name.toLowerCase()}`, name }));
       mockEngine.createGame.mockResolvedValue({ game, player });
       mockEngine.joinGame.mockResolvedValue({ game, player, players: [player] });
       mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
@@ -282,14 +293,14 @@ describe("routes", () => {
       expect(res.json()).toEqual({ error: "mission must be an integer between 1 and 8" });
     });
 
-    it("reuses existing Dev profile", async () => {
-      const profile = makeProfile({ id: "prof-dev", name: "Dev" });
+    it("reuses existing profiles by name instead of creating duplicates", async () => {
       const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
       const player = makePlayer({ id: "p1", gameId: "g1" });
       const startedGame = { ...game, status: "setup" as const };
       const activeGame = { ...game, status: "active" as const };
 
-      mockProfilesDb.getProfileByName.mockResolvedValue(profile);
+      mockProfilesDb.getProfileByName.mockImplementation(async (name: string) =>
+        makeProfile({ id: `prof-${name.toLowerCase()}`, name }));
       mockEngine.createGame.mockResolvedValue({ game, player });
       mockEngine.joinGame.mockResolvedValue({ game, player, players: [player] });
       mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
@@ -326,14 +337,14 @@ describe("routes", () => {
     });
 
     it("creates a 4-player seeded game left in setup status, without completing setup", async () => {
-      const profile = makeProfile({ id: "prof-dev", name: "Dev" });
       const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
       const player = makePlayer({ id: "p1", gameId: "g1" });
       const startedGame = { ...game, status: "setup" as const };
       const mockPlayers = [player, makePlayer({ id: "p2" }), makePlayer({ id: "p3" }), makePlayer({ id: "p4" })];
 
       mockProfilesDb.getProfileByName.mockResolvedValue(null);
-      mockProfilesDb.createProfile.mockResolvedValue(profile);
+      mockProfilesDb.createProfile.mockImplementation(async (name: string) =>
+        makeProfile({ id: `prof-${name.toLowerCase()}`, name }));
       mockEngine.createGame.mockResolvedValue({ game, player });
       mockEngine.joinGame.mockResolvedValue({ game, player: mockPlayers[1], players: mockPlayers.slice(0, 2) });
       mockEngine.startGame.mockResolvedValue({ game: startedGame, players: mockPlayers, wires: [] });
@@ -341,7 +352,18 @@ describe("routes", () => {
       const res = await seedApp.inject({ method: "POST", url: "/dev/seed-setup" });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ joinCode: "DEVGAME", profileId: "prof-dev", playerName: "Dev", mission: 1 });
+      expect(res.json()).toEqual({
+        joinCode: "DEVGAME",
+        profileId: "prof-dev",
+        playerName: "Dev",
+        mission: 1,
+        players: [
+          { name: "Dev", profileId: "prof-dev" },
+          { name: "Alice", profileId: "prof-alice" },
+          { name: "Bob", profileId: "prof-bob" },
+          { name: "Carol", profileId: "prof-carol" },
+        ],
+      });
       expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 1);
       expect(mockEngine.completeSetup).not.toHaveBeenCalled();
       expect(mockPlayersDb.getPlayersByGameId).not.toHaveBeenCalled();
@@ -349,13 +371,13 @@ describe("routes", () => {
     });
 
     it("accepts a mission param and seeds that mission", async () => {
-      const profile = makeProfile({ id: "prof-dev", name: "Dev" });
       const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
       const player = makePlayer({ id: "p1", gameId: "g1" });
       const startedGame = { ...game, status: "setup" as const };
 
       mockProfilesDb.getProfileByName.mockResolvedValue(null);
-      mockProfilesDb.createProfile.mockResolvedValue(profile);
+      mockProfilesDb.createProfile.mockImplementation(async (name: string) =>
+        makeProfile({ id: `prof-${name.toLowerCase()}`, name }));
       mockEngine.createGame.mockResolvedValue({ game, player });
       mockEngine.joinGame.mockResolvedValue({ game, player, players: [player] });
       mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
