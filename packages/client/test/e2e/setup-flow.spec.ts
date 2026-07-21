@@ -2,10 +2,9 @@ import { test, expect, request } from "@playwright/test";
 import { API_URL, seedGame, cleanupGame, gameUrl, type SeedResult } from "./helpers";
 
 async function seedSetupGame(mission = 1): Promise<SeedResult> {
-  // Requires daring-bobcat's /dev/seed-setup endpoint:
-  // seeds a game (startGame) but does NOT call completeSetup,
-  // leaving the game in "setup" state so E2E tests can exercise
-  // the setup phase UI before transition to active.
+  // Seeds a game (startGame) but does NOT call completeSetup, leaving the
+  // game in "setup" state so E2E tests can exercise the setup phase UI
+  // before transition to active.
   const ctx = await request.newContext({ baseURL: API_URL });
   const res = await ctx.post("/dev/seed-setup", { data: { mission } });
   if (!res.ok()) throw new Error(`Seed-setup failed: ${res.status()}`);
@@ -49,12 +48,8 @@ test("seed + navigate shows 4-player game board with wire racks", async ({
 });
 
 // ── Tests 2-4: Setup phase ────────────────────────────────────────────────
-// Skipped: depend on /dev/seed-setup + /dev/cleanup, which don't exist on
-// the server yet (checked packages/server/src/app.ts — only /dev/seed and
-// /dev/advance-turn are implemented). Tracked in #test-coverage; unskip once
-// daring-bobcat adds those endpoints.
 
-test.skip("Start Game button is disabled before placing opening token", async ({
+test("Start Game button is disabled before placing opening token", async ({
   page,
 }) => {
   const seed = await seedSetupGame(1);
@@ -68,7 +63,7 @@ test.skip("Start Game button is disabled before placing opening token", async ({
   }
 });
 
-test.skip("clicking a blue wire places info token and shows amber badge", async ({
+test("clicking a blue wire places info token and shows amber badge", async ({
   page,
 }) => {
   const seed = await seedSetupGame(1);
@@ -100,7 +95,7 @@ test.skip("clicking a blue wire places info token and shows amber badge", async 
   }
 });
 
-test.skip("Start Game button enables after placing opening token, captain starts game, transitions to active", async ({
+test("Start Game button enables after placing opening token, captain starts game, transitions to active", async ({
   page,
 }) => {
   const seed = await seedSetupGame(1);
