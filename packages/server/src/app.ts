@@ -161,25 +161,24 @@ export async function buildApp() {
       }
     });
 
-    app.post('/dev/seed', async (request, reply) => {
-      try {
-        const body = request.body as { mission?: unknown } | null ?? {};
-        const rawMission = (body as Record<string, unknown>).mission;
-        let mission = 1;
-        if (rawMission !== undefined) {
-          if (typeof rawMission !== 'number' || !Number.isInteger(rawMission) || rawMission < 1 || rawMission > 8) {
-            return reply.status(400).send({ error: 'mission must be an integer between 1 and 8' });
-          }
-          mission = rawMission;
-        }
+    const parseMissionParam = (body: unknown): number | { error: string } => {
+      const rawMission = (body as Record<string, unknown> | null ?? {}).mission;
+      if (rawMission === undefined) return 1;
+      if (typeof rawMission !== 'number' || !Number.isInteger(rawMission) || rawMission < 1 || rawMission > 8) {
+        return { error: 'mission must be an integer between 1 and 8' };
+      }
+      return rawMission;
+    };
 
-        const existing = await profilesDb.getProfileByName('Dev');
-        const profile = existing ?? await profilesDb.createProfile('Dev');
-        const { game, player } = await engine.createGame('Dev', profile.id);
-        await engine.joinGame(game.joinCode, 'Alice');
-        await engine.joinGame(game.joinCode, 'Bob');
-        await engine.joinGame(game.joinCode, 'Carol');
-        await engine.startGame(game.id, player.id, mission);
+    const seedDevGame = async (mission: number, options: { completeSetup: boolean }) => {
+      const existing = await profilesDb.getProfileByName('Dev');
+      const profile = existing ?? await profilesDb.createProfile('Dev');
+      const { game, player } = await engine.createGame('Dev', profile.id);
+      await engine.joinGame(game.joinCode, 'Alice');
+      await engine.joinGame(game.joinCode, 'Bob');
+      await engine.joinGame(game.joinCode, 'Carol');
+      await engine.startGame(game.id, player.id, mission);
+      if (options.completeSetup) {
         await engine.completeSetup(game.id);
         // Auto-generate info tokens for each player's wires so dev games start with full knowledge
         const gamePlayers = await playersDb.getPlayersByGameId(game.id);
@@ -191,7 +190,17 @@ export async function buildApp() {
             }
           }
         }
-        return { joinCode: game.joinCode, profileId: profile.id, playerName: 'Dev', mission };
+      }
+      return { joinCode: game.joinCode, profileId: profile.id, playerName: 'Dev', mission };
+    };
+
+    app.post('/dev/seed', async (request, reply) => {
+      try {
+        const mission = parseMissionParam(request.body);
+        if (typeof mission === 'object') return reply.status(400).send(mission);
+
+        const result = await seedDevGame(mission, { completeSetup: true });
+        return result;
       } catch (err) {
         app.log.error({ err }, '[POST /dev/seed] error');
         return reply.status(500).send({ error: 'Seed failed' });
@@ -211,6 +220,19 @@ export async function buildApp() {
       } catch (err) {
         app.log.error({ err }, '[POST /dev/cleanup] error');
         return reply.status(500).send({ error: 'Cleanup failed' });
+      }
+    });
+
+    app.post('/dev/seed-setup', async (request, reply) => {
+      try {
+        const mission = parseMissionParam(request.body);
+        if (typeof mission === 'object') return reply.status(400).send(mission);
+
+        const result = await seedDevGame(mission, { completeSetup: false });
+        return result;
+      } catch (err) {
+        app.log.error({ err }, '[POST /dev/seed-setup] error');
+        return reply.status(500).send({ error: 'Seed failed' });
       }
     });
   }

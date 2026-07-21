@@ -312,6 +312,87 @@ describe("routes", () => {
     });
   });
 
+  describe("POST /dev/seed-setup", () => {
+    let seedApp: FastifyInstance;
+
+    beforeEach(async () => {
+      process.env.ENABLE_DEV_SEED = "true";
+      seedApp = await buildApp();
+    });
+
+    afterEach(async () => {
+      await seedApp.close();
+      delete process.env.ENABLE_DEV_SEED;
+    });
+
+    it("creates a 4-player seeded game left in setup status, without completing setup", async () => {
+      const profile = makeProfile({ id: "prof-dev", name: "Dev" });
+      const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
+      const player = makePlayer({ id: "p1", gameId: "g1" });
+      const startedGame = { ...game, status: "setup" as const };
+      const mockPlayers = [player, makePlayer({ id: "p2" }), makePlayer({ id: "p3" }), makePlayer({ id: "p4" })];
+
+      mockProfilesDb.getProfileByName.mockResolvedValue(null);
+      mockProfilesDb.createProfile.mockResolvedValue(profile);
+      mockEngine.createGame.mockResolvedValue({ game, player });
+      mockEngine.joinGame.mockResolvedValue({ game, player: mockPlayers[1], players: mockPlayers.slice(0, 2) });
+      mockEngine.startGame.mockResolvedValue({ game: startedGame, players: mockPlayers, wires: [] });
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-setup" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ joinCode: "DEVGAME", profileId: "prof-dev", playerName: "Dev", mission: 1 });
+      expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 1);
+      expect(mockEngine.completeSetup).not.toHaveBeenCalled();
+      expect(mockPlayersDb.getPlayersByGameId).not.toHaveBeenCalled();
+      expect(mockWiresDb.getWiresByPlayerId).not.toHaveBeenCalled();
+    });
+
+    it("accepts a mission param and seeds that mission", async () => {
+      const profile = makeProfile({ id: "prof-dev", name: "Dev" });
+      const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
+      const player = makePlayer({ id: "p1", gameId: "g1" });
+      const startedGame = { ...game, status: "setup" as const };
+
+      mockProfilesDb.getProfileByName.mockResolvedValue(null);
+      mockProfilesDb.createProfile.mockResolvedValue(profile);
+      mockEngine.createGame.mockResolvedValue({ game, player });
+      mockEngine.joinGame.mockResolvedValue({ game, player, players: [player] });
+      mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
+
+      const res = await seedApp.inject({
+        method: "POST", url: "/dev/seed-setup",
+        payload: { mission: 5 },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ mission: 5 });
+      expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 5);
+    });
+
+    it.each([
+      { mission: 0, label: "below range" },
+      { mission: 9, label: "above range" },
+      { mission: 1.5, label: "non-integer" },
+      { mission: "five", label: "non-number" },
+    ])("returns 400 for invalid mission ($label)", async ({ mission }) => {
+      const res = await seedApp.inject({
+        method: "POST", url: "/dev/seed-setup",
+        payload: { mission },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: "mission must be an integer between 1 and 8" });
+    });
+
+    it("returns 500 on error", async () => {
+      mockProfilesDb.getProfileByName.mockRejectedValue(new Error("DB down"));
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-setup" });
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "Seed failed" });
+    });
+  });
+
   describe("POST /dev/advance-turn", () => {
     let devApp: FastifyInstance;
 
@@ -476,16 +557,18 @@ describe("routes", () => {
       delete process.env.ENABLE_DEV_SEED;
     });
 
-    it("does not register /dev/seed, /dev/advance-turn, or /dev/cleanup when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
+    it("does not register /dev/seed, /dev/seed-setup, /dev/advance-turn, or /dev/cleanup when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
       process.env.ENABLE_DEV_SEED = "true";
       process.env.NODE_ENV = "production";
       const prodApp = await buildApp();
 
       const seedRes = await prodApp.inject({ method: "POST", url: "/dev/seed" });
+      const seedSetupRes = await prodApp.inject({ method: "POST", url: "/dev/seed-setup" });
       const advanceRes = await prodApp.inject({ method: "POST", url: "/dev/advance-turn", payload: { joinCode: "ABCD" } });
       const cleanupRes = await prodApp.inject({ method: "POST", url: "/dev/cleanup", payload: { joinCode: "ABCD" } });
 
       expect(seedRes.statusCode).toBe(404);
+      expect(seedSetupRes.statusCode).toBe(404);
       expect(advanceRes.statusCode).toBe(404);
       expect(cleanupRes.statusCode).toBe(404);
 
