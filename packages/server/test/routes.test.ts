@@ -398,4 +398,27 @@ describe("routes", () => {
       expect(res.json()).toEqual({ error: "Failed to advance turn" });
     });
   });
+
+  describe("dev routes gated on NODE_ENV", () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalNodeEnv;
+      delete process.env.ENABLE_DEV_SEED;
+    });
+
+    it("does not register /dev/seed or /dev/advance-turn when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
+      process.env.ENABLE_DEV_SEED = "true";
+      process.env.NODE_ENV = "production";
+      const prodApp = await buildApp();
+
+      const seedRes = await prodApp.inject({ method: "POST", url: "/dev/seed" });
+      const advanceRes = await prodApp.inject({ method: "POST", url: "/dev/advance-turn", payload: { joinCode: "ABCD" } });
+
+      expect(seedRes.statusCode).toBe(404);
+      expect(advanceRes.statusCode).toBe(404);
+
+      await prodApp.close();
+    });
+  });
 });

@@ -19,12 +19,15 @@ export function useWebSocket(
 ) {
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef(onMessage);
+  const connectRef = useRef<() => void>(() => {});
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY);
   const messageQueueRef = useRef<ClientMessage[]>([]);
   const [status, setStatus] = useState("disconnected" as ConnectionStatus);
 
-  onMessageRef.current = onMessage;
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
 
   const flushQueue = useCallback((ws: WebSocket) => {
     while (messageQueueRef.current.length > 0) {
@@ -70,7 +73,7 @@ export function useWebSocket(
       // Exponential backoff reconnect
       const delay = reconnectDelayRef.current;
       reconnectDelayRef.current = Math.min(delay * 2, MAX_RECONNECT_DELAY);
-      reconnectTimeoutRef.current = setTimeout(connect, delay);
+      reconnectTimeoutRef.current = setTimeout(() => connectRef.current(), delay);
     };
 
     ws.onerror = (event) => {
@@ -78,6 +81,10 @@ export function useWebSocket(
       ws.close();
     };
   }, [flushQueue, profileId, playerName]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
