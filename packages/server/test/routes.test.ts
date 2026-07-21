@@ -18,6 +18,7 @@ vi.mock("../src/db/games.js", () => ({
   updateCurrentTurn: vi.fn(),
   updateDetonator: vi.fn(),
   updateMission: vi.fn(),
+  deleteGame: vi.fn(),
 }));
 
 vi.mock("../src/db/players.js", () => ({
@@ -399,6 +400,74 @@ describe("routes", () => {
     });
   });
 
+  describe("POST /dev/cleanup", () => {
+    let devApp: FastifyInstance;
+
+    beforeEach(async () => {
+      process.env.ENABLE_DEV_SEED = "true";
+      devApp = await buildApp();
+    });
+
+    afterEach(async () => {
+      await devApp.close();
+      delete process.env.ENABLE_DEV_SEED;
+    });
+
+    it("deletes the game and returns deleted + joinCode", async () => {
+      const game = makeGame({ id: "g1", joinCode: "ABCD" });
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(game);
+      mockGamesDb.deleteGame.mockResolvedValue(true);
+
+      const res = await devApp.inject({
+        method: "POST",
+        url: "/dev/cleanup",
+        payload: { joinCode: "ABCD" },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ deleted: true, joinCode: "ABCD" });
+      expect(mockGamesDb.deleteGame).toHaveBeenCalledWith("g1");
+    });
+
+    it("returns 404 when game is not found", async () => {
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(null);
+
+      const res = await devApp.inject({
+        method: "POST",
+        url: "/dev/cleanup",
+        payload: { joinCode: "XXXX" },
+      });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: "Game not found" });
+      expect(mockGamesDb.deleteGame).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when joinCode is missing", async () => {
+      const res = await devApp.inject({
+        method: "POST",
+        url: "/dev/cleanup",
+        payload: {},
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: "joinCode is required" });
+    });
+
+    it("returns 500 on unexpected error", async () => {
+      mockGamesDb.getGameByJoinCode.mockRejectedValue(new Error("DB down"));
+
+      const res = await devApp.inject({
+        method: "POST",
+        url: "/dev/cleanup",
+        payload: { joinCode: "ABCD" },
+      });
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "Cleanup failed" });
+    });
+  });
+
   describe("dev routes gated on NODE_ENV", () => {
     const originalNodeEnv = process.env.NODE_ENV;
 
@@ -407,16 +476,18 @@ describe("routes", () => {
       delete process.env.ENABLE_DEV_SEED;
     });
 
-    it("does not register /dev/seed or /dev/advance-turn when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
+    it("does not register /dev/seed, /dev/advance-turn, or /dev/cleanup when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
       process.env.ENABLE_DEV_SEED = "true";
       process.env.NODE_ENV = "production";
       const prodApp = await buildApp();
 
       const seedRes = await prodApp.inject({ method: "POST", url: "/dev/seed" });
       const advanceRes = await prodApp.inject({ method: "POST", url: "/dev/advance-turn", payload: { joinCode: "ABCD" } });
+      const cleanupRes = await prodApp.inject({ method: "POST", url: "/dev/cleanup", payload: { joinCode: "ABCD" } });
 
       expect(seedRes.statusCode).toBe(404);
       expect(advanceRes.statusCode).toBe(404);
+      expect(cleanupRes.statusCode).toBe(404);
 
       await prodApp.close();
     });
