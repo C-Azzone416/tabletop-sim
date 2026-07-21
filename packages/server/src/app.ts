@@ -197,6 +197,22 @@ export async function buildApp() {
         return reply.status(500).send({ error: 'Seed failed' });
       }
     });
+
+    app.post('/dev/cleanup', async (request, reply) => {
+      try {
+        const { joinCode } = request.body as { joinCode?: string };
+        if (!joinCode) return reply.status(400).send({ error: 'joinCode is required' });
+
+        const game = await gamesDb.getGameByJoinCode(joinCode);
+        if (!game) return reply.status(404).send({ error: 'Game not found' });
+
+        await gamesDb.deleteGame(game.id);
+        return { deleted: true, joinCode };
+      } catch (err) {
+        app.log.error({ err }, '[POST /dev/cleanup] error');
+        return reply.status(500).send({ error: 'Cleanup failed' });
+      }
+    });
   }
 
   return app;
