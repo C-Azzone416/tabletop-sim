@@ -7,7 +7,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "eslint"
   },
   "dependencies": {
     "@fastify/cors": "^10",
@@ -20,8 +21,10 @@
   "devDependencies": {
     "@types/node": "^20",
     "@types/ws": "^8.18.1",
+    "eslint": "^9",
     "tsx": "^4",
     "typescript": "^5",
+    "typescript-eslint": "^8",
     "vitest": "^4.1.1"
   }
 }

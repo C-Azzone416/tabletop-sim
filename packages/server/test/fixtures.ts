@@ -1,4 +1,4 @@
-import type { Game, Player, Wire, Turn, InfoToken, ValidationToken } from "@tabletop/shared";
+import type { Game, Player, Wire, Turn } from "@tabletop/shared";
 
 let idCounter = 0;
 function nextId() {

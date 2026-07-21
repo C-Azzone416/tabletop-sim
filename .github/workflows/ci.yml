@@ -32,6 +32,9 @@ jobs:
           printf '// generated stub\nexport {};\n' > packages/client/.next/types/routes.d.ts
           npx tsc --noEmit -p packages/client/tsconfig.json
 
+      - name: Lint
+        run: npm run lint
+
       - name: Test
         run: npm test --workspaces --if-present
 
