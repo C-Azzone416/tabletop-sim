@@ -1,21 +1,5 @@
 import { test, expect, request } from "@playwright/test";
-
-const API_URL = process.env.E2E_API_URL ?? "http://localhost:3001";
-const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
-
-interface SeedResult {
-  joinCode: string;
-  profileId: string;
-  playerName: string;
-  mission: number;
-}
-
-async function seedGame(mission = 1): Promise<SeedResult> {
-  const ctx = await request.newContext({ baseURL: API_URL });
-  const res = await ctx.post("/dev/seed", { data: { mission } });
-  if (!res.ok()) throw new Error(`Seed failed: ${res.status()}`);
-  return res.json();
-}
+import { API_URL, seedGame, cleanupGame, gameUrl, type SeedResult } from "./helpers";
 
 async function seedSetupGame(mission = 1): Promise<SeedResult> {
   // Requires daring-bobcat's /dev/seed-setup endpoint:
@@ -26,16 +10,6 @@ async function seedSetupGame(mission = 1): Promise<SeedResult> {
   const res = await ctx.post("/dev/seed-setup", { data: { mission } });
   if (!res.ok()) throw new Error(`Seed-setup failed: ${res.status()}`);
   return res.json();
-}
-
-async function cleanupGame(joinCode: string): Promise<void> {
-  // Requires daring-bobcat's /dev/cleanup endpoint to delete orphaned dev games.
-  const ctx = await request.newContext({ baseURL: API_URL });
-  await ctx.post("/dev/cleanup", { data: { joinCode } }).catch(() => {});
-}
-
-function gameUrl({ joinCode, profileId, playerName }: SeedResult): string {
-  return `${BASE_URL}/game/${joinCode}?profileId=${profileId}&playerName=${encodeURIComponent(playerName)}`;
 }
 
 // ── Test 1: Active game board ──────────────────────────────────────────────
