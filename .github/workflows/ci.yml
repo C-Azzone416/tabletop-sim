@@ -38,5 +38,8 @@ jobs:
       - name: Test
         run: npm test --workspaces --if-present
 
+      - name: Test coverage (server)
+        run: npm run test:coverage -w packages/server
+
       - name: Check migrations
         run: npm run check:migrations
