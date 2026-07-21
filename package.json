@@ -11,6 +11,7 @@
     "dev": "npm run dev:client & npm run dev:server",
     "build": "npm run build -w packages/shared && npm run build -w packages/server && npm run build -w packages/client",
     "lint": "npm run lint -w packages/client",
-    "test": "npm run test -w packages/client"
+    "test": "npm run test -w packages/client",
+    "check:migrations": "npx tsx db/check-migrations.ts"
   }
 }

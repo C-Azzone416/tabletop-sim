@@ -10,11 +10,13 @@ import { GameOverOverlay } from "../../components/GameOverOverlay";
 
 interface GameClientProps {
   joinCode: string;
+  profileId: string;
+  playerName: string;
 }
 
-export function GameClient({ joinCode }: GameClientProps) {
+export function GameClient({ joinCode, profileId, playerName }: GameClientProps) {
   const { state, handleMessage } = useGameState();
-  const { status, connect, send } = useWebSocket(handleMessage);
+  const { status, connect, send } = useWebSocket(handleMessage, profileId, playerName);
   const hasConnected = useRef(false);
 
   useEffect(() => {
@@ -54,10 +56,21 @@ export function GameClient({ joinCode }: GameClientProps) {
           game={state.game}
           players={state.players}
           wires={state.wires}
+          infoTokens={state.infoTokens}
           localPlayerId={state.localPlayer?.id ?? ""}
           onPlaceInfoToken={(wireId) =>
             send({ type: "place_info_token", wireId })
           }
+          onSelectOpponentWire={(wireId) =>
+            send({ type: "select_opponent_wire", wireId })
+          }
+          onAnswerWireQuestion={(answer) =>
+            send({ type: "answer_wire_question", answer })
+          }
+          onNextTurn={() => send({ type: "next_turn" })}
+          onStartGame={() => send({ type: "complete_setup" })}
+          pendingWireQuestion={state.pendingWireQuestion}
+          lastInterrogationResult={state.lastInterrogationResult}
         />
       </div>
     );
@@ -75,8 +88,16 @@ export function GameClient({ joinCode }: GameClientProps) {
           validationTokens={state.validationTokens}
           localPlayerId={state.localPlayer?.id ?? ""}
           lastTurnResult={state.lastTurnResult}
-          onDuoCut={(targetWireId, guessedValue) =>
-            send({ type: "duo_cut", targetWireId, guessedValue })
+          pendingDualCut={state.pendingDualCut}
+          pendingDualCutCorrect={state.pendingDualCutCorrect}
+          onProposeDualCut={(targetWireId, guessedValue) =>
+            send({ type: "propose_dual_cut", targetWireId, guessedValue })
+          }
+          onRespondDualCut={(accepted) =>
+            send({ type: "respond_dual_cut", accepted })
+          }
+          onCompleteDualCut={(ownWireId) =>
+            send({ type: "complete_dual_cut", ownWireId })
           }
           onSoloCut={(wireValue) => send({ type: "solo_cut", wireValue })}
           onDoubleDetector={(targetWireId, targetWireId2) =>
@@ -86,7 +107,25 @@ export function GameClient({ joinCode }: GameClientProps) {
               targetWireId2,
             })
           }
+          onRevealReds={() => send({ type: "reveal_reds" })}
         />
+        {process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS === "true" && (
+          <div className="fixed bottom-4 right-4">
+            <button
+              onClick={() => {
+                const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:3001";
+                fetch(`${serverUrl}/dev/advance-turn`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ joinCode }),
+                });
+              }}
+              className="rounded border border-amber-400 bg-amber-50 px-3 py-1.5 text-xs font-mono text-amber-700 opacity-70 hover:opacity-100 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-400"
+            >
+              [DEV] Skip Turn
+            </button>
+          </div>
+        )}
         {state.error && (
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg dark:bg-red-900/20 dark:text-red-400">
             {state.error}
@@ -108,9 +147,14 @@ export function GameClient({ joinCode }: GameClientProps) {
           validationTokens={state.validationTokens}
           localPlayerId={state.localPlayer?.id ?? ""}
           lastTurnResult={state.lastTurnResult}
-          onDuoCut={() => {}}
+          pendingDualCut={state.pendingDualCut}
+          pendingDualCutCorrect={state.pendingDualCutCorrect}
+          onProposeDualCut={() => {}}
+          onRespondDualCut={() => {}}
+          onCompleteDualCut={() => {}}
           onSoloCut={() => {}}
           onDoubleDetector={() => {}}
+          onRevealReds={() => {}}
         />
         <GameOverOverlay
           result={gameStatus}

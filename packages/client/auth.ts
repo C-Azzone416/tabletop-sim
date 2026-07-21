@@ -20,11 +20,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null;
         }
         // Find or create a stable profile via the server
-        const res = await fetch(`${SERVER_URL}/profiles`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
-        });
+        let res: Response;
+        try {
+          res = await fetch(`${SERVER_URL}/profiles`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name }),
+          });
+        } catch {
+          return null;
+        }
         if (!res.ok) {
           return null;
         }
@@ -38,14 +43,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   ],
   callbacks: {
     jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
+      if (user?.id) {
+        token.sub = user.id;
       }
       return token;
     },
     session({ session, token }) {
-      if (session.user && token.id) {
-        session.user.id = token.id as string;
+      if (session.user && token.sub) {
+        session.user.id = token.sub;
       }
       return session;
     },

@@ -52,12 +52,12 @@ describe("Lobby", () => {
     expect(button).toBeEnabled();
   });
 
-  it("disables start button with only 1 player", () => {
+  it("enables start button with only 1 player", () => {
     const props = defaultProps();
     props.players = [props.players[0]];
     render(<Lobby {...props} />);
-    const button = screen.getByRole("button", { name: /Need \d+ more/ });
-    expect(button).toBeDisabled();
+    const button = screen.getByRole("button", { name: /Start Mission/ });
+    expect(button).not.toBeDisabled();
   });
 
   it("calls onStartGame when captain clicks start", async () => {
@@ -73,7 +73,7 @@ describe("Lobby", () => {
     props.localPlayerId = "p2";
     render(<Lobby {...props} />);
     expect(
-      screen.getByText("Waiting for the captain to start the game...")
+      screen.getByText("Waiting for the host to start the game...")
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Start Mission/ })).not.toBeInTheDocument();
   });

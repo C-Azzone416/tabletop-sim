@@ -101,7 +101,7 @@ describe("useGameState", () => {
     });
 
     const cutWire = { ...wire1, status: "cut" as const };
-    const turn = makeTurn({ actionType: "duo_cut", targetWireId: "w1", guessedValue: "3", result: "success" });
+    const turn = makeTurn({ actionType: "dual_cut", targetWireId: "w1", guessedValue: "3", result: "success" });
 
     act(() => {
       result.current.handleMessage({ type: "turn_result", turn, game, updatedWires: [cutWire] });
@@ -141,7 +141,7 @@ describe("useGameState", () => {
     const game = makeGame({ id: "g1", status: "active" });
 
     act(() => { result.current.handleMessage({ type: "game_started", game, players: [], wires: [] }); });
-    act(() => { result.current.handleMessage({ type: "validation_complete", wireValue: "3", game }); });
+    act(() => { result.current.handleMessage({ type: "validation_complete", wireValue: "3", wireColor: "blue", game }); });
 
     expect(result.current.state.validationTokens).toHaveLength(1);
     expect(result.current.state.validationTokens[0].wireValue).toBe("3");
@@ -212,10 +212,10 @@ describe("useGameState", () => {
     const players = [makePlayer({ id: "p1" })];
     const wires = [makeWire({ id: "w1" })];
     const infoTokens = [{ id: "t1", gameId: "g1", wireId: "w1", value: "3", placedAt: "2026-01-01T00:00:00Z" }];
-    const validationTokens = [{ id: "v1", gameId: "g1", wireValue: "3", validatedAt: "2026-01-01T00:00:00Z" }];
+    const validationTokens = [{ id: "v1", gameId: "g1", wireValue: "3", wireColor: "blue" as const, validatedAt: "2026-01-01T00:00:00Z" }];
 
     act(() => {
-      result.current.handleMessage({ type: "game_state", game, players, wires, infoTokens, validationTokens });
+      result.current.handleMessage({ type: "game_state", game, players, wires, infoTokens, validationTokens, localPlayerId: "p1" });
     });
 
     expect(result.current.state.game).toEqual(game);

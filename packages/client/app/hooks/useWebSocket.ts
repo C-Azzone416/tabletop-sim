@@ -12,7 +12,11 @@ const INITIAL_RECONNECT_DELAY = 1_000;
 type ConnectionStatus = "connecting" | "connected" | "disconnected";
 type MessageHandler = (message: ServerMessage) => void;
 
-export function useWebSocket(onMessage: MessageHandler) {
+export function useWebSocket(
+  onMessage: MessageHandler,
+  profileId?: string,
+  playerName?: string,
+) {
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef(onMessage);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -32,7 +36,11 @@ export function useWebSocket(onMessage: MessageHandler) {
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    const wsUrl = SERVER_URL.replace(/^http/, "ws") + "/ws";
+    const base = SERVER_URL.replace(/^http/, "ws") + "/ws";
+    const params = new URLSearchParams();
+    if (profileId) params.set("profileId", profileId);
+    if (playerName) params.set("name", playerName);
+    const wsUrl = params.toString() ? `${base}?${params}` : base;
     setStatus("connecting");
 
     const ws = new WebSocket(wsUrl);
@@ -53,19 +61,23 @@ export function useWebSocket(onMessage: MessageHandler) {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      console.warn("[ws] connection closed", { code: event.code, reason: event.reason });
       setStatus("disconnected");
       wsRef.current = null;
+      // Don't reconnect on auth failure — server rejected us, retrying won't help
+      if (event.code === 4001) return;
       // Exponential backoff reconnect
       const delay = reconnectDelayRef.current;
       reconnectDelayRef.current = Math.min(delay * 2, MAX_RECONNECT_DELAY);
       reconnectTimeoutRef.current = setTimeout(connect, delay);
     };
 
-    ws.onerror = () => {
+    ws.onerror = (event) => {
+      console.error("[ws] error", event);
       ws.close();
     };
-  }, [flushQueue]);
+  }, [flushQueue, profileId, playerName]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
@@ -77,6 +89,7 @@ export function useWebSocket(onMessage: MessageHandler) {
   }, []);
 
   const send = useCallback((message: ClientMessage) => {
+    console.log('[ws] send:', message.type);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
     } else {

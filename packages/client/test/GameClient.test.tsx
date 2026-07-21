@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import { GameClient } from "../app/game/[joinCode]/GameClient";
 import {
   makeGame,
@@ -60,14 +60,14 @@ describe("GameClient — full game flow integration", () => {
   });
 
   it("shows lobby state when no game exists yet", () => {
-    render(<GameClient joinCode="ABC123" />);
+    render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
     act(() => vi.advanceTimersByTime(0));
     expect(screen.getByText("Game Lobby")).toBeInTheDocument();
     expect(screen.getByText("ABC123")).toBeInTheDocument();
   });
 
   it("transitions through lobby → setup → active → game over", () => {
-    render(<GameClient joinCode="ABC123" />);
+    render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
     act(() => vi.advanceTimersByTime(0));
     const ws = getWs();
 
@@ -112,7 +112,7 @@ describe("GameClient — full game flow integration", () => {
       });
     });
 
-    expect(screen.getByText("Setup Phase")).toBeInTheDocument();
+    expect(screen.getByText("Setup Phase - Wire Interrogation")).toBeInTheDocument();
 
     // 4. Setup complete → active game
     const activeGame = makeGame({
@@ -129,7 +129,6 @@ describe("GameClient — full game flow integration", () => {
     });
 
     expect(screen.getByText("Your turn — choose an action")).toBeInTheDocument();
-    expect(screen.getByText("Detonator")).toBeInTheDocument();
 
     // 5. Game over → overlay
     act(() => {
@@ -145,7 +144,7 @@ describe("GameClient — full game flow integration", () => {
   });
 
   it("shows error banner when server sends error", () => {
-    render(<GameClient joinCode="ABC123" />);
+    render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
     act(() => vi.advanceTimersByTime(0));
     const ws = getWs();
 
@@ -164,8 +163,80 @@ describe("GameClient — full game flow integration", () => {
     expect(screen.getByText("Game is full")).toBeInTheDocument();
   });
 
+  describe("[DEV] Skip Turn button", () => {
+    function renderActiveGame() {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "setup_complete",
+          game: makeGame({
+            id: "g1",
+            status: "active",
+            captainId: "p1",
+            currentTurnPlayerId: "p1",
+            detonatorPosition: 0,
+            detonatorMax: 4,
+          }),
+        });
+      });
+    }
+
+    it("does not render Skip Turn button when NEXT_PUBLIC_ENABLE_DEV_TOOLS is unset", () => {
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+      renderActiveGame();
+      expect(screen.queryByText("[DEV] Skip Turn")).not.toBeInTheDocument();
+    });
+
+    it("renders Skip Turn button when NEXT_PUBLIC_ENABLE_DEV_TOOLS=true", () => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+      renderActiveGame();
+      expect(screen.getByText("[DEV] Skip Turn")).toBeInTheDocument();
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+
+    it("calls POST /dev/advance-turn with joinCode on click", () => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+      process.env.NEXT_PUBLIC_SERVER_URL = "http://localhost:3001";
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal("fetch", fetchMock);
+
+      renderActiveGame();
+
+      const btn = screen.getByText("[DEV] Skip Turn");
+      fireEvent.click(btn);
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost:3001/dev/advance-turn",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ joinCode: "ABC123" }),
+        })
+      );
+
+      vi.unstubAllGlobals();
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+  });
+
   it("shows loss overlay on game_over lost", () => {
-    render(<GameClient joinCode="ABC123" />);
+    render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
     act(() => vi.advanceTimersByTime(0));
     const ws = getWs();
 

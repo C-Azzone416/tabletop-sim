@@ -11,13 +11,13 @@ class MockWebSocket {
   url: string;
   readyState = 0;
   onopen: (() => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event: { code: number; reason: string }) => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
-  onerror: (() => void) | null = null;
+  onerror: ((event: unknown) => void) | null = null;
   send = vi.fn();
   close = vi.fn().mockImplementation(() => {
     this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.();
+    this.onclose?.({ code: 1000, reason: "" });
   });
 
   constructor(url: string) {
@@ -36,11 +36,11 @@ class MockWebSocket {
 
   simulateClose() {
     this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.();
+    this.onclose?.({ code: 1000, reason: "" });
   }
 
   simulateError() {
-    this.onerror?.();
+    this.onerror?.({});
   }
 }
 
@@ -136,6 +136,21 @@ describe("useWebSocket", () => {
     expect(MockWebSocket.instances).toHaveLength(3);
   });
 
+  it("does not reconnect on close code 4001 (unauthenticated)", () => {
+    const onMessage = vi.fn();
+    const { result } = renderHook(() => useWebSocket(onMessage));
+
+    act(() => result.current.connect());
+    const ws = MockWebSocket.instances[0];
+    act(() => ws.simulateOpen());
+
+    act(() => { ws.onclose?.({ code: 4001, reason: "unauthenticated" }); });
+    expect(result.current.status).toBe("disconnected");
+
+    act(() => vi.advanceTimersByTime(5000));
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
   it("disconnect sets status to disconnected", () => {
     const onMessage = vi.fn();
     const { result } = renderHook(() => useWebSocket(onMessage));
@@ -171,5 +186,47 @@ describe("useWebSocket", () => {
 
     act(() => { ws.onmessage?.({ data: "not json{{{" }); });
     expect(onMessage).not.toHaveBeenCalled();
+  });
+
+  describe("URL building", () => {
+    it("includes profileId and playerName in WS URL", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(
+        (props) => useWebSocket(props.onMessage, props.profileId, props.playerName),
+        { initialProps: { onMessage, profileId: "abc123", playerName: "Alice" } },
+      );
+      act(() => result.current.connect());
+      expect(MockWebSocket.instances[0].url).toContain("profileId=abc123");
+      expect(MockWebSocket.instances[0].url).toContain("name=Alice");
+    });
+
+    it("builds base URL when no auth params provided", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() => useWebSocket(onMessage));
+      act(() => result.current.connect());
+      const url = MockWebSocket.instances[0].url;
+      expect(url).not.toContain("profileId");
+      expect(url).not.toContain("name=");
+    });
+
+    it("rebuilds connect with updated URL when profileId changes (stale closure regression)", () => {
+      const onMessage = vi.fn();
+      const { result, rerender } = renderHook(
+        (props) => useWebSocket(props.onMessage, props.profileId, props.playerName),
+        { initialProps: { onMessage, profileId: "", playerName: "" } },
+      );
+
+      const connectBefore = result.current.connect;
+      rerender({ onMessage, profileId: "xyz", playerName: "Bob" });
+      const connectAfter = result.current.connect;
+
+      // connect must be a new reference when deps change (dep array fix)
+      expect(connectAfter).not.toBe(connectBefore);
+
+      // The new connect builds the URL with updated params
+      act(() => result.current.connect());
+      expect(MockWebSocket.instances[0].url).toContain("profileId=xyz");
+      expect(MockWebSocket.instances[0].url).toContain("name=Bob");
+    });
   });
 });
