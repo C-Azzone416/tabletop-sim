@@ -9,6 +9,12 @@ export default defineConfig({
     setupFiles: ["./test/setup.ts"],
     globals: true,
     css: false,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary"],
+      include: ["app/**/*.{ts,tsx}"],
+      exclude: ["app/**/*.d.ts"],
+    },
   },
   resolve: {
     alias: {

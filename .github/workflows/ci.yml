@@ -41,5 +41,8 @@ jobs:
       - name: Test coverage (server)
         run: npm run test:coverage -w packages/server
 
+      - name: Test coverage (client)
+        run: npm run test:coverage -w packages/client
+
       - name: Check migrations
         run: npm run check:migrations
