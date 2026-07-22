@@ -17,6 +17,9 @@ vi.mock("../src/engine/game-engine.js", () => ({
   executeRevealReds: vi.fn(),
   executePlayerReady: vi.fn(),
   executeCompleteSetup: vi.fn(),
+  executeSelectOpponentWire: vi.fn(),
+  executeAnswerWireQuestion: vi.fn(),
+  executeNextTurn: vi.fn(),
 }));
 
 vi.mock("../src/db/games.js", () => ({
@@ -39,6 +42,7 @@ vi.mock("../src/ws/connection-manager.js", () => ({
   registerConnection: vi.fn(),
   getConnectionInfo: vi.fn(),
   getGameSockets: vi.fn(),
+  getPlayerSocket: vi.fn(),
   broadcastToGame: vi.fn(),
   getAuthenticatedUser: vi.fn(),
   setAuthenticatedUser: vi.fn(),
@@ -394,6 +398,118 @@ describe("message-handler", () => {
       await handleMessage(ws, JSON.stringify({ type: "place_info_token", wireId: "w1" }));
 
       expect(mockEngine.executePlaceInfoToken).toHaveBeenCalledWith("g1", "p1", "w1");
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game, players);
+    });
+  });
+
+  describe("double_detector", () => {
+    it("sends the requester a full result and broadcasts a detail-free result to others", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", status: "active" });
+      const turn = makeTurn({ actionType: "double_detector", result: "success" });
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeDoubleDetector.mockResolvedValue({ turn, game });
+
+      await handleMessage(ws, JSON.stringify({ type: "double_detector", targetWireId: "w1", targetWireId2: "w2" }));
+
+      expect(mockEngine.executeDoubleDetector).toHaveBeenCalledWith("g1", "p1", "w1", "w2");
+      expect(lastSent(ws)).toEqual({ type: "turn_result", turn, game, updatedWires: [] });
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
+        "g1",
+        expect.objectContaining({ type: "turn_result", turn: { ...turn, result: null }, game, updatedWires: [] }),
+        "p1",
+      );
+    });
+  });
+
+  describe("select_opponent_wire", () => {
+    it("sends a wire_question popup to the answering opponent's socket", async () => {
+      const ws = mockSocket();
+      const answererWs = mockSocket();
+      const game = makeGame({ id: "g1", status: "setup" });
+      const wire = makeWire({ id: "w1", value: "4" });
+      const answererPlayer = makePlayer({ id: "p2" });
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeSelectOpponentWire.mockResolvedValue({ game, wire, answererPlayer });
+      mockConnManager.getPlayerSocket.mockReturnValue(answererWs);
+
+      await handleMessage(ws, JSON.stringify({ type: "select_opponent_wire", wireId: "w1" }));
+
+      expect(mockEngine.executeSelectOpponentWire).toHaveBeenCalledWith("g1", "p1", "w1");
+      expect(mockConnManager.getPlayerSocket).toHaveBeenCalledWith("g1", "p2");
+      expect(lastSent(answererWs)).toEqual({ type: "wire_question", askerPlayerId: "p1", wireValue: "4" });
+    });
+
+    it("does nothing extra when the answerer has no live socket", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", status: "setup" });
+      const wire = makeWire({ id: "w1", value: "4" });
+      const answererPlayer = makePlayer({ id: "p2" });
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeSelectOpponentWire.mockResolvedValue({ game, wire, answererPlayer });
+      mockConnManager.getPlayerSocket.mockReturnValue(undefined);
+
+      await expect(
+        handleMessage(ws, JSON.stringify({ type: "select_opponent_wire", wireId: "w1" }))
+      ).resolves.not.toThrow();
+    });
+  });
+
+  describe("answer_wire_question", () => {
+    it("broadcasts interrogation_result to all players on a correct answer", async () => {
+      const ws = mockSocket();
+      const otherWs = mockSocket();
+      const game = makeGame({ id: "g1", status: "setup" });
+      const updatedWires = [makeWire({ id: "w1", status: "revealed" })];
+      const gameSockets = new Map<string, WebSocket>();
+      gameSockets.set("p1", ws);
+      gameSockets.set("p2", otherWs);
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
+      mockEngine.executeAnswerWireQuestion.mockResolvedValue({ game, message: "Correct!", updatedWires });
+      mockConnManager.getGameSockets.mockReturnValue(gameSockets);
+
+      await handleMessage(ws, JSON.stringify({ type: "answer_wire_question", answer: "yes" }));
+
+      expect(mockEngine.executeAnswerWireQuestion).toHaveBeenCalledWith("g1", "p2", "yes");
+      expect(lastSent(ws)).toEqual({
+        type: "interrogation_result", success: true, message: "Correct!", game, updatedWires,
+      });
+    });
+
+    it("broadcasts game_over when a red wire is guessed correctly (loss)", async () => {
+      const ws = mockSocket();
+      const lostGame = makeGame({ id: "g1", status: "lost" });
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
+      mockEngine.executeAnswerWireQuestion.mockResolvedValue({ game: lostGame, message: "Game Over!", updatedWires: [] });
+      mockConnManager.getGameSockets.mockReturnValue(new Map([["p2", ws]]));
+
+      await handleMessage(ws, JSON.stringify({ type: "answer_wire_question", answer: "no" }));
+
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
+        "g1",
+        { type: "game_over", result: "lost", reason: "Red wire guessed correctly!" },
+      );
+    });
+  });
+
+  describe("next_turn", () => {
+    it("advances the turn and broadcasts updated game state", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", status: "setup" });
+      const players = [makePlayer({ id: "p1" }), makePlayer({ id: "p2" })];
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeNextTurn.mockResolvedValue({ game });
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+
+      await handleMessage(ws, JSON.stringify({ type: "next_turn" }));
+
+      expect(mockEngine.executeNextTurn).toHaveBeenCalledWith("g1", "p1");
       expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game, players);
     });
   });
