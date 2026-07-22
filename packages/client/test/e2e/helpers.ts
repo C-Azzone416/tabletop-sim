@@ -80,3 +80,103 @@ export async function findLocalDuplicateValuePair(
   }
   return null;
 }
+
+/**
+ * Locates the per-player wrapper div (name header + PlayerRack) for a given
+ * displayed player name (GameBoard.tsx renders "You" for the local player
+ * and the real name for everyone else — so this only resolves opponents).
+ * Mirrors the testing-library getRackContainer() pattern used in
+ * GameBoard.test.tsx (closest name span → nearest ancestor that also
+ * contains a [data-testid="player-rack"] descendant).
+ */
+export function playerContainer(page: Page, name: string): Locator {
+  return page
+    .getByText(name, { exact: true })
+    .locator(`xpath=ancestor::div[.//*[@data-testid="player-rack"]][1]`);
+}
+
+/**
+ * Finds a wire value present in BOTH the local player's own rack (values
+ * always visible to their owner — see findLocalDuplicateValuePair) and one
+ * of the named opponents' racks (via that wire's info token badge — since
+ * /dev/seed pre-places an info token on every wire for every player, an
+ * opponent's true hidden value is readable from data-testid="wire-info-token"
+ * even though the wire itself renders as data-wire-status="hidden"; see
+ * Wire.tsx and seedDevGame in packages/server/src/app.ts).
+ *
+ * A shared value is exactly what's needed to drive a full Dual Cut: the
+ * local player can guess the opponent's wire correctly (propose), and — once
+ * accepted — complete their half with an own wire of the same value.
+ */
+export async function findDualCutOpportunity(
+  page: Page,
+  opponentNames: string[],
+): Promise<{
+  value: string;
+  ownWire: Locator;
+  ownWireRackPosition: number;
+  targetWire: Locator;
+  targetPlayerName: string;
+} | null> {
+  const localRack = page.locator('[data-testid="player-rack"]').first();
+  const localWireButtons = localRack.locator("button[data-wire-position]");
+  const localCount = await localWireButtons.count();
+
+  const localByValue = new Map<string, Locator>();
+  for (let i = 0; i < localCount; i++) {
+    const btn = localWireButtons.nth(i);
+    const status = await btn.getAttribute("data-wire-status");
+    if (status !== "hidden") continue;
+    const valueText = (
+      await btn.locator("span.text-lg.font-bold").textContent().catch(() => null)
+    )?.trim();
+    if (valueText) localByValue.set(valueText, btn);
+  }
+  if (localByValue.size === 0) return null;
+
+  for (const name of opponentNames) {
+    const rack = playerContainer(page, name).locator('[data-testid="player-rack"]');
+    const wireButtons = rack.locator("button[data-wire-position]");
+    const count = await wireButtons.count();
+    for (let i = 0; i < count; i++) {
+      const btn = wireButtons.nth(i);
+      const status = await btn.getAttribute("data-wire-status");
+      if (status !== "hidden") continue;
+      const infoValue = (
+        await btn.locator('[data-testid="wire-info-token"]').textContent().catch(() => null)
+      )?.trim();
+      if (infoValue && localByValue.has(infoValue)) {
+        const ownWire = localByValue.get(infoValue)!;
+        const posAttr = await ownWire.getAttribute("data-wire-position");
+        return {
+          value: infoValue,
+          ownWire,
+          ownWireRackPosition: Number(posAttr),
+          targetWire: btn,
+          targetPlayerName: name,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Finds the first hidden wire of the given color owned by one of the named
+ * opponents (dual cut cannot target your own wire — see
+ * executeProposeDualCut in packages/server/src/engine/game-engine.ts).
+ */
+export async function findOpponentHiddenWireByColor(
+  page: Page,
+  opponentNames: string[],
+  color: "blue" | "yellow" | "red",
+): Promise<{ wire: Locator; ownerName: string } | null> {
+  for (const name of opponentNames) {
+    const rack = playerContainer(page, name).locator('[data-testid="player-rack"]');
+    const wire = rack.locator(
+      `button[data-wire-color="${color}"][data-wire-status="hidden"]`,
+    ).first();
+    if ((await wire.count()) > 0) return { wire, ownerName: name };
+  }
+  return null;
+}
