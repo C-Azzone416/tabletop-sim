@@ -15,8 +15,15 @@ describe("Lobby", () => {
       players: [captain, player2],
       localPlayerId: "p1",
       captainId: "p1",
+      onReady: vi.fn(),
       onStartGame: vi.fn(),
     };
+  };
+
+  const allReady = () => {
+    const captain = makePlayer({ id: "p1", name: "Alice", ready: true });
+    const player2 = makePlayer({ id: "p2", name: "Bob", ready: true });
+    return { players: [captain, player2] };
   };
 
   it("displays the join code", () => {
@@ -45,36 +52,83 @@ describe("Lobby", () => {
     expect(screen.getByText("(you)")).toBeInTheDocument();
   });
 
-  it("shows start button for captain with enough players", () => {
-    render(<Lobby {...defaultProps()} />);
-    const button = screen.getByRole("button", { name: /Start Mission/ });
-    expect(button).toBeInTheDocument();
-    expect(button).toBeEnabled();
+  describe("Ready button", () => {
+    it("renders for a player who isn't ready yet, for both captain and non-captain", () => {
+      const props = defaultProps();
+      render(<Lobby {...props} />);
+      expect(screen.getByRole("button", { name: "Ready" })).toBeInTheDocument();
+    });
+
+    it("calls onReady when clicked", async () => {
+      const user = userEvent.setup();
+      const props = defaultProps();
+      render(<Lobby {...props} />);
+      await user.click(screen.getByRole("button", { name: "Ready" }));
+      expect(props.onReady).toHaveBeenCalledOnce();
+    });
+
+    it("is not rendered once the local player is already ready", () => {
+      const props = { ...defaultProps(), ...allReady() };
+      render(<Lobby {...props} />);
+      expect(screen.queryByRole("button", { name: "Ready" })).not.toBeInTheDocument();
+    });
   });
 
-  it("enables start button with only 1 player", () => {
-    const props = defaultProps();
-    props.players = [props.players[0]];
-    render(<Lobby {...props} />);
-    const button = screen.getByRole("button", { name: /Start Mission/ });
-    expect(button).not.toBeDisabled();
+  describe("Start button (captain only)", () => {
+    it("does not render before the captain has readied up themselves", () => {
+      render(<Lobby {...defaultProps()} />);
+      expect(screen.queryByRole("button", { name: /Start Mission/ })).not.toBeInTheDocument();
+    });
+
+    it("renders once the captain is ready, but stays disabled until everyone is ready", () => {
+      const captain = makePlayer({ id: "p1", name: "Alice", ready: true });
+      const player2 = makePlayer({ id: "p2", name: "Bob", ready: false });
+      const props = { ...defaultProps(), players: [captain, player2] };
+      render(<Lobby {...props} />);
+      expect(screen.getByRole("button", { name: /Start Mission/ })).toBeDisabled();
+    });
+
+    it("is enabled once every player is ready", () => {
+      const props = { ...defaultProps(), ...allReady() };
+      render(<Lobby {...props} />);
+      expect(screen.getByRole("button", { name: /Start Mission/ })).not.toBeDisabled();
+    });
+
+    it("calls onStartGame with the selected mission when clicked", async () => {
+      const user = userEvent.setup();
+      const props = { ...defaultProps(), ...allReady() };
+      render(<Lobby {...props} />);
+      await user.click(screen.getByRole("button", { name: /Start Mission/ }));
+      expect(props.onStartGame).toHaveBeenCalledWith(1);
+    });
+
+    it("never renders for a non-captain, ready or not", () => {
+      const props = { ...defaultProps(), ...allReady(), localPlayerId: "p2" };
+      render(<Lobby {...props} />);
+      expect(screen.queryByRole("button", { name: /Start Mission/ })).not.toBeInTheDocument();
+    });
   });
 
-  it("calls onStartGame when captain clicks start", async () => {
-    const user = userEvent.setup();
-    const props = defaultProps();
-    render(<Lobby {...props} />);
-    await user.click(screen.getByRole("button", { name: /Start Mission/ }));
-    expect(props.onStartGame).toHaveBeenCalledWith(1);
-  });
+  describe("waiting indicators", () => {
+    it("shows who isn't ready yet once the local player has readied up", () => {
+      const captain = makePlayer({ id: "p1", name: "Alice", ready: true });
+      const player2 = makePlayer({ id: "p2", name: "Bob", ready: false });
+      const props = { ...defaultProps(), players: [captain, player2] };
+      render(<Lobby {...props} />);
+      expect(screen.getByText("Waiting for Bob to ready up...")).toBeInTheDocument();
+    });
 
-  it("shows waiting message for non-captain player", () => {
-    const props = defaultProps();
-    props.localPlayerId = "p2";
-    render(<Lobby {...props} />);
-    expect(
-      screen.getByText("Waiting for the host to start the game...")
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Start Mission/ })).not.toBeInTheDocument();
+    it("tells a ready non-captain to wait on the host once everyone is ready", () => {
+      const props = { ...defaultProps(), ...allReady(), localPlayerId: "p2" };
+      render(<Lobby {...props} />);
+      expect(
+        screen.getByText("Waiting for the host to start the game..."),
+      ).toBeInTheDocument();
+    });
+
+    it("shows nothing before the local player has readied up", () => {
+      render(<Lobby {...defaultProps()} />);
+      expect(screen.queryByText(/Waiting for/)).not.toBeInTheDocument();
+    });
   });
 });

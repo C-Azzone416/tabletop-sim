@@ -112,9 +112,11 @@ describe("GameClient — full game flow integration", () => {
       });
     });
 
-    expect(screen.getByText("Setup Phase - Wire Interrogation")).toBeInTheDocument();
+    expect(screen.getByText("Place Your Opening Info Token")).toBeInTheDocument();
 
-    // 4. Setup complete → active game
+    // 4. Last player's placement lands → server re-broadcasts game_state with
+    // status flipped to active (place_info_token's real transition path —
+    // there's no separate "setup complete" message since #131).
     const activeGame = makeGame({
       id: "g1",
       status: "active",
@@ -125,7 +127,15 @@ describe("GameClient — full game flow integration", () => {
     });
 
     act(() => {
-      ws.simulateMessage({ type: "setup_complete", game: activeGame });
+      ws.simulateMessage({
+        type: "game_state",
+        game: activeGame,
+        players,
+        wires,
+        infoTokens: [],
+        validationTokens: [],
+        localPlayerId: "p1",
+      });
     });
 
     expect(screen.getByText("Your turn — choose an action")).toBeInTheDocument();
@@ -185,7 +195,7 @@ describe("GameClient — full game flow integration", () => {
       });
       act(() => {
         ws.simulateMessage({
-          type: "setup_complete",
+          type: "game_state",
           game: makeGame({
             id: "g1",
             status: "active",
@@ -194,6 +204,11 @@ describe("GameClient — full game flow integration", () => {
             detonatorPosition: 0,
             detonatorMax: 4,
           }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
         });
       });
     }
@@ -267,7 +282,15 @@ describe("GameClient — full game flow integration", () => {
     });
 
     act(() => {
-      ws.simulateMessage({ type: "setup_complete", game });
+      ws.simulateMessage({
+        type: "game_state",
+        game,
+        players: [makePlayer({ id: "p1", name: "Alice" })],
+        wires: [makeWire({ id: "w1", playerId: "p1" })],
+        infoTokens: [],
+        validationTokens: [],
+        localPlayerId: "p1",
+      });
     });
 
     act(() => {

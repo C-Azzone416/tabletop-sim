@@ -8,8 +8,13 @@ import { makeGame, makePlayer, makeWire, makeInfoToken, resetIds } from "./fixtu
 describe("SetupPhase", () => {
   beforeEach(() => resetIds());
 
-  const setup = () => {
-    const game = makeGame({ id: "g1", status: "setup", currentTurnPlayerId: "p1", captainId: "p1" });
+  const setup = (overrides: { currentTurnPlayerId?: string; localPlayerId?: string } = {}) => {
+    const game = makeGame({
+      id: "g1",
+      status: "setup",
+      captainId: "p1",
+      currentTurnPlayerId: overrides.currentTurnPlayerId ?? "p1",
+    });
     const localPlayer = makePlayer({ id: "p1", name: "Alice" });
     const otherPlayer = makePlayer({ id: "p2", name: "Bob" });
     const localWires = [
@@ -21,30 +26,20 @@ describe("SetupPhase", () => {
       makeWire({ id: "w4", playerId: "p2", rackPosition: 1, value: "4" }),
     ];
     const onPlaceInfoToken = vi.fn();
-    const onSelectOpponentWire = vi.fn();
-    const onAnswerWireQuestion = vi.fn();
-    const onNextTurn = vi.fn();
-    const onStartGame = vi.fn();
 
     return {
       game,
       players: [localPlayer, otherPlayer],
       wires: [...localWires, ...otherWires],
       infoTokens: [] as InfoToken[],
-      localPlayerId: "p1",
+      localPlayerId: overrides.localPlayerId ?? "p1",
       onPlaceInfoToken,
-      onSelectOpponentWire,
-      onAnswerWireQuestion,
-      onNextTurn,
-      onStartGame,
-      pendingWireQuestion: null,
-      lastInterrogationResult: null,
     };
   };
 
-  it("renders setup phase heading", () => {
+  it("renders the placement heading", () => {
     render(<SetupPhase {...setup()} />);
-    expect(screen.getByText("Setup Phase - Wire Interrogation")).toBeInTheDocument();
+    expect(screen.getByText("Place Your Opening Info Token")).toBeInTheDocument();
   });
 
   it("labels local player rack", () => {
@@ -57,80 +52,89 @@ describe("SetupPhase", () => {
     expect(screen.getByText("Bob")).toBeInTheDocument();
   });
 
-  it("calls onSelectOpponentWire when clicking an opponent wire", async () => {
-    const user = userEvent.setup();
-    const props = setup();
-    render(<SetupPhase {...props} />);
-
-    const wireButtons = screen.getAllByRole("button");
-    const otherPlayerWireButton = wireButtons.find(
-      (btn) => btn.textContent?.includes("2") || btn.textContent?.includes("4")
-    );
-    expect(otherPlayerWireButton).toBeDefined();
-    await user.click(otherPlayerWireButton!);
-    expect(props.onSelectOpponentWire).toHaveBeenCalledOnce();
-  });
-
-  it("does not call onSelectOpponentWire when clicking own wire", async () => {
-    const user = userEvent.setup();
-    const props = setup();
-    render(<SetupPhase {...props} />);
-
-    // Local rack is labeled "Your Rack" — its wires have no click handler
-    const yourRackHeading = screen.getByText("Your Rack");
-    const yourRackSection = yourRackHeading.closest("div")!;
-    const localWireButton = within(yourRackSection).getAllByRole("button")[0];
-    expect(localWireButton).toBeDefined();
-    await user.click(localWireButton);
-    expect(props.onSelectOpponentWire).not.toHaveBeenCalled();
-  });
-
-  it("shows prompt to place opening info token before placement", () => {
+  it("board-first: renders every player's rack simultaneously, not just the active placer's", () => {
     render(<SetupPhase {...setup()} />);
-    expect(
-      screen.getByText(/Select one of your blue wires to place your opening info token/i)
-    ).toBeInTheDocument();
+    expect(screen.getAllByTestId("player-rack")).toHaveLength(2);
   });
 
-  it("calls onPlaceInfoToken when clicking a local blue wire before token placed", async () => {
-    const user = userEvent.setup();
-    const props = setup();
-    render(<SetupPhase {...props} />);
-    const yourRackHeading = screen.getByText("Your Rack");
-    const yourRackSection = yourRackHeading.closest("div")!;
-    const localWireButton = within(yourRackSection).getAllByRole("button")[0];
-    await user.click(localWireButton);
-    expect(props.onPlaceInfoToken).toHaveBeenCalledWith("w1");
+  describe("turn indicator", () => {
+    it("tells the active placer it's their turn", () => {
+      render(<SetupPhase {...setup({ currentTurnPlayerId: "p1", localPlayerId: "p1" })} />);
+      expect(
+        screen.getByText("Your turn — place your opening info token"),
+      ).toBeInTheDocument();
+    });
+
+    it("tells a non-active player who they're waiting on", () => {
+      render(<SetupPhase {...setup({ currentTurnPlayerId: "p2", localPlayerId: "p1" })} />);
+      expect(screen.getByText("Waiting for Bob to place their token...")).toBeInTheDocument();
+    });
   });
 
-  it("Start Game button is disabled before opening token is placed", () => {
-    render(<SetupPhase {...setup()} />);
-    expect(screen.getByRole("button", { name: "Start Game" })).toBeDisabled();
+  describe("placement — active placer", () => {
+    it("shows the placement prompt and allows selecting a local blue wire", async () => {
+      const user = userEvent.setup();
+      const props = setup({ currentTurnPlayerId: "p1", localPlayerId: "p1" });
+      render(<SetupPhase {...props} />);
+      expect(
+        screen.getByText(/Select one of your blue wires to place your opening info token/i),
+      ).toBeInTheDocument();
+
+      const yourRackHeading = screen.getByText("Your Rack");
+      const yourRackSection = yourRackHeading.closest("div")!;
+      const localWireButton = within(yourRackSection).getAllByRole("button")[0];
+      await user.click(localWireButton);
+      expect(props.onPlaceInfoToken).toHaveBeenCalledWith("w1");
+    });
+
+    it("shows confirmation text once the token is placed", () => {
+      const props = setup({ currentTurnPlayerId: "p1", localPlayerId: "p1" });
+      props.infoTokens = [makeInfoToken({ wireId: "w1" })];
+      render(<SetupPhase {...props} />);
+      expect(screen.getByText("Opening info token placed.")).toBeInTheDocument();
+    });
+
+    it("local wire is not clickable once already placed", async () => {
+      const user = userEvent.setup();
+      const props = setup({ currentTurnPlayerId: "p1", localPlayerId: "p1" });
+      props.infoTokens = [makeInfoToken({ wireId: "w1" })];
+      render(<SetupPhase {...props} />);
+      const yourRackHeading = screen.getByText("Your Rack");
+      const yourRackSection = yourRackHeading.closest("div")!;
+      const localWireButton = within(yourRackSection).getAllByRole("button")[0];
+      await user.click(localWireButton);
+      expect(props.onPlaceInfoToken).not.toHaveBeenCalled();
+    });
   });
 
-  it("Start Game button is enabled after opening token is placed", () => {
-    const props = setup();
-    props.infoTokens = [makeInfoToken({ wireId: "w1" })];
-    render(<SetupPhase {...props} />);
-    expect(screen.getByRole("button", { name: "Start Game" })).not.toBeDisabled();
-  });
+  describe("placement — not the active placer (non-captain render path)", () => {
+    it("shows a waiting-for-turn prompt instead of the placement prompt", () => {
+      render(<SetupPhase {...setup({ currentTurnPlayerId: "p2", localPlayerId: "p1" })} />);
+      expect(
+        screen.getByText("Waiting for your turn to place your opening info token."),
+      ).toBeInTheDocument();
+    });
 
-  it("shows confirmation text after opening token is placed", () => {
-    const props = setup();
-    props.infoTokens = [makeInfoToken({ wireId: "w1" })];
-    render(<SetupPhase {...props} />);
-    expect(screen.getByText("Opening info token placed.")).toBeInTheDocument();
-  });
+    it("does not allow placing a token out of turn", async () => {
+      const user = userEvent.setup();
+      const props = setup({ currentTurnPlayerId: "p2", localPlayerId: "p1" });
+      render(<SetupPhase {...props} />);
+      const yourRackHeading = screen.getByText("Your Rack");
+      const yourRackSection = yourRackHeading.closest("div")!;
+      const localWireButton = within(yourRackSection).getAllByRole("button")[0];
+      await user.click(localWireButton);
+      expect(props.onPlaceInfoToken).not.toHaveBeenCalled();
+    });
 
-  it("local wire not clickable after token placed", async () => {
-    const user = userEvent.setup();
-    const props = setup();
-    props.infoTokens = [makeInfoToken({ wireId: "w1" })];
-    render(<SetupPhase {...props} />);
-    const yourRackHeading = screen.getByText("Your Rack");
-    const yourRackSection = yourRackHeading.closest("div")!;
-    const localWireButton = within(yourRackSection).getAllByRole("button")[0];
-    await user.click(localWireButton);
-    expect(props.onPlaceInfoToken).not.toHaveBeenCalled();
+    it("renders correctly from a non-captain player's own perspective", () => {
+      // localPlayerId "p2" — captainId on the fixture game is "p1" — this is
+      // exactly the render path that hid the original setup-completion bug.
+      render(<SetupPhase {...setup({ currentTurnPlayerId: "p1", localPlayerId: "p2" })} />);
+      expect(screen.getByText("Your Rack")).toBeInTheDocument();
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+      expect(
+        screen.getByText("Waiting for Alice to place their token..."),
+      ).toBeInTheDocument();
+    });
   });
 });

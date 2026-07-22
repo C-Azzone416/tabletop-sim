@@ -73,6 +73,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
           players={state.players}
           localPlayerId={state.localPlayer?.id ?? ""}
           captainId={state.game?.captainId ?? null}
+          onReady={() => send({ type: "player_ready" })}
           onStartGame={(mission) => send({ type: "start_game", mission })}
         />
         {seatSwitcher}
@@ -99,16 +100,6 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
           onPlaceInfoToken={(wireId) =>
             send({ type: "place_info_token", wireId })
           }
-          onSelectOpponentWire={(wireId) =>
-            send({ type: "select_opponent_wire", wireId })
-          }
-          onAnswerWireQuestion={(answer) =>
-            send({ type: "answer_wire_question", answer })
-          }
-          onNextTurn={() => send({ type: "next_turn" })}
-          onStartGame={() => send({ type: "complete_setup" })}
-          pendingWireQuestion={state.pendingWireQuestion}
-          lastInterrogationResult={state.lastInterrogationResult}
         />
       </div>
     );
