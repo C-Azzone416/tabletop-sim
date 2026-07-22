@@ -88,12 +88,6 @@ export type ClientMessage =
   | { type: 'double_detector'; targetWireId: string; targetWireId2: string }
   | { type: 'reveal_reds' }
   | { type: 'player_ready' }
-  // Vestigial: the server no longer parses/handles this (see message-handler.ts's
-  // validateMessage) — retired per the setup-flow-fix redesign, since placing the
-  // opening info token is now the turn-ordered "ready" action itself. Left in the
-  // type only so packages/client (GameClient.tsx's old "Start Game" button) keeps
-  // compiling until that UI is rebuilt against the new flow; remove once it's gone.
-  | { type: 'complete_setup' }
   | { type: 'select_opponent_wire'; wireId: string }
   | { type: 'answer_wire_question'; answer: 'yes' | 'no' }
   | { type: 'next_turn' };
