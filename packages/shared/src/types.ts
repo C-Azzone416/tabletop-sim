@@ -89,6 +89,7 @@ export type ClientMessage =
   | { type: 'reveal_reds' }
   | { type: 'player_ready' }
   | { type: 'complete_setup' }
+  | { type: 'start_active_game' }
   | { type: 'select_opponent_wire'; wireId: string }
   | { type: 'answer_wire_question'; answer: 'yes' | 'no' }
   | { type: 'next_turn' };

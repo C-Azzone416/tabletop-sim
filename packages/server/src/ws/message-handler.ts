@@ -67,6 +67,8 @@ function validateMessage(parsed: unknown): ClientMessage | null {
       return { type: 'player_ready' };
     case 'complete_setup':
       return { type: 'complete_setup' };
+    case 'start_active_game':
+      return { type: 'start_active_game' };
     case 'select_opponent_wire':
       if (!isNonEmptyString(msg.wireId)) return null;
       return { type: 'select_opponent_wire', wireId: msg.wireId };
@@ -149,6 +151,9 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       case 'complete_setup':
         await handleCompleteSetup(socket);
         break;
+      case 'start_active_game':
+        await handleStartActiveGame(socket);
+        break;
       case 'select_opponent_wire':
         await handleSelectOpponentWire(socket, msg.wireId);
         break;
@@ -175,6 +180,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Game is not active', 'Not authenticated', 'Player not found',
       'Reveal reds not available in this mission',
       'Game is not in setup phase', 'Can only place info token on your own wire', 'Info token already placed',
+      'Must place your opening info token before readying up', 'Not all players are ready',
       'Game is not in waiting phase', 'Cannot select your own wire',
       'No pending question', 'This question is not for you',
       'Cannot advance turn while question is pending', 'Asker not found',
@@ -424,19 +430,29 @@ async function handleCompleteSetup(socket: WebSocket): Promise<void> {
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
-  const { game, players, allDone } = await withTimeout(
+  const { players } = await withTimeout(
     engine.executeCompleteSetup(info.gameId, info.playerId),
     'executeCompleteSetup',
   );
 
-  if (allDone) {
-    const response: ServerMessage = { type: 'setup_complete', game };
-    connManager.broadcastToGame(info.gameId, response);
-  } else {
-    // Notify all players of updated setup_done status
-    const response: ServerMessage = { type: 'players_updated', players };
-    connManager.broadcastToGame(info.gameId, response);
-  }
+  // Marking ready never activates the game — see handleStartActiveGame.
+  // Broadcast so every client can compute "who's ready" and enable the
+  // captain's Start button once players.every(p => p.setupDone).
+  const response: ServerMessage = { type: 'players_updated', players };
+  connManager.broadcastToGame(info.gameId, response);
+}
+
+async function handleStartActiveGame(socket: WebSocket): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  const { game } = await withTimeout(
+    engine.executeStartActiveGame(info.gameId, info.playerId),
+    'executeStartActiveGame',
+  );
+
+  const response: ServerMessage = { type: 'setup_complete', game };
+  connManager.broadcastToGame(info.gameId, response);
 }
 
 async function handleSelectOpponentWire(socket: WebSocket, wireId: string): Promise<void> {

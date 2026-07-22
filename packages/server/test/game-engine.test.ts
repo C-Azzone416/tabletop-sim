@@ -250,45 +250,65 @@ describe("game-engine", () => {
   });
 
   describe("executeCompleteSetup", () => {
-    it("marks the player done and reports allDone=false while others remain", async () => {
-      const game = makeGame({ id: "g1", status: "setup", captainId: "p1" });
-      const players = [
-        makePlayer({ id: "p1", gameId: "g1", setupDone: true }),
-        makePlayer({ id: "p2", gameId: "g1", setupDone: false }),
-      ];
-
-      mockGamesDb.getGameById.mockResolvedValue(game);
-      mockPlayersDb.markSetupDone.mockResolvedValue(players[0]);
-      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
-
-      const result = await engine.executeCompleteSetup("g1", "p1");
-
-      expect(mockPlayersDb.markSetupDone).toHaveBeenCalledWith("p1");
-      expect(result.allDone).toBe(false);
-      expect(result.game).toBe(game);
-      expect(mockGamesDb.updateGameStatus).not.toHaveBeenCalled();
-    });
-
-    it("transitions the game to active with the captain first when everyone is done", async () => {
+    it("marks only the calling player's own setupDone and never activates the game, even if everyone is now done", async () => {
       const game = makeGame({ id: "g1", status: "setup", captainId: "p1" });
       const players = [
         makePlayer({ id: "p1", gameId: "g1", setupDone: true }),
         makePlayer({ id: "p2", gameId: "g1", setupDone: true }),
       ];
-      const activeGame = { ...game, status: "active" as const, currentTurnPlayerId: "p1" };
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p2" });
 
       mockGamesDb.getGameById.mockResolvedValue(game);
-      mockPlayersDb.markSetupDone.mockResolvedValue(players[0]);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([wire]);
+      mockTokensDb.getInfoTokensByGameId.mockResolvedValue([
+        { id: "t1", gameId: "g1", wireId: "w1", value: "3", placedAt: "" },
+      ]);
+      mockPlayersDb.markSetupDone.mockResolvedValue(players[1]);
       mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
-      mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...game, currentTurnPlayerId: "p1" });
-      mockGamesDb.updateGameStatus.mockResolvedValue(activeGame);
 
       const result = await engine.executeCompleteSetup("g1", "p2");
 
-      expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", "p1");
-      expect(mockGamesDb.updateGameStatus).toHaveBeenCalledWith("g1", "active");
-      expect(result.allDone).toBe(true);
-      expect(result.game.status).toBe("active");
+      expect(mockPlayersDb.markSetupDone).toHaveBeenCalledWith("p2");
+      expect(result.players).toEqual(players);
+      expect(mockGamesDb.updateGameStatus).not.toHaveBeenCalled();
+      expect(mockGamesDb.updateCurrentTurn).not.toHaveBeenCalled();
+    });
+
+    it("rejects if the player hasn't placed their opening info token yet", async () => {
+      const game = makeGame({ id: "g1", status: "setup" });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p1" });
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([wire]);
+      mockTokensDb.getInfoTokensByGameId.mockResolvedValue([]);
+
+      await expect(engine.executeCompleteSetup("g1", "p1")).rejects.toThrow(
+        "Must place your opening info token before readying up"
+      );
+      expect(mockPlayersDb.markSetupDone).not.toHaveBeenCalled();
+    });
+
+    it("ignores an info token placed on another player's wire — only the caller's own wire counts", async () => {
+      const game = makeGame({ id: "g1", status: "setup" });
+      const ownWire = makeWire({ id: "w1", gameId: "g1", playerId: "p1" });
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([ownWire]);
+      mockTokensDb.getInfoTokensByGameId.mockResolvedValue([
+        { id: "t1", gameId: "g1", wireId: "w2", value: "3", placedAt: "" }, // belongs to p2, not p1
+      ]);
+
+      await expect(engine.executeCompleteSetup("g1", "p1")).rejects.toThrow(
+        "Must place your opening info token before readying up"
+      );
+
+      mockTokensDb.getInfoTokensByGameId.mockResolvedValue([
+        { id: "t1", gameId: "g1", wireId: "w1", value: "3", placedAt: "" }, // now p1's own wire
+      ]);
+      mockPlayersDb.markSetupDone.mockResolvedValue(makePlayer({ id: "p1" }));
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([makePlayer({ id: "p1" })]);
+
+      await expect(engine.executeCompleteSetup("g1", "p1")).resolves.not.toThrow();
     });
 
     it("rejects if the game does not exist", async () => {
@@ -303,16 +323,58 @@ describe("game-engine", () => {
 
       await expect(engine.executeCompleteSetup("g1", "p1")).rejects.toThrow("Game is not in setup phase");
     });
+  });
 
-    it("rejects if the captain is missing from the player list once everyone is done", async () => {
-      const game = makeGame({ id: "g1", status: "setup", captainId: "missing-captain" });
-      const players = [makePlayer({ id: "p1", gameId: "g1", setupDone: true })];
+  describe("executeStartActiveGame", () => {
+    it("activates the game with the captain going first, once everyone is ready", async () => {
+      const game = makeGame({ id: "g1", status: "setup", captainId: "p1" });
+      const players = [
+        makePlayer({ id: "p1", gameId: "g1", setupDone: true }),
+        makePlayer({ id: "p2", gameId: "g1", setupDone: true }),
+      ];
+      const activeGame = { ...game, status: "active" as const, currentTurnPlayerId: "p1" };
 
       mockGamesDb.getGameById.mockResolvedValue(game);
-      mockPlayersDb.markSetupDone.mockResolvedValue(players[0]);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...game, currentTurnPlayerId: "p1" });
+      mockGamesDb.updateGameStatus.mockResolvedValue(activeGame);
+
+      const result = await engine.executeStartActiveGame("g1", "p1");
+
+      expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", "p1");
+      expect(mockGamesDb.updateGameStatus).toHaveBeenCalledWith("g1", "active");
+      expect(result.game.status).toBe("active");
+    });
+
+    it("rejects if the game does not exist", async () => {
+      mockGamesDb.getGameById.mockResolvedValue(null);
+
+      await expect(engine.executeStartActiveGame("g1", "p1")).rejects.toThrow("Game not found");
+    });
+
+    it("rejects if the game is not in setup phase", async () => {
+      mockGamesDb.getGameById.mockResolvedValue(makeGame({ id: "g1", status: "active", captainId: "p1" }));
+
+      await expect(engine.executeStartActiveGame("g1", "p1")).rejects.toThrow("Game is not in setup phase");
+    });
+
+    it("rejects if the caller is not the captain", async () => {
+      mockGamesDb.getGameById.mockResolvedValue(makeGame({ id: "g1", status: "setup", captainId: "p1" }));
+
+      await expect(engine.executeStartActiveGame("g1", "p2")).rejects.toThrow("Only the captain can start the game");
+    });
+
+    it("rejects if not every player has finished setup", async () => {
+      const game = makeGame({ id: "g1", status: "setup", captainId: "p1" });
+      const players = [
+        makePlayer({ id: "p1", gameId: "g1", setupDone: true }),
+        makePlayer({ id: "p2", gameId: "g1", setupDone: false }),
+      ];
+      mockGamesDb.getGameById.mockResolvedValue(game);
       mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
 
-      await expect(engine.executeCompleteSetup("g1", "p1")).rejects.toThrow("Captain not found");
+      await expect(engine.executeStartActiveGame("g1", "p1")).rejects.toThrow("Not all players are ready");
+      expect(mockGamesDb.updateGameStatus).not.toHaveBeenCalled();
     });
   });
 

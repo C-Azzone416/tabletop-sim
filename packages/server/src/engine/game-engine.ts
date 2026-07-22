@@ -103,24 +103,42 @@ export async function executePlaceInfoToken(
 export async function executeCompleteSetup(
   gameId: string,
   playerId: string,
-): Promise<{ game: Game; players: Player[]; allDone: boolean }> {
+): Promise<{ players: Player[] }> {
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');
   if (game.status !== 'setup') throw new Error('Game is not in setup phase');
 
+  // Must have placed the opening info token before readying up — the token
+  // is stored on one of the player's own wires (see executePlaceInfoToken).
+  const [playerWires, infoTokens] = await Promise.all([
+    wiresDb.getWiresByPlayerId(playerId),
+    tokensDb.getInfoTokensByGameId(gameId),
+  ]);
+  const playerWireIds = new Set(playerWires.map(w => w.id));
+  const hasPlacedToken = infoTokens.some(t => playerWireIds.has(t.wireId));
+  if (!hasPlacedToken) throw new Error('Must place your opening info token before readying up');
+
   await playersDb.markSetupDone(playerId);
   const players = await playersDb.getPlayersByGameId(gameId);
-  const allDone = players.every(p => p.setupDone);
 
-  if (allDone) {
-    const captain = players.find(p => p.id === game.captainId);
-    if (!captain) throw new Error('Captain not found');
-    await gamesDb.updateCurrentTurn(gameId, captain.id);
-    const activeGame = await gamesDb.updateGameStatus(gameId, 'active');
-    return { game: activeGame, players, allDone: true };
-  }
+  // Marking ready never activates the game — that's an explicit, separate
+  // captain-only trigger (see executeStartActiveGame). Callers should check
+  // players.every(p => p.setupDone) to know when the captain can start.
+  return { players };
+}
 
-  return { game, players, allDone: false };
+export async function executeStartActiveGame(gameId: string, playerId: string): Promise<{ game: Game }> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.status !== 'setup') throw new Error('Game is not in setup phase');
+  if (game.captainId !== playerId) throw new Error('Only the captain can start the game');
+
+  const players = await playersDb.getPlayersByGameId(gameId);
+  if (!players.every(p => p.setupDone)) throw new Error('Not all players are ready');
+
+  await gamesDb.updateCurrentTurn(gameId, playerId);
+  const activeGame = await gamesDb.updateGameStatus(gameId, 'active');
+  return { game: activeGame };
 }
 
 export async function completeSetup(gameId: string): Promise<Game> {

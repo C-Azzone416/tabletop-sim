@@ -17,6 +17,7 @@ vi.mock("../src/engine/game-engine.js", () => ({
   executeRevealReds: vi.fn(),
   executePlayerReady: vi.fn(),
   executeCompleteSetup: vi.fn(),
+  executeStartActiveGame: vi.fn(),
   executeSelectOpponentWire: vi.fn(),
   executeAnswerWireQuestion: vi.fn(),
   executeNextTurn: vi.fn(),
@@ -535,40 +536,25 @@ describe("message-handler", () => {
   });
 
   describe("complete_setup", () => {
-    it("broadcasts players_updated when not all players are done", async () => {
+    it("broadcasts players_updated — never activates the game itself, even if everyone is now done", async () => {
       const ws = mockSocket();
-      const game = makeGame({ id: "g1", status: "setup" });
-      const players = [makePlayer({ id: "p1", setupDone: true }), makePlayer({ id: "p2", setupDone: false })];
-
-      mockConnManager.getConnectionInfo.mockReturnValue({
-        playerId: "p1", gameId: "g1", socket: ws,
-      });
-      mockEngine.executeCompleteSetup.mockResolvedValue({ game, players, allDone: false });
-
-      await handleMessage(ws, JSON.stringify({ type: "complete_setup" }));
-
-      expect(mockEngine.executeCompleteSetup).toHaveBeenCalledWith("g1", "p1");
-      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
-        "g1",
-        expect.objectContaining({ type: "players_updated", players }),
-      );
-    });
-
-    it("broadcasts setup_complete to all when all players are done", async () => {
-      const ws = mockSocket();
-      const activeGame = makeGame({ id: "g1", status: "active" });
       const players = [makePlayer({ id: "p1", setupDone: true }), makePlayer({ id: "p2", setupDone: true })];
 
       mockConnManager.getConnectionInfo.mockReturnValue({
         playerId: "p2", gameId: "g1", socket: ws,
       });
-      mockEngine.executeCompleteSetup.mockResolvedValue({ game: activeGame, players, allDone: true });
+      mockEngine.executeCompleteSetup.mockResolvedValue({ players });
 
       await handleMessage(ws, JSON.stringify({ type: "complete_setup" }));
 
+      expect(mockEngine.executeCompleteSetup).toHaveBeenCalledWith("g1", "p2");
       expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
         "g1",
-        expect.objectContaining({ type: "setup_complete", game: activeGame }),
+        expect.objectContaining({ type: "players_updated", players }),
+      );
+      expect(mockConnManager.broadcastToGame).not.toHaveBeenCalledWith(
+        "g1",
+        expect.objectContaining({ type: "setup_complete" }),
       );
     });
 
@@ -577,6 +563,46 @@ describe("message-handler", () => {
       mockConnManager.getConnectionInfo.mockReturnValue(undefined);
 
       await handleMessage(ws, JSON.stringify({ type: "complete_setup" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Not connected to a game" });
+    });
+  });
+
+  describe("start_active_game", () => {
+    it("broadcasts setup_complete to all players once the captain starts", async () => {
+      const ws = mockSocket();
+      const activeGame = makeGame({ id: "g1", status: "active" });
+
+      mockConnManager.getConnectionInfo.mockReturnValue({
+        playerId: "p1", gameId: "g1", socket: ws,
+      });
+      mockEngine.executeStartActiveGame.mockResolvedValue({ game: activeGame });
+
+      await handleMessage(ws, JSON.stringify({ type: "start_active_game" }));
+
+      expect(mockEngine.executeStartActiveGame).toHaveBeenCalledWith("g1", "p1");
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
+        "g1",
+        expect.objectContaining({ type: "setup_complete", game: activeGame }),
+      );
+    });
+
+    it("propagates a safe error (e.g. not all players ready) instead of broadcasting", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeStartActiveGame.mockRejectedValue(new Error("Not all players are ready"));
+
+      await handleMessage(ws, JSON.stringify({ type: "start_active_game" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Not all players are ready" });
+      expect(mockConnManager.broadcastToGame).not.toHaveBeenCalled();
+    });
+
+    it("sends 'Not connected to a game' when no connection info", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue(undefined);
+
+      await handleMessage(ws, JSON.stringify({ type: "start_active_game" }));
 
       expect(lastSent(ws)).toEqual({ type: "error", message: "Not connected to a game" });
     });
