@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { makeProfile, makeGame, makePlayer, resetIds } from "./fixtures.js";
+import { makeProfile, makeGame, makePlayer, makeWire, resetIds } from "./fixtures.js";
 
 vi.mock("../src/db/profiles.js", () => ({
   getProfileByName: vi.fn(),
@@ -43,6 +43,7 @@ vi.mock("../src/db/wires.js", () => ({
   createWiresBatch: vi.fn(),
   getWireById: vi.fn(),
   updateWireStatus: vi.fn(),
+  updateWirePlayer: vi.fn(),
   getWiresByValueAndGame: vi.fn(),
   getWiresByValueColorAndGame: vi.fn(),
   revealRedWires: vi.fn(),
@@ -495,6 +496,126 @@ describe("routes", () => {
     });
   });
 
+  describe("POST /dev/seed-near-win", () => {
+    let seedApp: FastifyInstance;
+
+    beforeEach(async () => {
+      process.env.ENABLE_DEV_SEED = "true";
+      seedApp = await buildApp();
+    });
+
+    afterEach(async () => {
+      await seedApp.close();
+      delete process.env.ENABLE_DEV_SEED;
+    });
+
+    function setUpSeedMocks() {
+      const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
+      const devPlayer = makePlayer({ id: "p1", gameId: "g1", name: "Dev" });
+      const alicePlayer = makePlayer({ id: "p2", gameId: "g1", name: "Alice" });
+      const startedGame = { ...game, status: "setup" as const };
+      const activeGame = { ...game, status: "active" as const };
+      const players = [devPlayer, alicePlayer];
+
+      mockProfilesDb.getProfileByName.mockResolvedValue(null);
+      mockProfilesDb.createProfile.mockImplementation(async (name: string) =>
+        makeProfile({ id: `prof-${name.toLowerCase()}`, name }));
+      mockEngine.createGame.mockResolvedValue({ game, player: devPlayer });
+      mockEngine.joinGame.mockResolvedValue({ game, player: alicePlayer, players });
+      mockEngine.startGame.mockResolvedValue({ game: startedGame, players, wires: [] });
+      mockEngine.completeSetup.mockResolvedValue(activeGame);
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(activeGame);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+
+      return { game: activeGame, devPlayer, alicePlayer };
+    }
+
+    it("reassigns a matching non-red wire pair to Dev, cuts everything else, and hands Dev the turn", async () => {
+      const { devPlayer } = setUpSeedMocks();
+
+      // Two blue "1"s split across Dev and Alice (the pair to reassign), plus
+      // one red and one other-value wire that must be cut, not touched.
+      const pairA = makeWire({ id: "w1", playerId: "p1", color: "blue", value: "1", status: "hidden" });
+      const pairB = makeWire({ id: "w2", playerId: "p2", color: "blue", value: "1", status: "hidden" });
+      const redWire = makeWire({ id: "w3", playerId: "p1", color: "red", value: "2", status: "hidden" });
+      const otherWire = makeWire({ id: "w4", playerId: "p2", color: "blue", value: "3", status: "hidden" });
+      mockWiresDb.getWiresByGameId.mockResolvedValue([pairA, pairB, redWire, otherWire]);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([pairA]); // Dev's current wires, for rack-position calc
+      mockWiresDb.updateWirePlayer.mockImplementation(async (id, playerId, rackPosition) =>
+        makeWire({ id, playerId, color: "blue", value: "1", rackPosition, status: "hidden" }));
+      mockWiresDb.updateWireStatus.mockImplementation(async (id, status) => makeWire({ id, status }));
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-near-win" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ joinCode: "DEVGAME", nearWinValue: "1", nearWinColor: "blue" });
+
+      // Both members of the pair reassigned to Dev, never the red wire.
+      expect(mockWiresDb.updateWirePlayer).toHaveBeenCalledTimes(2);
+      expect(mockWiresDb.updateWirePlayer).toHaveBeenCalledWith("w1", "p1", expect.any(Number));
+      expect(mockWiresDb.updateWirePlayer).toHaveBeenCalledWith("w2", "p1", expect.any(Number));
+
+      // Every other hidden wire cut, the pair itself never cut.
+      expect(mockWiresDb.updateWireStatus).toHaveBeenCalledTimes(2);
+      expect(mockWiresDb.updateWireStatus).toHaveBeenCalledWith("w3", "cut");
+      expect(mockWiresDb.updateWireStatus).toHaveBeenCalledWith("w4", "cut");
+      expect(mockWiresDb.updateWireStatus).not.toHaveBeenCalledWith("w1", expect.anything());
+      expect(mockWiresDb.updateWireStatus).not.toHaveBeenCalledWith("w2", expect.anything());
+
+      expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", devPlayer.id);
+    });
+
+    it("returns the same player/profileId response shape as /dev/seed, plus the near-win fields", async () => {
+      setUpSeedMocks();
+      const pairA = makeWire({ id: "w1", playerId: "p1", color: "blue", value: "4", status: "hidden" });
+      const pairB = makeWire({ id: "w2", playerId: "p2", color: "blue", value: "4", status: "hidden" });
+      mockWiresDb.getWiresByGameId.mockResolvedValue([pairA, pairB]);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([]);
+      mockWiresDb.updateWirePlayer.mockImplementation(async (id, playerId, rackPosition) =>
+        makeWire({ id, playerId, color: "blue", value: "4", rackPosition, status: "hidden" }));
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-near-win" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        joinCode: "DEVGAME",
+        profileId: "prof-dev",
+        playerName: "Dev",
+        mission: 1,
+        players: [
+          { name: "Dev", profileId: "prof-dev" },
+          { name: "Alice", profileId: "prof-alice" },
+          { name: "Bob", profileId: "prof-bob" },
+          { name: "Carol", profileId: "prof-carol" },
+        ],
+        nearWinValue: "4",
+        nearWinColor: "blue",
+      });
+    });
+
+    it("returns 500 if no non-red matching pair exists", async () => {
+      setUpSeedMocks();
+      mockWiresDb.getWiresByGameId.mockResolvedValue([
+        makeWire({ id: "w1", playerId: "p1", color: "blue", value: "1", status: "hidden" }),
+        makeWire({ id: "w2", playerId: "p2", color: "red", value: "1", status: "hidden" }),
+      ]);
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-near-win" });
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "Seed failed" });
+      expect(mockWiresDb.updateWirePlayer).not.toHaveBeenCalled();
+    });
+
+    it("returns 500 on error", async () => {
+      mockProfilesDb.getProfileByName.mockRejectedValue(new Error("DB down"));
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-near-win" });
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "Seed failed" });
+    });
+  });
+
   describe("POST /dev/advance-turn", () => {
     let devApp: FastifyInstance;
 
@@ -659,18 +780,20 @@ describe("routes", () => {
       delete process.env.ENABLE_DEV_SEED;
     });
 
-    it("does not register /dev/seed, /dev/seed-setup, /dev/advance-turn, or /dev/cleanup when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
+    it("does not register /dev/seed, /dev/seed-setup, /dev/seed-near-win, /dev/advance-turn, or /dev/cleanup when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
       process.env.ENABLE_DEV_SEED = "true";
       process.env.NODE_ENV = "production";
       const prodApp = await buildApp();
 
       const seedRes = await prodApp.inject({ method: "POST", url: "/dev/seed" });
       const seedSetupRes = await prodApp.inject({ method: "POST", url: "/dev/seed-setup" });
+      const seedNearWinRes = await prodApp.inject({ method: "POST", url: "/dev/seed-near-win" });
       const advanceRes = await prodApp.inject({ method: "POST", url: "/dev/advance-turn", payload: { joinCode: "ABCD" } });
       const cleanupRes = await prodApp.inject({ method: "POST", url: "/dev/cleanup", payload: { joinCode: "ABCD" } });
 
       expect(seedRes.statusCode).toBe(404);
       expect(seedSetupRes.statusCode).toBe(404);
+      expect(seedNearWinRes.statusCode).toBe(404);
       expect(advanceRes.statusCode).toBe(404);
       expect(cleanupRes.statusCode).toBe(404);
 
