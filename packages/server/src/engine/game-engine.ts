@@ -46,6 +46,7 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
 
   const players = await playersDb.getPlayersByGameId(gameId);
   if (players.length < 1) throw new Error('Need at least 1 player');
+  if (!players.every(p => p.ready)) throw new Error('Not all players are ready');
 
   const missionConfig = MISSION_CONFIGS[mission];
   if (!missionConfig) throw new Error('Invalid mission');
@@ -66,13 +67,21 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
     createdWires.push(wire);
   }
 
-  // Update game to setup phase
+  // Update game to setup phase and kick off turn-ordered opening placement:
+  // captain (always seat 0) places first, then clockwise via advanceTurn.
   await gamesDb.updateDetonator(gameId, 0);
-  const updatedGame = await gamesDb.updateGameStatus(gameId, 'setup');
+  await gamesDb.updateGameStatus(gameId, 'setup');
+  const updatedGame = await gamesDb.updateCurrentTurn(gameId, game.captainId!);
 
   return { game: { ...updatedGame, detonatorMax }, players, wires: createdWires };
 }
 
+// Turn-ordered opening placement: captain places first (set as currentTurnPlayerId
+// by startGame), then clockwise. Placing a token is the per-player "ready" action
+// itself — there's no separate completion step. Once every player has placed,
+// this same call transitions the game to 'active' and advances the turn onto
+// whoever's real first mission turn is, via the same advanceTurn used for
+// ordinary gameplay turns.
 export async function executePlaceInfoToken(
   gameId: string,
   playerId: string,
@@ -81,6 +90,7 @@ export async function executePlaceInfoToken(
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');
   if (game.status !== 'setup') throw new Error('Game is not in setup phase');
+  if (game.currentTurnPlayerId !== playerId) throw new Error('Not your turn');
 
   const wire = await wiresDb.getWireById(wireId);
   if (!wire) throw new Error('Wire not found');
@@ -88,39 +98,30 @@ export async function executePlaceInfoToken(
   if (wire.playerId !== playerId) throw new Error('Can only place info token on your own wire');
   if (wire.status !== 'hidden') throw new Error('Wire already cut or revealed');
 
-  const [playerWires, existingTokens] = await Promise.all([
-    wiresDb.getWiresByPlayerId(playerId),
+  const [allWires, existingTokens, players] = await Promise.all([
+    wiresDb.getWiresByGameId(gameId),
     tokensDb.getInfoTokensByGameId(gameId),
+    playersDb.getPlayersByGameId(gameId),
   ]);
-  const playerWireIds = new Set(playerWires.map(w => w.id));
-  const alreadyPlaced = existingTokens.some(t => playerWireIds.has(t.wireId));
+  const wireOwner = new Map(allWires.map(w => [w.id, w.playerId]));
+  const alreadyPlaced = existingTokens.some(t => wireOwner.get(t.wireId) === playerId);
   if (alreadyPlaced) throw new Error('Info token already placed');
 
   const infoToken = await tokensDb.createInfoToken(gameId, wireId, wire.value!);
-  return { infoToken };
-}
 
-export async function executeCompleteSetup(
-  gameId: string,
-  playerId: string,
-): Promise<{ game: Game; players: Player[]; allDone: boolean }> {
-  const game = await gamesDb.getGameById(gameId);
-  if (!game) throw new Error('Game not found');
-  if (game.status !== 'setup') throw new Error('Game is not in setup phase');
+  const playersWithTokens = new Set(
+    [...existingTokens, infoToken]
+      .map(t => wireOwner.get(t.wireId))
+      .filter((id): id is string => !!id)
+  );
+  const allDone = playersWithTokens.size === players.length;
 
-  await playersDb.markSetupDone(playerId);
-  const players = await playersDb.getPlayersByGameId(gameId);
-  const allDone = players.every(p => p.setupDone);
-
+  await advanceTurn(gameId);
   if (allDone) {
-    const captain = players.find(p => p.id === game.captainId);
-    if (!captain) throw new Error('Captain not found');
-    await gamesDb.updateCurrentTurn(gameId, captain.id);
-    const activeGame = await gamesDb.updateGameStatus(gameId, 'active');
-    return { game: activeGame, players, allDone: true };
+    await gamesDb.updateGameStatus(gameId, 'active');
   }
 
-  return { game, players, allDone: false };
+  return { infoToken };
 }
 
 export async function completeSetup(gameId: string): Promise<Game> {
