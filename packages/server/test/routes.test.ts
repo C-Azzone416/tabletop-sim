@@ -199,6 +199,86 @@ describe("routes", () => {
     });
   });
 
+  describe("GET /profiles/:id", () => {
+    it("returns the profile when found", async () => {
+      const profile = makeProfile({ id: "prof-1", name: "Alice" });
+      mockProfilesDb.getProfileById.mockResolvedValue(profile);
+
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ profile });
+      expect(mockProfilesDb.getProfileById).toHaveBeenCalledWith("prof-1");
+    });
+
+    it("returns 404 when the profile does not exist", async () => {
+      mockProfilesDb.getProfileById.mockResolvedValue(null);
+
+      const res = await app.inject({ method: "GET", url: "/profiles/nonexistent" });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: "Profile not found" });
+    });
+
+    it("returns 500 on DB error", async () => {
+      mockProfilesDb.getProfileById.mockRejectedValue(new Error("DB down"));
+
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1" });
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "Internal server error" });
+    });
+  });
+
+  describe("GET /games/:joinCode", () => {
+    it("returns the game and its players when found", async () => {
+      const game = makeGame({ id: "g1", joinCode: "ABCD" });
+      const players = [makePlayer({ id: "p1", gameId: "g1" }), makePlayer({ id: "p2", gameId: "g1" })];
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(game);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+
+      const res = await app.inject({ method: "GET", url: "/games/ABCD" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ game, players });
+      expect(mockPlayersDb.getPlayersByGameId).toHaveBeenCalledWith("g1");
+    });
+
+    it("returns 404 when the game does not exist", async () => {
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(null);
+
+      const res = await app.inject({ method: "GET", url: "/games/XXXX" });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: "Game not found" });
+    });
+
+    it("returns 500 on DB error", async () => {
+      mockGamesDb.getGameByJoinCode.mockRejectedValue(new Error("DB down"));
+
+      const res = await app.inject({ method: "GET", url: "/games/ABCD" });
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "Internal server error" });
+    });
+  });
+
+  describe("POST /games", () => {
+    it("returns 400 when playerName is missing", async () => {
+      const res = await app.inject({ method: "POST", url: "/games", payload: {} });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: "playerName is required" });
+    });
+
+    it("returns 501 (unimplemented, use WebSocket) when playerName is present", async () => {
+      const res = await app.inject({ method: "POST", url: "/games", payload: { playerName: "Alice" } });
+
+      expect(res.statusCode).toBe(501);
+      expect(res.json()).toEqual({ error: "Use WebSocket to create games" });
+    });
+  });
+
   describe("POST /dev/seed", () => {
     let seedApp: FastifyInstance;
 
