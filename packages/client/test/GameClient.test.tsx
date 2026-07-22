@@ -112,7 +112,7 @@ describe("GameClient — full game flow integration", () => {
       });
     });
 
-    expect(screen.getByText("Setup Phase - Wire Interrogation")).toBeInTheDocument();
+    expect(screen.getByText("Place Your Opening Info Token")).toBeInTheDocument();
 
     // 4. Setup complete → active game
     const activeGame = makeGame({
