@@ -178,6 +178,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Not your turn to complete dual cut', 'Target wire is not revealed',
       'Must reveal a wire with the same number', 'Must reveal a yellow wire',
       'Wire does not belong to you',
+      'Must hold a matching wire to propose this guess', 'Must hold a yellow wire to propose this guess',
     ];
     sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
   } finally {
