@@ -131,11 +131,11 @@ describe("game-engine", () => {
   });
 
   describe("startGame", () => {
-    it("starts a game with 2 players", async () => {
+    it("starts a game with 2 players, dealing wires and setting the captain's turn to kick off placement", async () => {
       const game = makeGame({ id: "g1", status: "waiting", captainId: "p1" });
       const players = [
-        makePlayer({ id: "p1", gameId: "g1", name: "Alice", seatOrder: 0 }),
-        makePlayer({ id: "p2", gameId: "g1", name: "Bob", seatOrder: 1 }),
+        makePlayer({ id: "p1", gameId: "g1", name: "Alice", seatOrder: 0, ready: true }),
+        makePlayer({ id: "p2", gameId: "g1", name: "Bob", seatOrder: 1, ready: true }),
       ];
       const setupGame = { ...game, status: "setup" as const };
 
@@ -144,6 +144,7 @@ describe("game-engine", () => {
       mockGamesDb.updateMission.mockResolvedValue(game);
       mockGamesDb.updateDetonator.mockResolvedValue({ ...game, detonatorPosition: 0 });
       mockGamesDb.updateGameStatus.mockResolvedValue(setupGame);
+      mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1" });
       mockWiresDb.createWire.mockImplementation(async (_gid, _pid, val, col, pos) =>
         makeWire({ gameId: "g1", value: val, color: col, rackPosition: pos })
       );
@@ -154,6 +155,8 @@ describe("game-engine", () => {
       expect(result.wires).toHaveLength(24);
       expect(result.players).toHaveLength(2);
       expect(result.game.detonatorMax).toBe(1);
+      expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", "p1");
+      expect(result.game.currentTurnPlayerId).toBe("p1");
     });
 
     it.each([
@@ -163,7 +166,7 @@ describe("game-engine", () => {
     ])("calculates lives as players - 1, floored at 1 ($label)", async ({ playerCount, expectedLives }) => {
       const game = makeGame({ id: "g1", status: "waiting", captainId: "p1" });
       const players = Array.from({ length: playerCount }, (_, i) =>
-        makePlayer({ id: `p${i + 1}`, gameId: "g1", seatOrder: i }));
+        makePlayer({ id: `p${i + 1}`, gameId: "g1", seatOrder: i, ready: true }));
       const setupGame = { ...game, status: "setup" as const };
 
       mockGamesDb.getGameById.mockResolvedValue(game);
@@ -171,6 +174,7 @@ describe("game-engine", () => {
       mockGamesDb.updateMission.mockResolvedValue(game);
       mockGamesDb.updateDetonator.mockResolvedValue({ ...game, detonatorPosition: 0 });
       mockGamesDb.updateGameStatus.mockResolvedValue(setupGame);
+      mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1" });
       mockWiresDb.createWire.mockImplementation(async (_gid, _pid, val, col, pos) =>
         makeWire({ gameId: "g1", value: val, color: col, rackPosition: pos })
       );
@@ -193,9 +197,21 @@ describe("game-engine", () => {
       );
     });
 
-    it("allows solo start (1 player, lives = max(1, 1-1) = 1)", async () => {
+    it("rejects if not every player has readied up in the lobby", async () => {
       const game = makeGame({ id: "g1", status: "waiting", captainId: "p1" });
-      const players = [makePlayer({ id: "p1", gameId: "g1", name: "Alice", seatOrder: 0 })];
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([
+        makePlayer({ id: "p1", ready: true }),
+        makePlayer({ id: "p2", ready: false }),
+      ]);
+
+      await expect(engine.startGame("g1", "p1")).rejects.toThrow("Not all players are ready");
+      expect(mockGamesDb.updateMission).not.toHaveBeenCalled();
+    });
+
+    it("allows solo start once the lone captain has readied up (1 player, lives = max(1, 1-1) = 1)", async () => {
+      const game = makeGame({ id: "g1", status: "waiting", captainId: "p1" });
+      const players = [makePlayer({ id: "p1", gameId: "g1", name: "Alice", seatOrder: 0, ready: true })];
       const setupGame = { ...game, status: "setup" as const };
 
       mockGamesDb.getGameById.mockResolvedValue(game);
@@ -203,6 +219,7 @@ describe("game-engine", () => {
       mockGamesDb.updateMission.mockResolvedValue(game);
       mockGamesDb.updateDetonator.mockResolvedValue({ ...game, detonatorPosition: 0 });
       mockGamesDb.updateGameStatus.mockResolvedValue(setupGame);
+      mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1" });
       mockWiresDb.createWire.mockImplementation(async (_gid, _pid, val, col, pos) =>
         makeWire({ gameId: "g1", value: val, color: col, rackPosition: pos })
       );
@@ -249,99 +266,82 @@ describe("game-engine", () => {
     });
   });
 
-  describe("executeCompleteSetup", () => {
-    it("marks the player done and reports allDone=false while others remain", async () => {
-      const game = makeGame({ id: "g1", status: "setup", captainId: "p1" });
+  describe("executePlaceInfoToken", () => {
+    function setUpTurnOrder(currentTurnPlayerId: string, players: ReturnType<typeof makePlayer>[]) {
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      return { currentTurnPlayerId };
+    }
+
+    it("places an info token on own wire, not the last player, so it just advances the turn", async () => {
       const players = [
-        makePlayer({ id: "p1", gameId: "g1", setupDone: true }),
-        makePlayer({ id: "p2", gameId: "g1", setupDone: false }),
+        makePlayer({ id: "p1", gameId: "g1", seatOrder: 0 }),
+        makePlayer({ id: "p2", gameId: "g1", seatOrder: 1 }),
       ];
+      const game = makeGame({ id: "g1", status: "setup", currentTurnPlayerId: "p1" });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p1", value: "3", status: "hidden" });
+      const otherWire = makeWire({ id: "w2", gameId: "g1", playerId: "p2", value: "5", status: "hidden" });
+      const token = { id: "t1", gameId: "g1", wireId: "w1", value: "3", placedAt: "" };
 
       mockGamesDb.getGameById.mockResolvedValue(game);
-      mockPlayersDb.markSetupDone.mockResolvedValue(players[0]);
-      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      mockWiresDb.getWireById.mockResolvedValue(wire);
+      mockWiresDb.getWiresByGameId.mockResolvedValue([wire, otherWire]);
+      mockTokensDb.getInfoTokensByGameId.mockResolvedValue([]);
+      mockTokensDb.createInfoToken.mockResolvedValue(token);
+      setUpTurnOrder("p1", players);
+      mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...game, currentTurnPlayerId: "p2" });
 
-      const result = await engine.executeCompleteSetup("g1", "p1");
+      const result = await engine.executePlaceInfoToken("g1", "p1", "w1");
 
-      expect(mockPlayersDb.markSetupDone).toHaveBeenCalledWith("p1");
-      expect(result.allDone).toBe(false);
-      expect(result.game).toBe(game);
+      expect(result.infoToken).toEqual(token);
+      expect(mockTokensDb.createInfoToken).toHaveBeenCalledWith("g1", "w1", "3");
+      expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", "p2");
       expect(mockGamesDb.updateGameStatus).not.toHaveBeenCalled();
     });
 
-    it("transitions the game to active with the captain first when everyone is done", async () => {
-      const game = makeGame({ id: "g1", status: "setup", captainId: "p1" });
+    it("activates the game and continues the turn rotation once the last player places", async () => {
       const players = [
-        makePlayer({ id: "p1", gameId: "g1", setupDone: true }),
-        makePlayer({ id: "p2", gameId: "g1", setupDone: true }),
+        makePlayer({ id: "p1", gameId: "g1", seatOrder: 0 }),
+        makePlayer({ id: "p2", gameId: "g1", seatOrder: 1 }),
       ];
-      const activeGame = { ...game, status: "active" as const, currentTurnPlayerId: "p1" };
+      const game = makeGame({ id: "g1", status: "setup", currentTurnPlayerId: "p2" });
+      const wireP1 = makeWire({ id: "w1", gameId: "g1", playerId: "p1", value: "3", status: "hidden" });
+      const wireP2 = makeWire({ id: "w2", gameId: "g1", playerId: "p2", value: "5", status: "hidden" });
+      const existingToken = { id: "t1", gameId: "g1", wireId: "w1", value: "3", placedAt: "" };
+      const newToken = { id: "t2", gameId: "g1", wireId: "w2", value: "5", placedAt: "" };
 
       mockGamesDb.getGameById.mockResolvedValue(game);
-      mockPlayersDb.markSetupDone.mockResolvedValue(players[0]);
-      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      mockWiresDb.getWireById.mockResolvedValue(wireP2);
+      mockWiresDb.getWiresByGameId.mockResolvedValue([wireP1, wireP2]);
+      mockTokensDb.getInfoTokensByGameId.mockResolvedValue([existingToken]);
+      mockTokensDb.createInfoToken.mockResolvedValue(newToken);
+      setUpTurnOrder("p2", players);
       mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...game, currentTurnPlayerId: "p1" });
-      mockGamesDb.updateGameStatus.mockResolvedValue(activeGame);
+      mockGamesDb.updateGameStatus.mockResolvedValue({ ...game, status: "active", currentTurnPlayerId: "p1" });
 
-      const result = await engine.executeCompleteSetup("g1", "p2");
+      const result = await engine.executePlaceInfoToken("g1", "p2", "w2");
 
+      expect(result.infoToken).toEqual(newToken);
       expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", "p1");
       expect(mockGamesDb.updateGameStatus).toHaveBeenCalledWith("g1", "active");
-      expect(result.allDone).toBe(true);
-      expect(result.game.status).toBe("active");
     });
 
-    it("rejects if the game does not exist", async () => {
-      mockGamesDb.getGameById.mockResolvedValue(null);
-
-      await expect(engine.executeCompleteSetup("g1", "p1")).rejects.toThrow("Game not found");
-    });
-
-    it("rejects if the game is not in setup phase", async () => {
-      const game = makeGame({ id: "g1", status: "active" });
+    it("rejects if it isn't the caller's turn", async () => {
+      const game = makeGame({ id: "g1", status: "setup", currentTurnPlayerId: "p2" });
       mockGamesDb.getGameById.mockResolvedValue(game);
 
-      await expect(engine.executeCompleteSetup("g1", "p1")).rejects.toThrow("Game is not in setup phase");
-    });
-
-    it("rejects if the captain is missing from the player list once everyone is done", async () => {
-      const game = makeGame({ id: "g1", status: "setup", captainId: "missing-captain" });
-      const players = [makePlayer({ id: "p1", gameId: "g1", setupDone: true })];
-
-      mockGamesDb.getGameById.mockResolvedValue(game);
-      mockPlayersDb.markSetupDone.mockResolvedValue(players[0]);
-      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
-
-      await expect(engine.executeCompleteSetup("g1", "p1")).rejects.toThrow("Captain not found");
-    });
-  });
-
-  describe("executePlaceInfoToken", () => {
-    it("places an info token on own wire during setup", async () => {
-      const game = makeGame({ id: "g1", status: "setup" });
-      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p1", value: "3", status: "hidden" });
-      const token = { id: "t1", gameId: "g1", wireId: "w1", value: "3", createdAt: "2026-01-01T00:00:00Z" };
-
-      mockGamesDb.getGameById.mockResolvedValue(game);
-      mockWiresDb.getWireById.mockResolvedValue(wire);
-      mockWiresDb.getWiresByPlayerId.mockResolvedValue([wire]);
-      mockTokensDb.getInfoTokensByGameId.mockResolvedValue([]);
-      mockTokensDb.createInfoToken.mockResolvedValue(token);
-
-      const result = await engine.executePlaceInfoToken("g1", "p1", "w1");
-      expect(result.infoToken).toEqual(token);
-      expect(mockTokensDb.createInfoToken).toHaveBeenCalledWith("g1", "w1", "3");
+      await expect(engine.executePlaceInfoToken("g1", "p1", "w1")).rejects.toThrow("Not your turn");
     });
 
     it("rejects if player has already placed an info token", async () => {
-      const game = makeGame({ id: "g1", status: "setup" });
+      const game = makeGame({ id: "g1", status: "setup", currentTurnPlayerId: "p1" });
       const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p1", value: "3", status: "hidden" });
-      const existing = { id: "t1", gameId: "g1", wireId: "w1", value: "3", createdAt: "2026-01-01T00:00:00Z" };
+      const existing = { id: "t1", gameId: "g1", wireId: "w1", value: "3", placedAt: "" };
 
       mockGamesDb.getGameById.mockResolvedValue(game);
       mockWiresDb.getWireById.mockResolvedValue(wire);
-      mockWiresDb.getWiresByPlayerId.mockResolvedValue([wire]);
+      mockWiresDb.getWiresByGameId.mockResolvedValue([wire]);
       mockTokensDb.getInfoTokensByGameId.mockResolvedValue([existing]);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([makePlayer({ id: "p1" })]);
 
       await expect(engine.executePlaceInfoToken("g1", "p1", "w1")).rejects.toThrow("Info token already placed");
     });
@@ -354,7 +354,7 @@ describe("game-engine", () => {
     });
 
     it("rejects if wire belongs to another player", async () => {
-      const game = makeGame({ id: "g1", status: "setup" });
+      const game = makeGame({ id: "g1", status: "setup", currentTurnPlayerId: "p1" });
       const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p2", value: "3", status: "hidden" });
 
       mockGamesDb.getGameById.mockResolvedValue(game);
@@ -370,7 +370,7 @@ describe("game-engine", () => {
     });
 
     it("rejects if wire does not exist", async () => {
-      const game = makeGame({ id: "g1", status: "setup" });
+      const game = makeGame({ id: "g1", status: "setup", currentTurnPlayerId: "p1" });
       mockGamesDb.getGameById.mockResolvedValue(game);
       mockWiresDb.getWireById.mockResolvedValue(null);
 
@@ -378,7 +378,7 @@ describe("game-engine", () => {
     });
 
     it("rejects if wire belongs to a different game", async () => {
-      const game = makeGame({ id: "g1", status: "setup" });
+      const game = makeGame({ id: "g1", status: "setup", currentTurnPlayerId: "p1" });
       const wire = makeWire({ id: "w1", gameId: "g2", playerId: "p1", value: "3", status: "hidden" });
       mockGamesDb.getGameById.mockResolvedValue(game);
       mockWiresDb.getWireById.mockResolvedValue(wire);
@@ -387,7 +387,7 @@ describe("game-engine", () => {
     });
 
     it("rejects if wire is already cut or revealed", async () => {
-      const game = makeGame({ id: "g1", status: "setup" });
+      const game = makeGame({ id: "g1", status: "setup", currentTurnPlayerId: "p1" });
       const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p1", value: "3", status: "cut" });
       mockGamesDb.getGameById.mockResolvedValue(game);
       mockWiresDb.getWireById.mockResolvedValue(wire);

@@ -65,8 +65,6 @@ function validateMessage(parsed: unknown): ClientMessage | null {
       return { type: 'reveal_reds' };
     case 'player_ready':
       return { type: 'player_ready' };
-    case 'complete_setup':
-      return { type: 'complete_setup' };
     case 'select_opponent_wire':
       if (!isNonEmptyString(msg.wireId)) return null;
       return { type: 'select_opponent_wire', wireId: msg.wireId };
@@ -146,9 +144,6 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       case 'player_ready':
         await handlePlayerReady(socket);
         break;
-      case 'complete_setup':
-        await handleCompleteSetup(socket);
-        break;
       case 'select_opponent_wire':
         await handleSelectOpponentWire(socket, msg.wireId);
         break;
@@ -168,7 +163,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
     const safeMessages = [
       'Game not found', 'Game already started', 'Game is full',
       'Not connected to a game', 'Only the captain can start the game',
-      'Need at least 2 players', 'Invalid mission', 'Wire not found', 'Not your turn',
+      'Need at least 2 players', 'Not all players are ready', 'Invalid mission', 'Wire not found', 'Not your turn',
       'Cannot cut your own wire with duo cut', 'Wire already cut or revealed',
       'Wire does not belong to this game', 'Double detector already used',
       'Double detector can only target your own wires', 'Target wires must be hidden',
@@ -420,24 +415,6 @@ async function handlePlayerReady(socket: WebSocket): Promise<void> {
   connManager.broadcastToGame(info.gameId, response);
 }
 
-async function handleCompleteSetup(socket: WebSocket): Promise<void> {
-  const info = connManager.getConnectionInfo(socket);
-  if (!info) throw new Error('Not connected to a game');
-
-  const { game, players, allDone } = await withTimeout(
-    engine.executeCompleteSetup(info.gameId, info.playerId),
-    'executeCompleteSetup',
-  );
-
-  if (allDone) {
-    const response: ServerMessage = { type: 'setup_complete', game };
-    connManager.broadcastToGame(info.gameId, response);
-  } else {
-    // Notify all players of updated setup_done status
-    const response: ServerMessage = { type: 'players_updated', players };
-    connManager.broadcastToGame(info.gameId, response);
-  }
-}
 
 async function handleSelectOpponentWire(socket: WebSocket, wireId: string): Promise<void> {
   const info = connManager.getConnectionInfo(socket);
