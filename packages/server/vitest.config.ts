@@ -15,6 +15,13 @@ export default defineConfig({
       // permanently drags down the denominator. Excluded per PM decision (#test-coverage,
       // 2026-07-21) rather than left to skew the metric.
       exclude: ["src/index.ts", "src/db/**/*.ts"],
+      // Hard CI gate per PM directive (#test-coverage, 2026-07-22): coverage moves
+      // from advisory to enforced. game-engine.ts carries the core game rules and
+      // gets the higher bar; everything else uses the package-wide floor.
+      thresholds: {
+        lines: 80,
+        "src/engine/game-engine.ts": { lines: 90 },
+      },
     },
   },
   resolve: {
