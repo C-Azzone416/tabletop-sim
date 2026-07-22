@@ -9,6 +9,33 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
+    # Local-stack E2E (decision: #decisions, 2026-07-22 — no staging secrets,
+    # no Vercel SSO). These are fixed, non-sensitive config values (not
+    # secrets.*) so they're safe as plain job-level env vars.
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tabletop_test
+      ENABLE_DEV_SEED: 'true'
+      NODE_ENV: test
+      PORT: '3001'
+      NEXT_PUBLIC_SERVER_URL: http://localhost:3001
+      NEXT_PUBLIC_ENABLE_DEV_TOOLS: 'true'
+      AUTH_SECRET: e2e-ci-local-stack-not-a-real-secret
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tabletop_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,6 +46,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Apply migrations
+        run: npx tsx db/migrate.ts "$DATABASE_URL"
 
       - name: Build shared
         run: npm run build -w packages/shared
@@ -44,16 +74,17 @@ jobs:
       - name: Test coverage (client)
         run: npm run test:coverage -w packages/client
 
+      - name: Build server + client (for E2E)
+        run: |
+          npm run build -w packages/server
+          npm run build -w packages/client
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
         working-directory: packages/client
 
-      - name: E2E tests (staging)
-        if: ${{ vars.E2E_STAGING_CONFIGURED == 'true' }}
+      - name: E2E tests (local stack)
         run: npm run test:e2e -w packages/client
-        env:
-          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
-          E2E_API_URL: ${{ secrets.E2E_API_URL }}
 
       - name: Check migrations
         run: npm run check:migrations
