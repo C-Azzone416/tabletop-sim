@@ -10,7 +10,11 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "json-summary"],
       include: ["src/**/*.ts"],
-      exclude: ["src/index.ts"],
+      // src/db/* are thin query wrappers (single SQL statement each) only exercised
+      // against a real DB connection — not realistically unit-testable, and their 0%
+      // permanently drags down the denominator. Excluded per PM decision (#test-coverage,
+      // 2026-07-21) rather than left to skew the metric.
+      exclude: ["src/index.ts", "src/db/**/*.ts"],
     },
   },
   resolve: {
