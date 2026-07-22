@@ -201,9 +201,15 @@ export async function buildApp() {
       const aliceProfile = await getOrCreateProfile('Alice');
       const bobProfile = await getOrCreateProfile('Bob');
       const carolProfile = await getOrCreateProfile('Carol');
-      await engine.joinGame(game.joinCode, 'Alice', aliceProfile.id);
-      await engine.joinGame(game.joinCode, 'Bob', bobProfile.id);
-      await engine.joinGame(game.joinCode, 'Carol', carolProfile.id);
+      const { player: alice } = await engine.joinGame(game.joinCode, 'Alice', aliceProfile.id);
+      const { player: bob } = await engine.joinGame(game.joinCode, 'Bob', bobProfile.id);
+      const { player: carol } = await engine.joinGame(game.joinCode, 'Carol', carolProfile.id);
+
+      // startGame now requires every player to have readied up in the lobby;
+      // dev seeding skips the real ready flow, so ready everyone up here.
+      for (const p of [player, alice, bob, carol]) {
+        await engine.executePlayerReady(game.id, p.id);
+      }
 
       await engine.startGame(game.id, player.id, mission);
       if (options.completeSetup) {

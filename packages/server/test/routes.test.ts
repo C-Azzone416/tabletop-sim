@@ -76,6 +76,7 @@ vi.mock("../src/engine/game-engine.js", () => ({
   createGame: vi.fn(),
   startGame: vi.fn(),
   joinGame: vi.fn(),
+  executePlayerReady: vi.fn(),
   completeSetup: vi.fn(),
   executeProposeDualCut: vi.fn(),
   executeRespondDualCut: vi.fn(),
