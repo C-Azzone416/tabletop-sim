@@ -1,9 +1,11 @@
 import { test, expect } from "@playwright/test";
 import {
   seedGame,
+  seedNearWinGame,
   cleanupGame,
   gameUrl,
   findOpponentHiddenWireByColor,
+  findLocalDuplicateValuePair,
   type SeedResult,
 } from "./helpers";
 
@@ -102,34 +104,45 @@ test("mission loss condition: wrong dual cut guess on a red wire shows Mission F
   }
 });
 
-// ── Test: Mission win condition (BLOCKED — impractical, not infeasible) ────
+// ── Test: Mission win condition ─────────────────────────────────────────────
 //
-// PR #107 removed the identity blocker, but full mission completion is a
-// different problem: checkWinCondition (game-engine.ts) requires EVERY wire
-// across ALL 4 players to be "cut", and mission 1 — the smallest config in
-// MISSION_CONFIGS (packages/shared/src/constants.ts) — still deals 24 wires
-// (6 per player in a 4-player game). Solo Cut only clears duplicate-value
-// pairs already sitting in a player's own rack; any wire without a same-
-// value partner in its owner's hand can only be cleared via a *completed*
-// Dual Cut, which itself is a 3-step handshake across two real identities
-// (see dual-cut.spec.ts) and additionally requires the completing player to
-// hold a legal own-wire (matching value for blue, matching color for
-// yellow) to submit.
-//
-// Driving this to completion would mean programmatically solving, sight
-// unseen, an arbitrary random 24-wire/4-hand deal into a sequence of solo
-// cuts and 3-step dual cuts, strictly alternating turns
-// (advanceTurn/currentTurnPlayerId) across 4 real browser contexts, with no
-// live server available in this environment to execute and debug the
-// resulting flow. That's a meaningfully different (and much riskier) test
-// than driving one fixed interaction — a bug in the pairing/turn-order logic
-// wouldn't fail loudly, it would just hang waiting on a popup that never
-// appears.
-//
-// Recommendation for a tractable version of this test: a dev endpoint that
-// seeds a near-won board (e.g. all wires cut but one duplicate pair) so the
-// test only has to drive the last 1-2 real actions rather than solve the
-// whole mission. Flagging for backend/product rather than shipping an
-// unverified multi-turn solver.
+// Unblocked by server PR #128's /dev/seed-near-win: rather than solving an
+// arbitrary 24-wire/4-hand deal via a multi-identity turn-ordered sequence
+// of solo + dual cuts (impractical to verify without a live server — see
+// git history for the prior analysis), the endpoint positions the board one
+// real action from victory — every wire cut except a matching non-red pair
+// reassigned to Dev, with Dev's turn active. That leaves exactly the same
+// solo-cut interaction wire-cutting.spec.ts already exercises, just with the
+// server-side win check (checkWinCondition in game-engine.ts — every wire
+// across all 4 players is "cut") landing on this specific submission.
 
-test.skip("mission win condition: all safe wires cleared shows Mission Complete overlay", () => {});
+test("mission win condition: all safe wires cleared shows Mission Complete overlay", async ({
+  page,
+}) => {
+  const seed = await seedNearWinGame(1);
+  try {
+    await page.goto(gameUrl(seed));
+    await expect(page.getByText("Your turn — choose an action")).toBeVisible({
+      timeout: 10_000,
+    });
+
+    const dup = await findLocalDuplicateValuePair(page);
+    if (!dup) {
+      throw new Error(
+        "Expected Dev's rack to contain the matching wire pair positioned by /dev/seed-near-win",
+      );
+    }
+
+    await page.getByRole("button", { name: "Solo Cut" }).click();
+    await dup.wires[0].click();
+    await dup.wires[1].click();
+
+    const confirmBtn = page.getByRole("button", { name: "Confirm Solo Cut" });
+    await expect(confirmBtn).toBeEnabled({ timeout: 5_000 });
+    await confirmBtn.click();
+
+    await expect(page.getByText("Mission Complete!")).toBeVisible({ timeout: 10_000 });
+  } finally {
+    await cleanupGame(seed.joinCode);
+  }
+});
