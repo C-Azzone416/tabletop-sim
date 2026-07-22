@@ -87,10 +87,7 @@ export type ClientMessage =
   | { type: 'solo_cut'; wireValue: string }
   | { type: 'double_detector'; targetWireId: string; targetWireId2: string }
   | { type: 'reveal_reds' }
-  | { type: 'player_ready' }
-  | { type: 'select_opponent_wire'; wireId: string }
-  | { type: 'answer_wire_question'; answer: 'yes' | 'no' }
-  | { type: 'next_turn' };
+  | { type: 'player_ready' };
 
 export type ServerMessage =
   | { type: 'game_created'; game: Game; player: Player }
@@ -106,6 +103,11 @@ export type ServerMessage =
   | { type: 'wire_updated'; wire: Wire }
   | { type: 'players_updated'; players: Player[] }
   | { type: 'game_over'; result: 'won' | 'lost'; reason: string }
+  // Vestigial: the server no longer sends these (the legacy select_opponent_wire/
+  // answer_wire_question/next_turn WS trio they backed was removed — dual_cut's
+  // propose/respond flow is the real interrogation mechanic). Left in the type
+  // only so packages/client's useGameState.ts (dead reducer cases) keeps
+  // compiling; remove once that client-side cleanup lands.
   | { type: 'wire_question'; askerPlayerId: string; wireValue: string }
   | { type: 'interrogation_result'; success: boolean; message: string; game: Game; updatedWires: Wire[] }
   | { type: 'error'; message: string };
