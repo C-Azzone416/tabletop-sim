@@ -18,6 +18,14 @@
  * the seeded game via /dev/cleanup so the smoke check doesn't leak games into
  * staging.
  *
+ * Reachability (the initial /health call) retries with backoff before
+ * failing — Render's dev-tier services commonly cold-start/spin down on
+ * inactivity, and this runs on a schedule against a service that may
+ * legitimately be asleep. Without a retry, a cold start is indistinguishable
+ * from a real outage, which undermines trust in the check as a deploy gate
+ * (zippy-weasel, PR #125 review). Once the server has answered /health once,
+ * it's warm — the /dev/seed route/CORS checks after that stay fail-fast.
+ *
  * Usage: npx tsx scripts/staging-smoke-check.ts <serverUrl> <stagingOrigin>
  */
 
@@ -29,13 +37,40 @@ if (!serverUrl || !stagingOrigin) {
   process.exit(0);
 }
 
-async function run(): Promise<void> {
-  const healthRes = await fetch(`${serverUrl}/health`);
-  if (!healthRes.ok) {
-    console.error(`FAIL: GET ${serverUrl}/health returned ${healthRes.status} — server is not reachable/healthy.`);
-    process.exit(1);
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Render's free/starter-tier cold start can take up to ~50s. 6 attempts with
+// this backoff schedule covers that with margin (total wait ~63s) without
+// dragging out a genuine-outage failure indefinitely.
+const HEALTH_RETRY_DELAYS_MS = [2_000, 5_000, 8_000, 12_000, 16_000, 20_000];
+
+async function waitForHealthy(): Promise<void> {
+  for (let attempt = 0; attempt <= HEALTH_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const healthRes = await fetch(`${serverUrl}/health`);
+      if (healthRes.ok) {
+        console.log(`OK: ${serverUrl}/health -> ${healthRes.status}${attempt > 0 ? ` (after ${attempt} retr${attempt === 1 ? 'y' : 'ies'})` : ''}`);
+        return;
+      }
+      console.log(`  attempt ${attempt + 1}: ${serverUrl}/health -> ${healthRes.status}, retrying...`);
+    } catch (err) {
+      console.log(`  attempt ${attempt + 1}: ${serverUrl}/health unreachable (${err instanceof Error ? err.message : err}), retrying...`);
+    }
+    if (attempt < HEALTH_RETRY_DELAYS_MS.length) {
+      await sleep(HEALTH_RETRY_DELAYS_MS[attempt]);
+    }
   }
-  console.log(`OK: ${serverUrl}/health -> ${healthRes.status}`);
+  console.error(
+    `FAIL: ${serverUrl}/health did not respond OK after ${HEALTH_RETRY_DELAYS_MS.length + 1} attempts ` +
+    `(~${Math.round(HEALTH_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0) / 1000)}s of retries) — server is not reachable/healthy.`
+  );
+  process.exit(1);
+}
+
+async function run(): Promise<void> {
+  await waitForHealthy();
 
   const seedRes = await fetch(`${serverUrl}/dev/seed`, {
     method: 'POST',
