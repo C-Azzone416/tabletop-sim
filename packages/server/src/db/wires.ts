@@ -52,6 +52,13 @@ export async function updateWireStatus(id: string, status: WireStatus): Promise<
   return mapWire(rows[0]);
 }
 
+export async function updateWirePlayer(id: string, playerId: string, rackPosition: number): Promise<Wire> {
+  const rows = await sql`
+    UPDATE wires SET player_id = ${playerId}, rack_position = ${rackPosition} WHERE id = ${id} RETURNING *
+  `;
+  return mapWire(rows[0]);
+}
+
 export async function getWiresByValueAndGame(gameId: string, value: string): Promise<Wire[]> {
   const rows = await sql`
     SELECT * FROM wires WHERE game_id = ${gameId} AND value = ${value}

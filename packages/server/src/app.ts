@@ -249,6 +249,69 @@ export async function buildApp() {
       }
     });
 
+    // Positions a freshly-seeded active game one correct solo cut from
+    // victory: finds a same-value, same-color hidden wire pair (never red —
+    // solo cutting a red pair isn't the intended win path, and every mission
+    // config guarantees a blue group to pick from instead), reassigns both
+    // wires to the Dev player, cuts every other hidden wire, and hands Dev
+    // the turn. Lets E2E/manual testing exercise the win flow (checklist
+    // item 7) via a single real solo_cut instead of an unverified
+    // multi-identity turn-ordered solver.
+    const positionNearWin = async (gameId: string, devPlayerId: string): Promise<{ value: string; color: string }> => {
+      const wires = await wiresDb.getWiresByGameId(gameId);
+      const hiddenByKey = new Map<string, typeof wires>();
+      for (const w of wires) {
+        if (w.status !== 'hidden') continue;
+        const key = `${w.color}:${w.value}`;
+        const group = hiddenByKey.get(key) ?? [];
+        group.push(w);
+        hiddenByKey.set(key, group);
+      }
+
+      const pair = [...hiddenByKey.entries()]
+        .filter(([key, group]) => !key.startsWith('red:') && group.length >= 2)
+        .sort(([a], [b]) => a.localeCompare(b))[0]?.[1];
+      if (!pair) throw new Error(`No matching non-red wire pair available to seed a near-win for this mission`);
+      const [wireA, wireB] = pair;
+
+      const devWires = await wiresDb.getWiresByPlayerId(devPlayerId);
+      const nextRackPosition = Math.max(0, ...devWires.map(w => w.rackPosition)) + 1;
+      await wiresDb.updateWirePlayer(wireA.id, devPlayerId, nextRackPosition);
+      await wiresDb.updateWirePlayer(wireB.id, devPlayerId, nextRackPosition + 1);
+
+      for (const w of wires) {
+        if (w.id === wireA.id || w.id === wireB.id) continue;
+        if (w.status === 'hidden') {
+          await wiresDb.updateWireStatus(w.id, 'cut');
+        }
+      }
+
+      await gamesDb.updateCurrentTurn(gameId, devPlayerId);
+
+      return { value: wireA.value!, color: wireA.color };
+    };
+
+    app.post('/dev/seed-near-win', async (request, reply) => {
+      try {
+        const mission = parseMissionParam(request.body);
+        if (typeof mission === 'object') return reply.status(400).send(mission);
+
+        const result = await seedDevGame(mission, { completeSetup: true });
+        const game = await gamesDb.getGameByJoinCode(result.joinCode);
+        if (!game) throw new Error('Seeded game not found');
+        const players = await playersDb.getPlayersByGameId(game.id);
+        const devPlayer = players.find(p => p.name === 'Dev');
+        if (!devPlayer) throw new Error('Dev player not found in seeded game');
+
+        const nearWin = await positionNearWin(game.id, devPlayer.id);
+
+        return { ...result, nearWinValue: nearWin.value, nearWinColor: nearWin.color };
+      } catch (err) {
+        app.log.error({ err }, '[POST /dev/seed-near-win] error');
+        return reply.status(500).send({ error: 'Seed failed' });
+      }
+    });
+
     app.post('/dev/cleanup', async (request, reply) => {
       try {
         const { joinCode } = request.body as { joinCode?: string };
