@@ -135,10 +135,7 @@ test.fixme("Start Game button enables after placing opening token, captain start
 
 // ── Test 5: Turn advancement ───────────────────────────────────────────────
 
-// FIXME (#test-coverage, 2026-07-22): times out waiting for "Waiting for
-// {name}..." after advancing turn via the API. Root cause not yet isolated
-// (may be a WS-broadcast timing issue). Assigned to zesty-cobra after client P1.
-test.fixme("POST /dev/advance-turn rotates current player in UI", async ({ page }) => {
+test("POST /dev/advance-turn rotates current player in UI", async ({ page }) => {
   const seed = await seedGame(1);
   try {
     await page.goto(gameUrl(seed));
@@ -154,10 +151,15 @@ test.fixme("POST /dev/advance-turn rotates current player in UI", async ({ page 
       data: { joinCode: seed.joinCode },
     });
     expect(advRes.ok()).toBeTruthy();
-    const { currentPlayerName } = await advRes.json();
+    // Response field is `playerName` (see packages/server/src/app.ts's
+    // /dev/advance-turn handler) — not `currentPlayerName`. The prior
+    // mismatch silently destructured undefined, producing a real timeout
+    // ("Waiting for undefined...") that looked like a WS-broadcast bug but
+    // was a test bug; confirmed by reproducing against a live local stack.
+    const { playerName } = await advRes.json();
 
     // UI should reflect the new active player — local player is no longer active
-    await expect(page.getByText(`Waiting for ${currentPlayerName}...`)).toBeVisible({
+    await expect(page.getByText(`Waiting for ${playerName}...`)).toBeVisible({
       timeout: 10_000,
     });
   } finally {
