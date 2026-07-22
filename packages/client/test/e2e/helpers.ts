@@ -3,19 +3,26 @@ import { request, type Page, type Locator } from "@playwright/test";
 export const API_URL = process.env.E2E_API_URL ?? "http://localhost:3001";
 export const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 
+export interface SeedPlayer {
+  name: string;
+  profileId: string;
+}
+
 export interface SeedResult {
   joinCode: string;
   profileId: string;
   playerName: string;
   mission: number;
+  players: SeedPlayer[];
 }
 
 /**
  * Seeds a fully active 4-player game (Dev + Alice + Bob + Carol) via the
  * server's /dev/seed endpoint. startGame + completeSetup have already run,
  * and every player's wires already have info tokens (full knowledge).
- * Only "Dev" (the returned profileId) has a real profile — Alice/Bob/Carol
- * are joined without a profileId, so only Dev has a usable WS identity.
+ * Since PR #107, the response's `players` array carries a real profileId for
+ * every seeded player (not just Dev), so any of the 4 seats can be driven
+ * via gameUrl() + a separate browser context — see multiplayer-sync.spec.ts.
  */
 export async function seedGame(mission = 1): Promise<SeedResult> {
   const ctx = await request.newContext({ baseURL: API_URL });
