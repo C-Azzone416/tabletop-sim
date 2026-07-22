@@ -64,7 +64,7 @@ test("board renders for every player before the active placer has placed their t
   const seed = await seedSetupGame(1);
   try {
     await page.goto(gameUrl(seed));
-    await expect(page.getByText("Place Your Opening Info Token")).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Place Your Opening Info Token" })).toBeVisible({
       timeout: 10_000,
     });
 
@@ -93,7 +93,7 @@ test("clicking a blue wire on your turn places info token and shows amber badge"
     });
 
     // Find a blue wire in the local (Your Rack) section
-    const yourRackSection = page.getByText("Your Rack").locator("..").locator("..");
+    const yourRackSection = page.getByText("Your Rack").locator("..");
     const blueWires = yourRackSection.locator('[data-wire-color="blue"]');
     await expect(blueWires.first()).toBeVisible({ timeout: 5_000 });
 
@@ -144,7 +144,7 @@ test("all 4 players place their opening token in turn order, auto-transitioning 
   const carolPage = await carolContext.newPage();
 
   async function placeOwnBlueWire(p: typeof page) {
-    const yourRackSection = p.getByText("Your Rack").locator("..").locator("..");
+    const yourRackSection = p.getByText("Your Rack").locator("..");
     await yourRackSection.locator('[data-wire-color="blue"]').first().click();
   }
 
@@ -178,16 +178,16 @@ test("all 4 players place their opening token in turn order, auto-transitioning 
     // Carol's placement was the last — the server auto-transitions the game
     // to active mission play with no separate trigger message. All 4 real
     // sessions should reflect it live via the same game_state broadcast.
-    await expect(page.getByText("Place Your Opening Info Token")).not.toBeVisible({
+    await expect(page.getByRole("heading", { name: "Place Your Opening Info Token" })).not.toBeVisible({
       timeout: 10_000,
     });
-    await expect(alicePage.getByText("Place Your Opening Info Token")).not.toBeVisible({
+    await expect(alicePage.getByRole("heading", { name: "Place Your Opening Info Token" })).not.toBeVisible({
       timeout: 10_000,
     });
-    await expect(bobPage.getByText("Place Your Opening Info Token")).not.toBeVisible({
+    await expect(bobPage.getByRole("heading", { name: "Place Your Opening Info Token" })).not.toBeVisible({
       timeout: 10_000,
     });
-    await expect(carolPage.getByText("Place Your Opening Info Token")).not.toBeVisible({
+    await expect(carolPage.getByRole("heading", { name: "Place Your Opening Info Token" })).not.toBeVisible({
       timeout: 10_000,
     });
 
