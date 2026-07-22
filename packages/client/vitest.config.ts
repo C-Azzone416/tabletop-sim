@@ -20,12 +20,11 @@ export default defineConfig({
       // src/db/* exclusion (#108) rather than left to skew the metric.
       exclude: ["app/**/*.d.ts", "app/dev/**/*.{ts,tsx}"],
       // Hard CI gate per PM directive (#test-coverage, 2026-07-22): coverage moves
-      // from advisory to enforced. Set at the current floor (measured 60.98% lines
-      // on develop) as a regression stop while client P1 coverage work is in
-      // flight — this is not the target, ratchet it up as P1 items land, final
-      // state 80%.
+      // from advisory to enforced. Client coverage P1 (#116/#118/#119) is complete
+      // — measured 86.34% lines on develop — so the gate is set to the final
+      // target of 80% lines rather than an interim floor.
       thresholds: {
-        lines: 60,
+        lines: 80,
       },
     },
   },
