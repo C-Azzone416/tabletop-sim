@@ -44,4 +44,7 @@ question round-trips back to Caroline.
 An earlier design had a separate interrogation exchange
 (`select_opponent_wire` / `answer_wire_question` / `next_turn`) preceding
 the cut. This is superseded by the ruling above and has been removed from
-both client and server — `dual_cut` is the only turn action.
+both client and server — `dual_cut` replaces that interrogation step.
+`solo_cut`, `double_detector`, and `reveal_reds` remain valid turn actions
+alongside it; the change is that interrogate-then-cut is gone, not that
+`dual_cut` is the only action available.
