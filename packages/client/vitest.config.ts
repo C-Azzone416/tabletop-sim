@@ -14,7 +14,11 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "json-summary"],
       include: ["app/**/*.{ts,tsx}"],
-      exclude: ["app/**/*.d.ts"],
+      // app/dev/* is dev-only seeding UI (gated behind NEXT_PUBLIC_ENABLE_DEV_TOOLS,
+      // never shipped to production behavior) — not product code worth unit coverage.
+      // Excluded per PM decision (#test-coverage, 2026-07-22), mirroring the server's
+      // src/db/* exclusion (#108) rather than left to skew the metric.
+      exclude: ["app/**/*.d.ts", "app/dev/**/*.{ts,tsx}"],
     },
   },
   resolve: {
