@@ -1,32 +1,68 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import { useGameState } from "../../hooks/useGameState";
 import { Lobby } from "../../components/Lobby";
 import { SetupPhase } from "../../components/SetupPhase";
 import { GameBoard } from "../../components/GameBoard";
 import { GameOverOverlay } from "../../components/GameOverOverlay";
+import { SeatSwitcher } from "../../components/SeatSwitcher";
+
+export interface DevSeatOption {
+  name: string;
+  profileId: string;
+}
 
 interface GameClientProps {
   joinCode: string;
   profileId: string;
   playerName: string;
+  seatOptions?: DevSeatOption[];
 }
 
-export function GameClient({ joinCode, profileId, playerName }: GameClientProps) {
+export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }: GameClientProps) {
   const { state, handleMessage } = useGameState();
-  const { status, connect, send } = useWebSocket(handleMessage, profileId, playerName);
+  const [activeSeat, setActiveSeat] = useState<DevSeatOption>({ profileId, name: playerName });
+  const { status, connect, disconnect, send } = useWebSocket(
+    handleMessage,
+    activeSeat.profileId,
+    activeSeat.name,
+  );
   const hasConnected = useRef(false);
+  const connectedSeatRef = useRef(activeSeat.profileId);
 
   useEffect(() => {
     if (!hasConnected.current) {
       hasConnected.current = true;
       connect();
+      return;
     }
-  }, [connect]);
+    // Seat switch: `connect` is only the right (freshly re-bound) closure
+    // for `activeSeat` once this effect runs post-render — calling it
+    // synchronously from the click handler would still capture the
+    // pre-switch identity.
+    if (connectedSeatRef.current !== activeSeat.profileId) {
+      connectedSeatRef.current = activeSeat.profileId;
+      disconnect();
+      connect();
+    }
+  }, [activeSeat, connect, disconnect]);
+
+  const handleSwitchSeat = (seat: DevSeatOption) => {
+    if (seat.profileId === activeSeat.profileId) return;
+    setActiveSeat(seat);
+  };
 
   const gameStatus = state.game?.status;
+
+  const seatSwitcher = seatOptions.length > 0 && (
+    <SeatSwitcher
+      seats={seatOptions}
+      activeProfileId={activeSeat.profileId}
+      onSwitch={handleSwitchSeat}
+    />
+  );
 
   // Waiting / Lobby
   if (!state.game || gameStatus === "waiting") {
@@ -39,6 +75,7 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
           captainId={state.game?.captainId ?? null}
           onStartGame={(mission) => send({ type: "start_game", mission })}
         />
+        {seatSwitcher}
         {state.error && (
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg dark:bg-red-900/20 dark:text-red-400">
             {state.error}
@@ -52,6 +89,7 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
   if (gameStatus === "setup") {
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+        {seatSwitcher}
         <SetupPhase
           game={state.game}
           players={state.players}
@@ -109,6 +147,7 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
           }
           onRevealReds={() => send({ type: "reveal_reds" })}
         />
+        {seatSwitcher}
         {process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS === "true" && (
           <div className="fixed bottom-4 right-4">
             <button
@@ -160,6 +199,7 @@ export function GameClient({ joinCode, profileId, playerName }: GameClientProps)
           result={gameStatus}
           reason={state.gameOverReason ?? ""}
         />
+        {seatSwitcher}
       </div>
     );
   }

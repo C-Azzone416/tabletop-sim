@@ -281,4 +281,63 @@ describe("GameClient — full game flow integration", () => {
     expect(screen.getByText("Mission Failed")).toBeInTheDocument();
     expect(screen.getByText("Detonator exploded!")).toBeInTheDocument();
   });
+
+  describe("dev seat switcher", () => {
+    const seatOptions = [
+      { name: "Dev", profileId: "p1" },
+      { name: "Alice", profileId: "p2" },
+    ];
+
+    it("does not render when seatOptions is empty", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={[]} />);
+      act(() => vi.advanceTimersByTime(0));
+      expect(screen.queryByText("[DEV] Seat:")).not.toBeInTheDocument();
+    });
+
+    it("renders a button per seat when seatOptions is provided", () => {
+      render(
+        <GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={seatOptions} />
+      );
+      act(() => vi.advanceTimersByTime(0));
+      expect(screen.getByRole("button", { name: "Dev" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Alice" })).toBeInTheDocument();
+    });
+
+    it("switching seats closes the old WS connection and opens a new one with the new identity", () => {
+      render(
+        <GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={seatOptions} />
+      );
+      act(() => vi.advanceTimersByTime(0));
+      const firstWs = getWs();
+      expect(firstWs.url).toContain("profileId=p1");
+      expect(firstWs.url).toContain("name=Dev");
+      expect(MockWebSocket.instances).toHaveLength(1);
+
+      act(() => {
+        fireEvent.click(screen.getByRole("button", { name: "Alice" }));
+      });
+      act(() => vi.advanceTimersByTime(0));
+
+      expect(firstWs.close).toHaveBeenCalled();
+      expect(MockWebSocket.instances).toHaveLength(2);
+      const secondWs = getWs();
+      expect(secondWs.url).toContain("profileId=p2");
+      expect(secondWs.url).toContain("name=Alice");
+    });
+
+    it("clicking the already-active seat does not reconnect", () => {
+      render(
+        <GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={seatOptions} />
+      );
+      act(() => vi.advanceTimersByTime(0));
+      expect(MockWebSocket.instances).toHaveLength(1);
+
+      act(() => {
+        fireEvent.click(screen.getByRole("button", { name: "Dev" }));
+      });
+      act(() => vi.advanceTimersByTime(0));
+
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+  });
 });
