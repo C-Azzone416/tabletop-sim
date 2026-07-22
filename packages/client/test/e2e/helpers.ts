@@ -31,6 +31,20 @@ export async function seedGame(mission = 1): Promise<SeedResult> {
   return res.json();
 }
 
+/**
+ * Seeds an active game positioned one correct solo cut from victory (server
+ * PR #128's /dev/seed-near-win): finds a matching non-red hidden wire pair,
+ * reassigns both to Dev, cuts every other hidden wire, and hands Dev the
+ * turn. Lets checklist item 7 (mission win) be driven by a single real
+ * solo_cut instead of an unverified multi-identity turn-ordered solver.
+ */
+export async function seedNearWinGame(mission = 1): Promise<SeedResult> {
+  const ctx = await request.newContext({ baseURL: API_URL });
+  const res = await ctx.post("/dev/seed-near-win", { data: { mission } });
+  if (!res.ok()) throw new Error(`Seed-near-win failed: ${res.status()}`);
+  return res.json();
+}
+
 export async function cleanupGame(joinCode: string): Promise<void> {
   // Requires daring-bobcat's /dev/cleanup endpoint to delete orphaned dev games.
   const ctx = await request.newContext({ baseURL: API_URL });
@@ -55,6 +69,15 @@ export async function advanceTurn(joinCode: string): Promise<{ currentTurnPlayer
  * only redacts OTHER players' hidden wires), so this only needs DOM reads —
  * no server-side knowledge of the random /dev/seed deal is required.
  * Returns null if no duplicate-value pair exists in the current deal.
+ *
+ * Only checks wires with data-wire-status="hidden" — Wire.tsx only renders
+ * the value span (span.text-lg.font-bold) for hidden wires, never for cut
+ * ones. Checking the status attribute first (cheap, always present) avoids
+ * calling .textContent() against a selector that will never resolve for a
+ * cut wire, which would otherwise block for the full (unbounded by default)
+ * Playwright action timeout per wire before the .catch() fires — fine when
+ * every wire is hidden (the original scenario this was written for), but
+ * pathological once some wires are already cut (e.g. a near-win seed).
  */
 export async function findLocalDuplicateValuePair(
   page: Page,
@@ -66,6 +89,8 @@ export async function findLocalDuplicateValuePair(
   const byValue = new Map<string, Locator[]>();
   for (let i = 0; i < count; i++) {
     const btn = wireButtons.nth(i);
+    const status = await btn.getAttribute("data-wire-status");
+    if (status !== "hidden") continue;
     const valueText = (
       await btn.locator("span.text-lg.font-bold").textContent().catch(() => null)
     )?.trim();
