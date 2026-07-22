@@ -341,6 +341,43 @@ describe("message-handler", () => {
     });
   });
 
+  describe("reveal_reds", () => {
+    it("reveals red wires and broadcasts turn_result with per-player wire views", async () => {
+      const ws = mockSocket();
+      const otherWs = mockSocket();
+      const game = makeGame({ id: "g1", status: "active" });
+      const turn = makeTurn({ actionType: "reveal_reds", result: "success" });
+      const updatedWires = [
+        makeWire({ id: "w1", color: "red", status: "revealed", rackPosition: 1 }),
+        makeWire({ id: "w2", color: "red", status: "revealed", rackPosition: 2 }),
+      ];
+      const gameSockets = new Map<string, WebSocket>();
+      gameSockets.set("p1", ws);
+      gameSockets.set("p2", otherWs);
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeRevealReds.mockResolvedValue({ turn, game, updatedWires });
+      mockConnManager.getGameSockets.mockReturnValue(gameSockets);
+
+      await handleMessage(ws, JSON.stringify({ type: "reveal_reds" }));
+
+      expect(mockEngine.executeRevealReds).toHaveBeenCalledWith("g1", "p1");
+      expect(lastSent(ws)).toEqual({ type: "turn_result", turn, game, updatedWires });
+      expect(lastSent(otherWs)).toEqual({ type: "turn_result", turn, game, updatedWires });
+    });
+
+    it("propagates engine errors as an error message instead of broadcasting", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeRevealReds.mockRejectedValue(new Error("Not your turn"));
+
+      await handleMessage(ws, JSON.stringify({ type: "reveal_reds" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Not your turn" });
+      expect(mockConnManager.getGameSockets).not.toHaveBeenCalled();
+    });
+  });
+
   describe("place_info_token", () => {
     it("places an info token and broadcasts game state to all players", async () => {
       const ws = mockSocket();
