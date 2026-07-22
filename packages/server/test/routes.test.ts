@@ -677,4 +677,83 @@ describe("routes", () => {
       await prodApp.close();
     });
   });
+
+  describe("CORS — Vercel preview origins (issue #121)", () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalNodeEnv;
+      delete process.env.ENABLE_DEV_SEED;
+    });
+
+    it("allows a matching Vercel preview origin when dev tooling is enabled", async () => {
+      process.env.ENABLE_DEV_SEED = "true";
+      const devApp = await buildApp();
+
+      const res = await devApp.inject({
+        method: "GET",
+        url: "/health",
+        headers: { origin: "https://tabletop-abc1234de-c-azzone416s-projects.vercel.app" },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["access-control-allow-origin"]).toBe(
+        "https://tabletop-abc1234de-c-azzone416s-projects.vercel.app",
+      );
+
+      await devApp.close();
+    });
+
+    it.each([
+      { label: "wrong account scope (lookalike project)", origin: "https://tabletop-abc1234de-attacker-projects.vercel.app" },
+      { label: "domain-suffix attack", origin: "https://tabletop-abc1234de-c-azzone416s-projects.vercel.app.attacker.com" },
+      { label: "http instead of https", origin: "http://tabletop-abc1234de-c-azzone416s-projects.vercel.app" },
+      { label: "unrelated origin", origin: "https://evil.com" },
+    ])("rejects a non-matching origin even when dev tooling is enabled ($label)", async ({ origin }) => {
+      process.env.ENABLE_DEV_SEED = "true";
+      const devApp = await buildApp();
+
+      const res = await devApp.inject({ method: "GET", url: "/health", headers: { origin } });
+
+      expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+
+      await devApp.close();
+    });
+
+    it("never allows a preview origin when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
+      process.env.ENABLE_DEV_SEED = "true";
+      process.env.NODE_ENV = "production";
+      const prodApp = await buildApp();
+
+      const res = await prodApp.inject({
+        method: "GET",
+        url: "/health",
+        headers: { origin: "https://tabletop-abc1234de-c-azzone416s-projects.vercel.app" },
+      });
+
+      expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+
+      await prodApp.close();
+    });
+
+    it("never allows a preview origin when dev tooling is disabled, even outside production", async () => {
+      const devToolsOffApp = await buildApp();
+
+      const res = await devToolsOffApp.inject({
+        method: "GET",
+        url: "/health",
+        headers: { origin: "https://tabletop-abc1234de-c-azzone416s-projects.vercel.app" },
+      });
+
+      expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+
+      await devToolsOffApp.close();
+    });
+
+    it("still honors the static CORS_ORIGINS allowlist regardless of the preview pattern", async () => {
+      const res = await app.inject({ method: "GET", url: "/health", headers: { origin: "http://localhost:3000" } });
+
+      expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:3000");
+    });
+  });
 });

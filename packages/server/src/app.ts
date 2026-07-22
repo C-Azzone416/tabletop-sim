@@ -18,7 +18,26 @@ export async function buildApp() {
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
     : ['http://localhost:3000'];
-  await app.register(cors, { origin: allowedOrigins });
+
+  // Vercel's dashboard "Visit" button lands on the per-deployment preview URL
+  // (hash rotates every deploy), not the stable branch alias in CORS_ORIGINS —
+  // that's the natural-but-blocked click path (issue #121). Anchored on the
+  // full origin including scheme, not a substring/includes() check, so an
+  // attacker-registered lookalike project can't slip through. Confirmed
+  // pattern from 4 real deployments (2026-07-22): `tabletop-<hash>-c-azzone416s-projects.vercel.app`
+  // — note the prefix is `tabletop-`, not `tabletop-sim-` (project rename artifact).
+  const VERCEL_PREVIEW_ORIGIN = /^https:\/\/tabletop-[a-z0-9]+-c-azzone416s-projects\.vercel\.app$/;
+  // Same condition as every other /dev/* route gate — structurally impossible
+  // to activate in production regardless of misconfiguration elsewhere.
+  const allowVercelPreviews = process.env.ENABLE_DEV_SEED === 'true' && process.env.NODE_ENV !== 'production';
+
+  await app.register(cors, {
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      if (allowVercelPreviews && VERCEL_PREVIEW_ORIGIN.test(origin)) return callback(null, true);
+      return callback(new Error('Not allowed by CORS'), false);
+    },
+  });
   await app.register(websocket, { options: { maxPayload: 4096 } });
 
   app.get('/health', async () => ({ status: 'ok' }));
