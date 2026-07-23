@@ -78,6 +78,16 @@ describe("GameBoard", () => {
     expect(screen.getByText("Bob")).toBeInTheDocument();
   });
 
+  it("renders racks in fixed seat order, not local-player-first (#148)", () => {
+    // localPlayerId is p2 ("Bob"), but he's listed SECOND in players — the
+    // rack order should stay Alice-then-Bob (matching SetupPhase's fixed
+    // order), not reorder to put the local player's rack first.
+    const props = setup({ localPlayerId: "p2" });
+    render(<GameBoard {...props} />);
+    const rackHeadings = screen.getAllByText(/^(You|Alice|Bob)$/);
+    expect(rackHeadings.map((el) => el.textContent)).toEqual(["Alice", "You"]);
+  });
+
   it("marks captain", () => {
     render(<GameBoard {...setup()} />);
     expect(screen.getByText("Captain")).toBeInTheDocument();

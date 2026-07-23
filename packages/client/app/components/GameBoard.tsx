@@ -117,12 +117,6 @@ export function GameBoard({
     }
   };
 
-  // Sort players: local player first
-  const sortedPlayers = [
-    ...players.filter((p) => p.id === localPlayerId),
-    ...players.filter((p) => p.id !== localPlayerId),
-  ];
-
   // Dual cut state derivations
   const isProposer = pendingDualCut?.proposingPlayerId === localPlayerId;
   const isTarget = pendingDualCut?.targetPlayerId === localPlayerId;
@@ -196,9 +190,13 @@ export function GameBoard({
         </div>
       )}
 
-      {/* Player racks */}
+      {/* Player racks — fixed seat order, not local-player-first (#148):
+          matches SetupPhase's existing layout so switching seats via the
+          dev panel doesn't rearrange the board differently between phases.
+          "Your Rack" / player name labeling below still reflects whichever
+          seat is currently selected. */}
       <div className="space-y-4">
-        {sortedPlayers.map((player) => {
+        {players.map((player) => {
           const playerWires = wires
             .filter((w) => w.playerId === player.id)
             .sort((a, b) => a.rackPosition - b.rackPosition);
