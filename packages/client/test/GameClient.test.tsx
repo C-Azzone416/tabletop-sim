@@ -173,7 +173,7 @@ describe("GameClient — full game flow integration", () => {
     expect(screen.getByText("Game is full")).toBeInTheDocument();
   });
 
-  describe("[DEV] Skip Turn button", () => {
+  describe("dev panel: Skip Turn", () => {
     function renderActiveGame() {
       render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
       act(() => vi.advanceTimersByTime(0));
@@ -213,16 +213,17 @@ describe("GameClient — full game flow integration", () => {
       });
     }
 
-    it("does not render Skip Turn button when NEXT_PUBLIC_ENABLE_DEV_TOOLS is unset", () => {
+    it("does not render the dev panel toggle when NEXT_PUBLIC_ENABLE_DEV_TOOLS is unset", () => {
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
       renderActiveGame();
-      expect(screen.queryByText("[DEV] Skip Turn")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Open dev tools" })).not.toBeInTheDocument();
     });
 
-    it("renders Skip Turn button when NEXT_PUBLIC_ENABLE_DEV_TOOLS=true", () => {
+    it("renders Skip Turn inside the dev panel when NEXT_PUBLIC_ENABLE_DEV_TOOLS=true", () => {
       process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
       renderActiveGame();
-      expect(screen.getByText("[DEV] Skip Turn")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      expect(screen.getByText("Skip Turn")).toBeInTheDocument();
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
     });
 
@@ -233,8 +234,9 @@ describe("GameClient — full game flow integration", () => {
       vi.stubGlobal("fetch", fetchMock);
 
       renderActiveGame();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
 
-      const btn = screen.getByText("[DEV] Skip Turn");
+      const btn = screen.getByText("Skip Turn");
       fireEvent.click(btn);
 
       expect(fetchMock).toHaveBeenCalledWith(
@@ -250,7 +252,7 @@ describe("GameClient — full game flow integration", () => {
     });
   });
 
-  describe("[DEV] Reveal All Tokens button", () => {
+  describe("dev panel: Reveal All Tokens", () => {
     function renderSetupGame() {
       render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
       act(() => vi.advanceTimersByTime(0));
@@ -311,24 +313,26 @@ describe("GameClient — full game flow integration", () => {
       });
     }
 
-    it("does not render when NEXT_PUBLIC_ENABLE_DEV_TOOLS is unset", () => {
+    it("does not render the dev panel toggle when NEXT_PUBLIC_ENABLE_DEV_TOOLS is unset", () => {
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
       renderSetupGame();
-      expect(screen.queryByText("[DEV] Reveal All Tokens")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Open dev tools" })).not.toBeInTheDocument();
     });
 
     it("renders during setup phase when NEXT_PUBLIC_ENABLE_DEV_TOOLS=true", () => {
       process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
       renderSetupGame();
-      expect(screen.getByText("[DEV] Reveal All Tokens")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      expect(screen.getByText("Reveal All Tokens")).toBeInTheDocument();
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
     });
 
     it("renders during active play alongside Skip Turn", () => {
       process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
       renderActiveGame();
-      expect(screen.getByText("[DEV] Reveal All Tokens")).toBeInTheDocument();
-      expect(screen.getByText("[DEV] Skip Turn")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      expect(screen.getByText("Reveal All Tokens")).toBeInTheDocument();
+      expect(screen.getByText("Skip Turn")).toBeInTheDocument();
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
     });
 
@@ -339,8 +343,9 @@ describe("GameClient — full game flow integration", () => {
       vi.stubGlobal("fetch", fetchMock);
 
       renderSetupGame();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
 
-      const btn = screen.getByText("[DEV] Reveal All Tokens");
+      const btn = screen.getByText("Reveal All Tokens");
       fireEvent.click(btn);
 
       expect(fetchMock).toHaveBeenCalledWith(
@@ -560,23 +565,33 @@ describe("GameClient — full game flow integration", () => {
     });
   });
 
-  describe("dev seat switcher", () => {
+  describe("dev panel seat switching (#144)", () => {
     const seatOptions = [
       { name: "Dev", profileId: "p1" },
       { name: "Alice", profileId: "p2" },
     ];
 
-    it("does not render when seatOptions is empty", () => {
-      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={[]} />);
-      act(() => vi.advanceTimersByTime(0));
-      expect(screen.queryByText("[DEV] Seat:")).not.toBeInTheDocument();
+    beforeEach(() => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
     });
 
-    it("renders a button per seat when seatOptions is provided", () => {
+    afterEach(() => {
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+
+    it("does not render the dev panel toggle when seatOptions is empty and dev tools are off", () => {
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={[]} />);
+      act(() => vi.advanceTimersByTime(0));
+      expect(screen.queryByRole("button", { name: "Open dev tools" })).not.toBeInTheDocument();
+    });
+
+    it("renders a button per seat once the collapsed panel is opened", () => {
       render(
         <GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={seatOptions} />
       );
       act(() => vi.advanceTimersByTime(0));
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
       expect(screen.getByRole("button", { name: "Dev" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Alice" })).toBeInTheDocument();
     });
@@ -591,6 +606,7 @@ describe("GameClient — full game flow integration", () => {
       expect(firstWs.url).toContain("name=Dev");
       expect(MockWebSocket.instances).toHaveLength(1);
 
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
       act(() => {
         fireEvent.click(screen.getByRole("button", { name: "Alice" }));
       });
@@ -610,6 +626,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => vi.advanceTimersByTime(0));
       expect(MockWebSocket.instances).toHaveLength(1);
 
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
       act(() => {
         fireEvent.click(screen.getByRole("button", { name: "Dev" }));
       });

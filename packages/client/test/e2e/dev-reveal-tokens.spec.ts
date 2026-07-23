@@ -13,7 +13,7 @@ async function seedRaw(mission = 1): Promise<SeedResult> {
   return res.json();
 }
 
-test("[DEV] Reveal All Tokens button fast-forwards a fresh setup-phase game to fully tokened", async ({
+test("Reveal All Tokens (dev panel) fast-forwards a fresh setup-phase game to fully tokened", async ({
   page,
 }) => {
   const seed = await seedRaw(1);
@@ -25,7 +25,8 @@ test("[DEV] Reveal All Tokens button fast-forwards a fresh setup-phase game to f
     ).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('[data-testid="wire-info-token"]')).toHaveCount(0);
 
-    const btn = page.getByText("[DEV] Reveal All Tokens");
+    await page.getByRole("button", { name: "Open dev tools" }).click();
+    const btn = page.getByText("Reveal All Tokens");
     await expect(btn).toBeVisible();
     await btn.click();
 
