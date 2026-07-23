@@ -27,7 +27,7 @@ test("seed + navigate shows 4-player game board with wire racks", async ({
     await expect(racks).toHaveCount(4, { timeout: 10_000 });
 
     // Each rack has at least one wire button, sorted lowest-to-highest by
-    // rack position (the server assigns rackPosition 0, 1, 2… left-to-right)
+    // rack position (the server assigns rackPosition 1, 2, 3… left-to-right — #147)
     for (let i = 0; i < 4; i++) {
       const rack = racks.nth(i);
       const wires = rack.locator('button[data-wire-position]');

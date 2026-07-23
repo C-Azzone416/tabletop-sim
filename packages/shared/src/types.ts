@@ -42,6 +42,11 @@ export interface Wire {
   playerId: string;
   value: string | null;
   color: WireColor;
+  /**
+   * 1-based position in the player's rack (wire-dealer.ts assigns
+   * index + 1, never 0). This is already the player-facing "Wire #N"
+   * number — display it as-is, do not add 1 again (#147).
+   */
   rackPosition: number;
   status: WireStatus;
 }

@@ -100,7 +100,7 @@ test("dual cut: propose, target accepts, proposer completes — cuts both wires"
     // matching own wire.
     await expect(page.getByText("Correct Guess!")).toBeVisible({ timeout: 10_000 });
     await page
-      .getByRole("button", { name: `Wire #${opp.ownWireRackPosition + 1}` })
+      .getByRole("button", { name: `Wire #${opp.ownWireRackPosition}` })
       .click();
 
     await expect(page.getByText("Wire cut successfully!")).toBeVisible({

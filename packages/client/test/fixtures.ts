@@ -59,7 +59,7 @@ export function makeWire(overrides: Partial<Wire> = {}): Wire {
     playerId: "player-1",
     value: "3",
     color: "blue",
-    rackPosition: 0,
+    rackPosition: 1, // 1-based, matching wire-dealer.ts's real convention (#147)
     status: "hidden",
     ...overrides,
   };

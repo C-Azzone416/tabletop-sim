@@ -18,12 +18,12 @@ describe("SetupPhase", () => {
     const localPlayer = makePlayer({ id: "p1", name: "Alice" });
     const otherPlayer = makePlayer({ id: "p2", name: "Bob" });
     const localWires = [
-      makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "3" }),
-      makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "5" }),
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 1, value: "3" }),
+      makeWire({ id: "w2", playerId: "p1", rackPosition: 2, value: "5" }),
     ];
     const otherWires = [
-      makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: "2" }),
-      makeWire({ id: "w4", playerId: "p2", rackPosition: 1, value: "4" }),
+      makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: "2" }),
+      makeWire({ id: "w4", playerId: "p2", rackPosition: 2, value: "4" }),
     ];
     const onPlaceInfoToken = vi.fn();
 

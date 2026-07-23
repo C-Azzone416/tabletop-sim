@@ -142,9 +142,9 @@ describe("ActionPanel", () => {
   describe("double_detector mode", () => {
     it("lists only the local player's own hidden wires, sorted by rack position", () => {
       const wires = [
-        makeWire({ id: "w1", playerId: "p1", rackPosition: 0, status: "hidden" }),
-        makeWire({ id: "w2", playerId: "p1", rackPosition: 1, status: "cut" }), // not hidden — excluded
-        makeWire({ id: "w3", playerId: "p2", rackPosition: 0, status: "hidden" }), // other player — excluded
+        makeWire({ id: "w1", playerId: "p1", rackPosition: 1, status: "hidden" }),
+        makeWire({ id: "w2", playerId: "p1", rackPosition: 2, status: "cut" }), // not hidden — excluded
+        makeWire({ id: "w3", playerId: "p2", rackPosition: 1, status: "hidden" }), // other player — excluded
       ];
       setup({ mode: "double_detector", wires });
       expect(screen.getByRole("button", { name: "Wire #1" })).toBeInTheDocument();
@@ -154,8 +154,8 @@ describe("ActionPanel", () => {
     it("selects a first and second wire, then submits and resets on confirm", async () => {
       const user = userEvent.setup();
       const wires = [
-        makeWire({ id: "w1", playerId: "p1", rackPosition: 0, status: "hidden" }),
-        makeWire({ id: "w2", playerId: "p1", rackPosition: 1, status: "hidden" }),
+        makeWire({ id: "w1", playerId: "p1", rackPosition: 1, status: "hidden" }),
+        makeWire({ id: "w2", playerId: "p1", rackPosition: 2, status: "hidden" }),
       ];
       const { onDoubleDetector, onCancel } = setup({ mode: "double_detector", wires });
 
@@ -175,7 +175,7 @@ describe("ActionPanel", () => {
 
     it("deselects a wire when clicked again", async () => {
       const user = userEvent.setup();
-      const wires = [makeWire({ id: "w1", playerId: "p1", rackPosition: 0, status: "hidden" })];
+      const wires = [makeWire({ id: "w1", playerId: "p1", rackPosition: 1, status: "hidden" })];
       setup({ mode: "double_detector", wires });
 
       const wireBtn = screen.getByRole("button", { name: "Wire #1" });
@@ -188,7 +188,7 @@ describe("ActionPanel", () => {
 
     it("does not submit when only one wire is selected", async () => {
       const user = userEvent.setup();
-      const wires = [makeWire({ id: "w1", playerId: "p1", rackPosition: 0, status: "hidden" })];
+      const wires = [makeWire({ id: "w1", playerId: "p1", rackPosition: 1, status: "hidden" })];
       const { onDoubleDetector } = setup({ mode: "double_detector", wires });
 
       await user.click(screen.getByRole("button", { name: "Wire #1" }));
@@ -198,7 +198,7 @@ describe("ActionPanel", () => {
 
     it("Cancel clears in-progress double detector selection", async () => {
       const user = userEvent.setup();
-      const wires = [makeWire({ id: "w1", playerId: "p1", rackPosition: 0, status: "hidden" })];
+      const wires = [makeWire({ id: "w1", playerId: "p1", rackPosition: 1, status: "hidden" })];
       const { onCancel } = setup({ mode: "double_detector", wires });
 
       await user.click(screen.getByRole("button", { name: "Wire #1" }));

@@ -301,7 +301,7 @@ export function GameBoard({
             </h2>
             <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
               Guess the value of {dualCutTargetOwner.name}&apos;s wire #
-              {dualCutTargetWire.rackPosition + 1}.
+              {dualCutTargetWire.rackPosition}.
             </p>
             <input
               type="text"
@@ -340,7 +340,7 @@ export function GameBoard({
             </h2>
             <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
               {pendingProposerPlayer.name} guesses your wire #
-              {pendingDualCut.targetWireRackPosition + 1} has value{" "}
+              {pendingDualCut.targetWireRackPosition} has value{" "}
               <span className="font-semibold text-zinc-900 dark:text-zinc-100">
                 {pendingDualCut.guessedValue}
               </span>
@@ -381,7 +381,7 @@ export function GameBoard({
                   onClick={() => onCompleteDualCut(w.id)}
                   className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:border-blue-500 hover:bg-blue-50 dark:border-zinc-600 dark:hover:border-blue-400 dark:hover:bg-blue-900/20"
                 >
-                  Wire #{w.rackPosition + 1}
+                  Wire #{w.rackPosition}
                 </button>
               ))}
             </div>
