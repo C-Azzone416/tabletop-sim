@@ -99,8 +99,8 @@ describe("GameClient — full game flow integration", () => {
       makePlayer({ id: "p2", name: "Bob" }),
     ];
     const wires = [
-      makeWire({ id: "w1", playerId: "p1", rackPosition: 0 }),
-      makeWire({ id: "w2", playerId: "p2", rackPosition: 0, value: "3" }),
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 1 }),
+      makeWire({ id: "w2", playerId: "p2", rackPosition: 1, value: "3" }),
     ];
 
     act(() => {

@@ -27,10 +27,10 @@ describe("GameBoard", () => {
     const localPlayer = makePlayer({ id: "p1", name: "Alice" });
     const otherPlayer = makePlayer({ id: "p2", name: "Bob" });
     const wires = [
-      makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: null }),
-      makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: null }),
-      makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: "3" }),
-      makeWire({ id: "w4", playerId: "p2", rackPosition: 1, value: "5" }),
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 1, value: null }),
+      makeWire({ id: "w2", playerId: "p1", rackPosition: 2, value: null }),
+      makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: "3" }),
+      makeWire({ id: "w4", playerId: "p2", rackPosition: 2, value: "5" }),
     ];
 
     return {
@@ -214,7 +214,7 @@ describe("GameBoard", () => {
         proposingPlayerId: "p1",
         targetPlayerId: "p2",
         targetWireId: "w3",
-        targetWireRackPosition: 0,
+        targetWireRackPosition: 1,
         guessedValue: "3",
       },
     });
@@ -231,7 +231,7 @@ describe("GameBoard", () => {
         proposingPlayerId: "p1",
         targetPlayerId: "p2",
         targetWireId: "w3",
-        targetWireRackPosition: 0,
+        targetWireRackPosition: 1,
         guessedValue: "3",
       },
     });
@@ -250,7 +250,7 @@ describe("GameBoard", () => {
         proposingPlayerId: "p1",
         targetPlayerId: "p2",
         targetWireId: "w3",
-        targetWireRackPosition: 0,
+        targetWireRackPosition: 1,
         guessedValue: "3",
       },
     });
@@ -267,21 +267,21 @@ describe("GameBoard", () => {
         proposingPlayerId: "p1",
         targetPlayerId: "p2",
         targetWireId: "w3",
-        targetWireRackPosition: 0,
+        targetWireRackPosition: 1,
         guessedValue: "3",
       },
       pendingDualCutCorrect: {
         type: "dual_cut_correct" as const,
         targetWireId: "w3",
-        targetWireRackPosition: 0,
+        targetWireRackPosition: 1,
         targetWireColor: "blue" as const,
       },
       // local wires need a value to be selectable
       wires: [
-        makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "3" }),
-        makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "5" }),
-        makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: null }),
-        makeWire({ id: "w4", playerId: "p2", rackPosition: 1, value: null }),
+        makeWire({ id: "w1", playerId: "p1", rackPosition: 1, value: "3" }),
+        makeWire({ id: "w2", playerId: "p1", rackPosition: 2, value: "5" }),
+        makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: null }),
+        makeWire({ id: "w4", playerId: "p2", rackPosition: 2, value: null }),
       ],
     });
     render(<GameBoard {...props} />);
@@ -306,9 +306,9 @@ describe("GameBoard", () => {
     const props = setup();
     // Both local wires have value "4" (revealed, so selectable)
     props.wires = [
-      makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "4" }),
-      makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "4" }),
-      makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: "3" }),
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 1, value: "4" }),
+      makeWire({ id: "w2", playerId: "p1", rackPosition: 2, value: "4" }),
+      makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: "3" }),
     ];
     render(<GameBoard {...props} />);
     await user.click(screen.getByRole("button", { name: "Solo Cut" }));
@@ -327,9 +327,9 @@ describe("GameBoard", () => {
     const props = setup();
     // Local wires have different values — mismatch
     props.wires = [
-      makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "3" }),
-      makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "5" }),
-      makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: "2" }),
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 1, value: "3" }),
+      makeWire({ id: "w2", playerId: "p1", rackPosition: 2, value: "5" }),
+      makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: "2" }),
     ];
     render(<GameBoard {...props} />);
     await user.click(screen.getByRole("button", { name: "Solo Cut" }));
@@ -347,9 +347,9 @@ describe("GameBoard", () => {
     const user = userEvent.setup();
     const props = setup();
     props.wires = [
-      makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "4" }),
-      makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "4" }),
-      makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: "3" }),
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 1, value: "4" }),
+      makeWire({ id: "w2", playerId: "p1", rackPosition: 2, value: "4" }),
+      makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: "3" }),
     ];
     render(<GameBoard {...props} />);
     await user.click(screen.getByRole("button", { name: "Solo Cut" }));
