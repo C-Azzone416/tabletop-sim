@@ -210,6 +210,60 @@ export async function findDualCutOpportunity(
 }
 
 /**
+ * Finds an opponent's hidden BLUE wire and a value the local player can
+ * legitimately (but wrongly) guess against it: a value from one of the
+ * local player's own hidden wires that does NOT match the target wire's
+ * real value (read via its info-token badge, same technique as
+ * findDualCutOpportunity).
+ *
+ * This distinction matters since #133's propose-time guard
+ * (executeProposeDualCut in packages/server/src/engine/game-engine.ts)
+ * hard-rejects a blue-wire guess unless the proposer currently holds a
+ * hidden wire with that exact value — so a guess constructed without
+ * checking the local rack (e.g. cycling the real value by an offset) can
+ * intermittently fail that guard and hang waiting for a target prompt that
+ * the server never sends.
+ */
+export async function findDualCutWrongGuessOpportunity(
+  page: Page,
+  opponentNames: string[],
+): Promise<{ wire: Locator; ownerName: string; wrongValue: string } | null> {
+  const localRack = page.locator('[data-testid="player-rack"]').first();
+  const localWireButtons = localRack.locator("button[data-wire-position]");
+  const localCount = await localWireButtons.count();
+
+  const localValues = new Set<string>();
+  for (let i = 0; i < localCount; i++) {
+    const btn = localWireButtons.nth(i);
+    const status = await btn.getAttribute("data-wire-status");
+    if (status !== "hidden") continue;
+    const valueText = (
+      await btn.locator("span.text-lg.font-bold").textContent().catch(() => null)
+    )?.trim();
+    if (valueText) localValues.add(valueText);
+  }
+  if (localValues.size === 0) return null;
+
+  for (const name of opponentNames) {
+    const rack = playerContainer(page, name).locator('[data-testid="player-rack"]');
+    const wireButtons = rack.locator('button[data-wire-color="blue"][data-wire-status="hidden"]');
+    const count = await wireButtons.count();
+    for (let i = 0; i < count; i++) {
+      const wire = wireButtons.nth(i);
+      const realValue = (
+        await wire.locator('[data-testid="wire-info-token"]').textContent().catch(() => null)
+      )?.trim();
+      if (!realValue) continue;
+      const wrongValue = [...localValues].find((v) => v !== realValue);
+      if (wrongValue) {
+        return { wire, ownerName: name, wrongValue };
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Finds the first hidden wire of the given color owned by one of the named
  * opponents (dual cut cannot target your own wire — see
  * executeProposeDualCut in packages/server/src/engine/game-engine.ts).
