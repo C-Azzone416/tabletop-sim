@@ -61,6 +61,27 @@ question round-trips back to Caroline.
   strikethrough treatment, revealed wires plain) rather than an anonymous
   marker. This is central to deduction — don't hide it.
 
+## Solo cut legality
+
+- Solo cut is legal **only** when the player holds every remaining uncut
+  wire of that number — either all 4 from the start, or the last 2 after a
+  dual cut has already removed the other pair. Holding some-but-not-all is
+  illegal, not a lesser/riskier option.
+- This is a hard-enforced rejection (engine + UI), the same pattern as the
+  propose-time must-hold-value guard on `dual_cut` — not an
+  attempt-with-detonator-penalty mechanic. Wrong-guess detonator penalties
+  live in `dual_cut` only.
+- A legal solo cut always succeeds and cuts every matching wire the player
+  holds in one action.
+
+## Turn rotation: auto-skip fully-cut players
+
+- When rotating to the next seat, a player with zero uncut wires remaining
+  is skipped automatically — no dead turns waiting on someone with nothing
+  left to do.
+- A fully-cut player also can't be a dual-cut target, since they have no
+  hidden wires to select.
+
 ## Legacy mechanic (removed)
 
 An earlier design had a separate interrogation exchange
