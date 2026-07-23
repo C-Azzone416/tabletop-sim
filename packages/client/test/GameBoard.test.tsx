@@ -373,10 +373,12 @@ describe("GameBoard", () => {
 
   it("shows info token badge with value on opponent wire", () => {
     const props = setup({
+      // A hidden opponent wire is redacted by the server (value: null) —
+      // the display falls back to the info token's tracked value.
+      wires: [makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: null })],
       infoTokens: [makeInfoToken({ wireId: "w3", value: "7" })],
     });
     render(<GameBoard {...props} />);
-    // Scope to Bob's rack — badge shows token value "7" (wire itself shows "3", no collision)
     const bobContainer = getRackContainer("Bob");
     expect(within(bobContainer).getByText("7")).toBeInTheDocument();
   });

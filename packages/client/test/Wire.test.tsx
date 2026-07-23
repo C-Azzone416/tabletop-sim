@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Wire } from "../app/components/Wire";
-import { makeWire, resetIds } from "./fixtures";
+import { makeWire, makeInfoToken, resetIds } from "./fixtures";
 
 describe("Wire (#156)", () => {
   it("shows the value (not a bare X) when cut", () => {
@@ -59,5 +59,53 @@ describe("Wire (#156)", () => {
       <Wire wire={wire} isLocal isSelected={false} infoTokens={[]} onSelect={() => {}} />,
     );
     expect(screen.getByRole("button")).toBeDisabled();
+  });
+
+  describe("info token treatment (#159 item 4)", () => {
+    it("shows the info token's tracked value, with a blue outline, on a hidden opponent wire", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
+      render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      const el = screen.getByText("7");
+      expect(el).toBeInTheDocument();
+      expect(el.getAttribute("data-testid")).toBe("wire-info-token");
+    });
+
+    it("fills solid blue once an info-known wire is cut", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "cut", value: "7" });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).toContain("bg-blue-600");
+      expect(screen.getByText("7").className).toContain("text-white");
+    });
+
+    it("does not apply the dimmed cut treatment to an info-known cut wire (blue fill instead)", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "cut", value: "7" });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).not.toContain("opacity-40");
+    });
+
+    it("prefers the wire's real value over the info token's once it's known (e.g. own hidden wire)", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: "6" });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
+      render(
+        <Wire wire={wire} isLocal isSelected={false} infoTokens={infoTokens} />,
+      );
+      expect(screen.getByText("6")).toBeInTheDocument();
+      expect(screen.queryByText("7")).not.toBeInTheDocument();
+    });
   });
 });
