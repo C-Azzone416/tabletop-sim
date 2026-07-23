@@ -4,7 +4,7 @@ import {
   cleanupGame,
   gameUrl,
   findDualCutOpportunity,
-  findOpponentHiddenWireByColor,
+  findDualCutWrongGuessOpportunity,
   type SeedResult,
 } from "./helpers";
 
@@ -130,44 +130,57 @@ test("dual cut: propose, target accepts, proposer completes — cuts both wires"
 // dual_cut's deny path, which the server already fully supports today
 // (executeRespondDualCut's accepted=false branch: blue/yellow → info token +
 // detonator advance, red → immediate loss — packages/server/src/engine/game-
-// engine.ts). This doesn't depend on bobcat's propose-time-validation PR:
-// deliberately guessing a value the target denies drives the exact same
-// server path a validation-rejected guess never would have reached anyway.
+// engine.ts).
 //
-// The proposer deliberately guesses a value that does NOT match the target's
-// real value (read from the wire's info-token badge, same technique as
-// findDualCutOpportunity), and the target denies. Only a blue wire is used —
-// red would end the mission before we can assert the detonator advanced, and
-// that path is exercised by win-loss.spec.ts.
+// The proposer guesses a value it actually holds (satisfying #133's
+// propose-time must-hold guard) that does NOT match the target's real value
+// (findDualCutWrongGuessOpportunity — reads both from the DOM, same
+// info-token technique as findDualCutOpportunity), and the target denies.
+// An earlier version of this test picked the wrong value by cycling the
+// real value by an offset without checking whether Dev actually held it —
+// intermittently tripped the must-hold guard and hung waiting on a target
+// prompt the server never sent (flagged by daring-bobcat during #136).
+// Only a blue wire is used — red would end the mission before we can assert
+// the detonator advanced, and that path is exercised by win-loss.spec.ts.
 
 test("dual cut: target denies a wrong guess — detonator advances", async ({
   page,
   browser,
 }) => {
-  const seed = await seedGame(1);
-  const targetContext = await browser.newContext();
-  const targetPage = await targetContext.newPage();
+  let seed: SeedResult | null = null;
+  let found: Awaited<ReturnType<typeof findDualCutWrongGuessOpportunity>> = null;
 
-  try {
+  for (let attempt = 0; attempt < 5 && !found; attempt++) {
+    if (seed) await cleanupGame(seed.joinCode);
+    seed = await seedGame(1);
     await page.goto(gameUrl(seed));
     await expect(page.getByText("Your turn — choose an action")).toBeVisible({
       timeout: 10_000,
     });
+    found = await findDualCutWrongGuessOpportunity(page, ["Alice", "Bob", "Carol"]);
+  }
 
-    const found = await findOpponentHiddenWireByColor(
-      page,
-      ["Alice", "Bob", "Carol"],
-      "blue",
+  if (!seed) throw new Error("Failed to seed game");
+
+  if (!found) {
+    await cleanupGame(seed.joinCode);
+    test.skip(
+      true,
+      "Could not find a Dev-held blue value distinct from any opponent's hidden blue wire across 5 random /dev/seed deals — rare but possible given mission 1's random deal",
     );
-    if (!found) {
-      throw new Error("No hidden blue opponent wire found in seeded game");
-    }
+    return;
+  }
 
-    const targetProfile = seed.players.find((p) => p.name === found.ownerName);
-    if (!targetProfile) {
-      throw new Error(`No seeded profile found for ${found.ownerName}`);
-    }
+  const targetProfile = seed.players.find((p) => p.name === found!.ownerName);
+  if (!targetProfile) {
+    await cleanupGame(seed.joinCode);
+    throw new Error(`No seeded profile found for ${found.ownerName}`);
+  }
 
+  const targetContext = await browser.newContext();
+  const targetPage = await targetContext.newPage();
+
+  try {
     await targetPage.goto(
       gameUrl({ ...seed, profileId: targetProfile.profileId, playerName: targetProfile.name }),
     );
@@ -175,22 +188,12 @@ test("dual cut: target denies a wrong guess — detonator advances", async ({
       timeout: 10_000,
     });
 
-    const realValue = (
-      await found.wire.locator('[data-testid="wire-info-token"]').textContent()
-    )?.trim();
-    if (!realValue) throw new Error("Could not read target wire's real value");
-
-    // Guess anything other than the real value — mission 1 blue values are
-    // single digits 1-9, so cycling to a different digit is always wrong.
-    const wrongValue = String(((Number(realValue) % 9) + 1));
-    expect(wrongValue).not.toBe(realValue);
-
     const detonatorBefore = await page.getByText(/^\d+ \/ \d+$/).textContent();
 
     await page.getByRole("button", { name: "Dual Cut" }).click();
     await found.wire.click();
     await expect(page.getByText(/Guess the value of/i)).toBeVisible({ timeout: 5_000 });
-    await page.getByPlaceholder("Enter value…").fill(wrongValue);
+    await page.getByPlaceholder("Enter value…").fill(found.wrongValue);
     await page.getByRole("button", { name: "Propose Cut" }).click();
 
     await expect(
