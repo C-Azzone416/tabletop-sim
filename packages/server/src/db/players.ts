@@ -11,11 +11,17 @@ export async function createPlayer(gameId: string, name: string, seatOrder: numb
 }
 
 export async function getActivePlayerByProfileId(profileId: string): Promise<Player | null> {
+  // #157 fallout (QA-caught): 'won'/'lost' must stay reconnectable — the
+  // continue-playing overlay lives in that exact state, and the same-
+  // game-row transition means a captain/player reloading, opening a second
+  // tab, or reconnecting mid-overlay is still "in" this game, not a stale
+  // finished one. Excluding them broke the WS /ws upgrade handler's
+  // rejoin lookup for every connection made after the game ended.
   const rows = await sql`
     SELECT p.* FROM players p
     JOIN games g ON g.id = p.game_id
     WHERE p.profile_id = ${profileId}
-      AND g.status IN ('waiting', 'setup', 'active')
+      AND g.status IN ('waiting', 'setup', 'active', 'won', 'lost')
     ORDER BY p.joined_at DESC
     LIMIT 1
   `;
