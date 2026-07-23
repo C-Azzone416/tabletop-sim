@@ -20,8 +20,17 @@ export function Wire({
   infoTokens,
 }: WireProps) {
   const isCut = wire.status === "cut";
-  const isHidden = wire.status === "hidden";
-  const showValue = isHidden && wire.value !== null;
+  // #156: the server only ever sends a non-null value when it's safe to
+  // show — own wires regardless of status, or ANY non-hidden wire
+  // regardless of owner (cut/revealed wires are public, face-up
+  // information in the physical game). See state-broadcaster.ts's
+  // buildPlayerView: it redacts value only for another player's *hidden*
+  // wire. So `wire.value !== null` alone is the complete signal; do not
+  // also gate on hidden/not-hidden — an earlier version of this line did
+  // `!isHidden && value !== null`, which silently stopped showing the
+  // local player's own hidden wire values (a real regression, caught
+  // before merge).
+  const showValue = wire.value !== null;
 
   return (
     <button
@@ -42,12 +51,14 @@ export function Wire({
         ${wire.color === "red" ? "bg-red-100 dark:bg-red-900/30" : ""}
       `}
     >
-      {isCut && (
-        <span className="absolute text-2xl text-zinc-400">&#10005;</span>
-      )}
-
       {showValue && (
-        <span className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
+        <span
+          className={`text-lg font-bold ${
+            isCut
+              ? "text-zinc-500 line-through decoration-2 dark:text-zinc-400"
+              : "text-zinc-900 dark:text-zinc-100"
+          }`}
+        >
           {wire.value}
         </span>
       )}
