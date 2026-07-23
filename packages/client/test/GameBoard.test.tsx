@@ -401,4 +401,48 @@ describe("GameBoard", () => {
     render(<GameBoard {...props} />);
     expect(screen.getByText("Validated")).toBeInTheDocument();
   });
+
+  describe("lives display (#143)", () => {
+    // Internal model is unchanged (detonatorPosition counts UP toward
+    // detonatorMax) — the UI transforms it into a countdown per the ruling.
+    it("shows lives remaining (max - position), counting down", () => {
+      const props = setup({
+        game: makeGame({
+          id: "g1",
+          status: "active",
+          detonatorPosition: 1,
+          detonatorMax: 4,
+        }),
+      });
+      render(<GameBoard {...props} />);
+      expect(screen.getByText("Lives")).toBeInTheDocument();
+      expect(screen.getByText("3 / 4")).toBeInTheDocument();
+    });
+
+    it("shows 0 lives remaining at detonatorPosition === detonatorMax (loss threshold)", () => {
+      const props = setup({
+        game: makeGame({
+          id: "g1",
+          status: "active",
+          detonatorPosition: 4,
+          detonatorMax: 4,
+        }),
+      });
+      render(<GameBoard {...props} />);
+      expect(screen.getByText("0 / 4")).toBeInTheDocument();
+    });
+
+    it("shows full lives at detonatorPosition 0 (game start)", () => {
+      const props = setup({
+        game: makeGame({
+          id: "g1",
+          status: "active",
+          detonatorPosition: 0,
+          detonatorMax: 3,
+        }),
+      });
+      render(<GameBoard {...props} />);
+      expect(screen.getByText("3 / 3")).toBeInTheDocument();
+    });
+  });
 });

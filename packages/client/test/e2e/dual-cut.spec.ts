@@ -205,14 +205,16 @@ test("dual cut: target denies a wrong guess — detonator advances", async ({
       timeout: 10_000,
     });
 
-    // Detonator position increments by exactly one on both real sessions.
+    // Lives remaining decrements by exactly one on both real sessions (#143:
+    // the display counts DOWN — the underlying detonatorPosition still
+    // advances by one, but the UI transform inverts that into lives lost).
     const detonatorAfter = page.getByText(/^\d+ \/ \d+$/);
     await expect(detonatorAfter).not.toHaveText(detonatorBefore ?? "", {
       timeout: 5_000,
     });
     const [beforeN] = (detonatorBefore ?? "0 / 0").split(" / ").map(Number);
     const [afterN] = (await detonatorAfter.textContent())!.split(" / ").map(Number);
-    expect(afterN).toBe(beforeN + 1);
+    expect(afterN).toBe(beforeN - 1);
 
     // The wire itself is untouched — deny places an info token, not a cut.
     await expect(found.wire).toHaveAttribute("data-wire-status", "hidden");

@@ -397,8 +397,14 @@ function DetonatorDisplay({
   position: number;
   max: number;
 }) {
-  const urgent = position >= max - 1;
-  const warning = !urgent && position >= Math.ceil(max / 2);
+  // #143 (Caroline, 2026-07-23): lives count DOWN in the UI — players start
+  // with `max` lives and lose one per wrong guess, reaching 0 = loss. The
+  // internal model (detonatorPosition counting up to detonatorMax) is
+  // mathematically identical, so this is a display-only transform; nothing
+  // server-side changes.
+  const livesRemaining = max - position;
+  const urgent = livesRemaining <= 1;
+  const warning = !urgent && livesRemaining <= Math.floor(max / 2);
 
   const colorClass = urgent
     ? "text-red-600 dark:text-red-400 font-bold"
@@ -409,10 +415,10 @@ function DetonatorDisplay({
   return (
     <div className="flex flex-col items-center gap-2">
       <h3 className="text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-        Detonator
+        Lives
       </h3>
       <span className={`text-sm tabular-nums ${colorClass}`}>
-        {position} / {max}
+        {livesRemaining} / {max}
       </span>
     </div>
   );

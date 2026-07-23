@@ -39,6 +39,17 @@ question round-trips back to Caroline.
      - **Deny** on a yellow wire → a yellow indicator is placed.
      - **Deny** on a red wire → the mission is lost immediately.
 
+## Lives
+
+- Players start with lives = players − 1 (4 players → 3 lives; 2 players →
+  1 life). Each wrong guess costs one life; reaching 0 loses the mission.
+  Example (4p): 3 → 2 → 1 → 0 = loss.
+- The UI displays lives counting DOWN toward 0, matching the physical
+  game. Internally the engine tracks an equivalent count-UP detonator
+  position toward a max (`detonatorPosition`/`detonatorMax`) — the two
+  models are mathematically identical, so this is a display-only
+  distinction, not a rule.
+
 ## Legacy mechanic (removed)
 
 An earlier design had a separate interrogation exchange
