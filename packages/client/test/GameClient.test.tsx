@@ -250,6 +250,112 @@ describe("GameClient — full game flow integration", () => {
     });
   });
 
+  describe("[DEV] Reveal All Tokens button", () => {
+    function renderSetupGame() {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+        });
+      });
+    }
+
+    function renderActiveGame() {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          game: makeGame({
+            id: "g1",
+            status: "active",
+            captainId: "p1",
+            currentTurnPlayerId: "p1",
+            detonatorPosition: 0,
+            detonatorMax: 4,
+          }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+    }
+
+    it("does not render when NEXT_PUBLIC_ENABLE_DEV_TOOLS is unset", () => {
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+      renderSetupGame();
+      expect(screen.queryByText("[DEV] Reveal All Tokens")).not.toBeInTheDocument();
+    });
+
+    it("renders during setup phase when NEXT_PUBLIC_ENABLE_DEV_TOOLS=true", () => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+      renderSetupGame();
+      expect(screen.getByText("[DEV] Reveal All Tokens")).toBeInTheDocument();
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+
+    it("renders during active play alongside Skip Turn", () => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+      renderActiveGame();
+      expect(screen.getByText("[DEV] Reveal All Tokens")).toBeInTheDocument();
+      expect(screen.getByText("[DEV] Skip Turn")).toBeInTheDocument();
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+
+    it("calls POST /dev/reveal-all-tokens with joinCode on click", () => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+      process.env.NEXT_PUBLIC_SERVER_URL = "http://localhost:3001";
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal("fetch", fetchMock);
+
+      renderSetupGame();
+
+      const btn = screen.getByText("[DEV] Reveal All Tokens");
+      fireEvent.click(btn);
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost:3001/dev/reveal-all-tokens",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ joinCode: "ABC123" }),
+        })
+      );
+
+      vi.unstubAllGlobals();
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+  });
+
   it("shows loss overlay on game_over lost", () => {
     render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
     act(() => vi.advanceTimersByTime(0));
