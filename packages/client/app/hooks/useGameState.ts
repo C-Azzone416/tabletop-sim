@@ -22,8 +22,6 @@ export interface GameState {
   pendingDualCutCorrect: Extract<ServerMessage, { type: "dual_cut_correct" }> | null;
   gameOverReason: string | null;
   error: string | null;
-  pendingWireQuestion: Extract<ServerMessage, { type: "wire_question" }> | null;
-  lastInterrogationResult: Extract<ServerMessage, { type: "interrogation_result" }> | null;
 }
 
 const initialState: GameState = {
@@ -38,8 +36,6 @@ const initialState: GameState = {
   pendingDualCutCorrect: null,
   gameOverReason: null,
   error: null,
-  pendingWireQuestion: null,
-  lastInterrogationResult: null,
 };
 
 type Action =
@@ -174,26 +170,6 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
           : null,
         gameOverReason: msg.reason,
       };
-
-    case "wire_question":
-      return {
-        ...state,
-        pendingWireQuestion: msg,
-      };
-
-    case "interrogation_result": {
-      const updatedWires = state.wires.map((w) => {
-        const updated = msg.updatedWires.find((uw) => uw.id === w.id);
-        return updated ?? w;
-      });
-      return {
-        ...state,
-        game: msg.game,
-        wires: updatedWires,
-        lastInterrogationResult: msg,
-        pendingWireQuestion: null,
-      };
-    }
 
     case "players_updated":
       return { ...state, players: msg.players };

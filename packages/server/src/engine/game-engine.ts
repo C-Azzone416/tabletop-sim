@@ -157,6 +157,17 @@ export async function executeProposeDualCut(
   const targetPlayer = await playersDb.getPlayerById(wire.playerId);
   if (!targetPlayer) throw new Error('Player not found');
 
+  // Physical-game rule: you must already hold a matching tile before you can
+  // guess it. Mirrors executeCompleteDualCut's completion-time checks.
+  const proposerWires = await wiresDb.getWiresByPlayerId(playerId);
+  if (wire.color === 'blue') {
+    const holdsMatch = proposerWires.some(w => w.status === 'hidden' && w.value === guessedValue);
+    if (!holdsMatch) throw new Error('Must hold a matching wire to propose this guess');
+  } else if (wire.color === 'yellow') {
+    const holdsYellow = proposerWires.some(w => w.status === 'hidden' && w.color === 'yellow');
+    if (!holdsYellow) throw new Error('Must hold a yellow wire to propose this guess');
+  }
+
   const updatedGame = await gamesDb.setPendingDualCut(gameId, playerId, targetWireId, guessedValue);
   return { game: updatedGame, wire, targetPlayer };
 }
