@@ -6,6 +6,7 @@ import * as playersDb from './db/players.js';
 import * as profilesDb from './db/profiles.js';
 import * as tokensDb from './db/tokens.js';
 import * as wiresDb from './db/wires.js';
+import { getMigrationsStatus } from './db/migrations.js';
 import * as engine from './engine/game-engine.js';
 import { handleMessage } from './ws/message-handler.js';
 import { removeConnection, setAuthenticatedUser, registerConnection } from './ws/connection-manager.js';
@@ -381,6 +382,23 @@ export async function buildApp() {
       } catch (err) {
         app.log.error({ err }, '[POST /dev/reveal-all-tokens] error');
         return reply.status(500).send({ error: 'Reveal failed' });
+      }
+    });
+
+    // Schema-currency check (#141) — reports whether every migration
+    // db/migrate.ts knows about has actually been applied to the DB this
+    // server instance is talking to. Wired into the post-deploy staging
+    // smoke check so drift (like #140's 6-week-stale staging incident) is
+    // caught within one scheduled run instead of waiting for a human to
+    // hit a missing column live. Dev-gated like every other /dev/* route —
+    // prod is exempt per the #122 pattern (this never runs there).
+    app.get('/dev/migrations-status', async (_request, reply) => {
+      try {
+        const status = await getMigrationsStatus();
+        return status;
+      } catch (err) {
+        app.log.error({ err }, '[GET /dev/migrations-status] error');
+        return reply.status(500).send({ error: 'Migrations status check failed' });
       }
     });
   }

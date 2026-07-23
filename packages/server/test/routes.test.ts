@@ -72,6 +72,10 @@ vi.mock("../src/ws/state-broadcaster.js", () => ({
   buildPlayerView: vi.fn((wires) => wires),
 }));
 
+vi.mock("../src/db/migrations.js", () => ({
+  getMigrationsStatus: vi.fn(),
+}));
+
 vi.mock("../src/engine/game-engine.js", () => ({
   createGame: vi.fn(),
   startGame: vi.fn(),
@@ -94,6 +98,7 @@ import * as gamesDb from "../src/db/games.js";
 import * as tokensDb from "../src/db/tokens.js";
 import * as engine from "../src/engine/game-engine.js";
 import * as stateBroadcaster from "../src/ws/state-broadcaster.js";
+import * as migrationsDb from "../src/db/migrations.js";
 import { buildApp } from "../src/app.js";
 
 const mockProfilesDb = vi.mocked(profilesDb);
@@ -103,6 +108,7 @@ const mockGamesDb = vi.mocked(gamesDb);
 const mockTokensDb = vi.mocked(tokensDb);
 const mockEngine = vi.mocked(engine);
 const mockStateBroadcaster = vi.mocked(stateBroadcaster);
+const mockMigrationsDb = vi.mocked(migrationsDb);
 
 describe("routes", () => {
   let app: FastifyInstance;
@@ -775,6 +781,63 @@ describe("routes", () => {
     });
   });
 
+  describe("GET /dev/migrations-status", () => {
+    let seedApp: FastifyInstance;
+
+    beforeEach(async () => {
+      process.env.ENABLE_DEV_SEED = "true";
+      seedApp = await buildApp();
+    });
+
+    afterEach(async () => {
+      await seedApp.close();
+      delete process.env.ENABLE_DEV_SEED;
+    });
+
+    it("returns current: true with no missing migrations when schema is up to date", async () => {
+      mockMigrationsDb.getMigrationsStatus.mockResolvedValue({
+        expected: ["001_initial_schema.sql", "002_mission1_updates.sql"],
+        applied: ["001_initial_schema.sql", "002_mission1_updates.sql"],
+        missing: [],
+        current: true,
+      });
+
+      const res = await seedApp.inject({ method: "GET", url: "/dev/migrations-status" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        expected: ["001_initial_schema.sql", "002_mission1_updates.sql"],
+        applied: ["001_initial_schema.sql", "002_mission1_updates.sql"],
+        missing: [],
+        current: true,
+      });
+    });
+
+    it("returns current: false with the missing migration(s) named when schema is stale", async () => {
+      mockMigrationsDb.getMigrationsStatus.mockResolvedValue({
+        expected: ["001_initial_schema.sql", "008_duo_cut_pending.sql", "009_dual_cut.sql"],
+        applied: ["001_initial_schema.sql"],
+        missing: ["008_duo_cut_pending.sql", "009_dual_cut.sql"],
+        current: false,
+      });
+
+      const res = await seedApp.inject({ method: "GET", url: "/dev/migrations-status" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().current).toBe(false);
+      expect(res.json().missing).toEqual(["008_duo_cut_pending.sql", "009_dual_cut.sql"]);
+    });
+
+    it("returns 500 on unexpected error", async () => {
+      mockMigrationsDb.getMigrationsStatus.mockRejectedValue(new Error("DB down"));
+
+      const res = await seedApp.inject({ method: "GET", url: "/dev/migrations-status" });
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "Migrations status check failed" });
+    });
+  });
+
   describe("dev routes gated on NODE_ENV", () => {
     const originalNodeEnv = process.env.NODE_ENV;
 
@@ -783,7 +846,7 @@ describe("routes", () => {
       delete process.env.ENABLE_DEV_SEED;
     });
 
-    it("does not register /dev/seed, /dev/reveal-all-tokens, /dev/seed-near-win, /dev/advance-turn, or /dev/cleanup when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
+    it("does not register /dev/seed, /dev/reveal-all-tokens, /dev/seed-near-win, /dev/advance-turn, /dev/cleanup, or /dev/migrations-status when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
       process.env.ENABLE_DEV_SEED = "true";
       process.env.NODE_ENV = "production";
       const prodApp = await buildApp();
@@ -793,12 +856,14 @@ describe("routes", () => {
       const seedNearWinRes = await prodApp.inject({ method: "POST", url: "/dev/seed-near-win" });
       const advanceRes = await prodApp.inject({ method: "POST", url: "/dev/advance-turn", payload: { joinCode: "ABCD" } });
       const cleanupRes = await prodApp.inject({ method: "POST", url: "/dev/cleanup", payload: { joinCode: "ABCD" } });
+      const migrationsStatusRes = await prodApp.inject({ method: "GET", url: "/dev/migrations-status" });
 
       expect(seedRes.statusCode).toBe(404);
       expect(revealRes.statusCode).toBe(404);
       expect(seedNearWinRes.statusCode).toBe(404);
       expect(advanceRes.statusCode).toBe(404);
       expect(cleanupRes.statusCode).toBe(404);
+      expect(migrationsStatusRes.statusCode).toBe(404);
 
       await prodApp.close();
     });
