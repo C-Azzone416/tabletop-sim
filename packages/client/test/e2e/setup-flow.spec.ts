@@ -1,17 +1,16 @@
 import { test, expect, request } from "@playwright/test";
-import { API_URL, seedGame, cleanupGame, gameUrl, type SeedResult } from "./helpers";
+import { API_URL, seedGame, cleanupGame, gameUrl } from "./helpers";
 
-async function seedSetupGame(mission = 1): Promise<SeedResult> {
-  // Seeds a game (startGame) but does NOT call the dev-only completeSetup
-  // shortcut, leaving the game in "setup" state so E2E tests can exercise
-  // the turn-ordered opening-placement UI (#131) before the auto-transition
-  // to active. Since #131, startGame itself already sets currentTurnPlayerId
-  // to the captain — this response is already correctly positioned for
-  // "Dev's turn to place first" with no extra setup needed.
-  const ctx = await request.newContext({ baseURL: API_URL });
-  const res = await ctx.post("/dev/seed-setup", { data: { mission } });
-  if (!res.ok()) throw new Error(`Seed-setup failed: ${res.status()}`);
-  return res.json();
+// Seeds a game (startGame) without fast-forwarding, leaving it in "setup"
+// state so these tests can exercise the turn-ordered opening-placement UI
+// (#131) before the auto-transition to active. Since #131, startGame itself
+// already sets currentTurnPlayerId to the captain — the response is already
+// correctly positioned for "Dev's turn to place first" with no extra setup
+// needed. Since the dev-seed-realism change, this is /dev/seed's real
+// default — fastForward: false just opts out of the reveal-all-tokens
+// convenience the other specs rely on.
+function seedSetupGame(mission = 1) {
+  return seedGame(mission, { fastForward: false });
 }
 
 // ── Test 1: Active game board ──────────────────────────────────────────────
