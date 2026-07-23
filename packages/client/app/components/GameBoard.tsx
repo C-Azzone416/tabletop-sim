@@ -143,7 +143,11 @@ export function GameBoard({
   const dualCutInFlight = !!(pendingDualCut || isCompletingDualCut);
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    // pt-14 clears the fixed JoinCodeBadge (top-4 left-4) — GameClient
+    // renders it as a sibling overlay, so this content needs enough top
+    // clearance on its own; the tighter gap-3/p-3 elsewhere is #159's
+    // density pass (action panel visible without scrolling).
+    <div className="flex flex-col gap-3 p-3 pt-14">
       {/* Status bar */}
       <div className="grid grid-cols-3 items-center gap-4">
         <TurnIndicator
@@ -195,7 +199,7 @@ export function GameBoard({
           dev panel doesn't rearrange the board differently between phases.
           "Your Rack" / player name labeling below still reflects whichever
           seat is currently selected. */}
-      <div className="space-y-4">
+      <div className="space-y-2">
         {players.map((player) => {
           const playerWires = wires
             .filter((w) => w.playerId === player.id)
@@ -219,15 +223,17 @@ export function GameBoard({
               ? pendingDualCut.targetWireId
               : null;
 
+          const isActiveTurn = player.id === game.currentTurnPlayerId;
+
           return (
             <div key={player.id}>
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-1 flex items-center gap-2">
                 <span
-                  className={`text-sm font-medium ${
+                  className={
                     isLocal
-                      ? "text-blue-600 dark:text-blue-400"
-                      : "text-zinc-600 dark:text-zinc-400"
-                  }`}
+                      ? "text-base font-bold text-blue-700 dark:text-blue-300"
+                      : "text-sm font-medium text-zinc-600 dark:text-zinc-400"
+                  }
                 >
                   {isLocal ? "You" : player.name}
                 </span>
@@ -236,8 +242,12 @@ export function GameBoard({
                     Captain
                   </span>
                 )}
-                {player.id === game.currentTurnPlayerId && (
-                  <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                {/* #159 item 3: active-turn flag must be unmistakable —
+                    solid fill rather than the previous light tint, since
+                    whose-turn-it-is is exactly the ambiguity #149 filed
+                    against. */}
+                {isActiveTurn && (
+                  <span className="rounded bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm dark:bg-blue-500">
                     Active
                   </span>
                 )}

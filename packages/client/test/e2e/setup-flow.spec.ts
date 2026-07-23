@@ -80,7 +80,7 @@ test("board renders for every player before the active placer has placed their t
   }
 });
 
-test("clicking a blue wire on your turn places info token and shows amber badge", async ({
+test("clicking a blue wire on your turn places info token and shows blue outline treatment", async ({
   page,
 }) => {
   const seed = await seedSetupGame(1);
@@ -99,8 +99,10 @@ test("clicking a blue wire on your turn places info token and shows amber badge"
     // Click the first blue wire to place the opening info token
     await blueWires.first().click();
 
-    // Amber badge should appear on that wire
-    const badge = yourRackSection.locator(".bg-amber-500").first();
+    // #159 item 4: info token shows as a blue-outlined value on the wire
+    // tile itself (data-testid="wire-info-token"), not the old amber
+    // corner badge
+    const badge = yourRackSection.getByTestId("wire-info-token").first();
     await expect(badge).toBeVisible({ timeout: 5_000 });
 
     // Badge value should be a digit (the token's value, not a count)

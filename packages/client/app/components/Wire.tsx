@@ -11,6 +11,12 @@ interface WireProps {
   infoTokens: InfoToken[];
 }
 
+function colorBgClass(color: WireType["color"]): string {
+  if (color === "blue") return "bg-blue-100 dark:bg-blue-900/30";
+  if (color === "yellow") return "bg-yellow-100 dark:bg-yellow-900/30";
+  return "bg-red-100 dark:bg-red-900/30";
+}
+
 export function Wire({
   wire,
   isLocal,
@@ -20,17 +26,46 @@ export function Wire({
   infoTokens,
 }: WireProps) {
   const isCut = wire.status === "cut";
-  // #156: the server only ever sends a non-null value when it's safe to
-  // show — own wires regardless of status, or ANY non-hidden wire
-  // regardless of owner (cut/revealed wires are public, face-up
-  // information in the physical game). See state-broadcaster.ts's
-  // buildPlayerView: it redacts value only for another player's *hidden*
-  // wire. So `wire.value !== null` alone is the complete signal; do not
-  // also gate on hidden/not-hidden — an earlier version of this line did
-  // `!isHidden && value !== null`, which silently stopped showing the
-  // local player's own hidden wire values (a real regression, caught
-  // before merge).
+  // #156: server only redacts value for another player's *hidden* wire —
+  // `wire.value !== null` alone is the complete "safe to show" signal.
   const showValue = wire.value !== null;
+
+  // #159 item 4: a wire with a placed info token gets the "known info"
+  // treatment — blue outline while pending (still hidden/uncut), solid
+  // blue fill once cut — mirroring #153's validated-bar outline→fill
+  // system. Info tokens are public (placed face-up), so this applies
+  // regardless of wire ownership, not just the local player's rack.
+  const infoToken = infoTokens[0];
+  const hasInfoToken = !!infoToken;
+  const infoResolved = hasInfoToken && isCut;
+  const displayValue = wire.value ?? infoToken?.value ?? null;
+
+  let borderClass: string;
+  let bgClass: string;
+  if (infoResolved) {
+    borderClass = "border-blue-600 dark:border-blue-500";
+    bgClass = "bg-blue-600 dark:bg-blue-500";
+  } else if (isSelected) {
+    borderClass = "border-blue-500 ring-2 ring-blue-300 dark:ring-blue-700";
+    bgClass = colorBgClass(wire.color);
+  } else if (hasInfoToken) {
+    borderClass = "border-blue-500 dark:border-blue-400";
+    bgClass = colorBgClass(wire.color);
+  } else if (isCut) {
+    borderClass = "border-zinc-300 dark:border-zinc-700";
+    bgClass = "";
+  } else {
+    borderClass = "border-zinc-300 dark:border-zinc-600";
+    bgClass = colorBgClass(wire.color);
+  }
+
+  const valueTextClass = infoResolved
+    ? "text-white"
+    : isCut
+      ? "text-zinc-500 line-through decoration-2 dark:text-zinc-400"
+      : hasInfoToken
+        ? "text-blue-700 dark:text-blue-300"
+        : "text-zinc-900 dark:text-zinc-100";
 
   return (
     <button
@@ -41,36 +76,20 @@ export function Wire({
       data-wire-status={wire.status}
       className={`
         relative flex flex-col items-center justify-center
-        h-20 w-14 rounded-lg border-2 transition-all
-        ${isCut ? "opacity-40 border-zinc-300 dark:border-zinc-700" : ""}
-        ${isSelected ? "border-blue-500 ring-2 ring-blue-300 dark:ring-blue-700" : "border-zinc-300 dark:border-zinc-600"}
+        h-16 w-12 rounded-lg border-2 transition-all
+        ${borderClass} ${bgClass}
+        ${isCut && !hasInfoToken ? "opacity-40" : ""}
         ${isSelectable && !isSelected ? "ring-1 ring-blue-200 dark:ring-blue-800" : ""}
         ${!isCut && onSelect ? "cursor-pointer hover:border-blue-400 hover:ring-2 hover:ring-blue-300 dark:hover:ring-blue-700" : "cursor-default"}
-        ${wire.color === "blue" ? "bg-blue-100 dark:bg-blue-900/30" : ""}
-        ${wire.color === "yellow" ? "bg-yellow-100 dark:bg-yellow-900/30" : ""}
-        ${wire.color === "red" ? "bg-red-100 dark:bg-red-900/30" : ""}
       `}
     >
-      {showValue && (
+      {(showValue || hasInfoToken) && displayValue !== null && (
         <span
-          className={`text-lg font-bold ${
-            isCut
-              ? "text-zinc-500 line-through decoration-2 dark:text-zinc-400"
-              : "text-zinc-900 dark:text-zinc-100"
-          }`}
+          data-testid={hasInfoToken ? "wire-info-token" : undefined}
+          className={`text-lg font-bold ${valueTextClass}`}
         >
-          {wire.value}
+          {displayValue}
         </span>
-      )}
-
-
-      {infoTokens.length > 0 && (
-        <div
-          data-testid="wire-info-token"
-          className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white"
-        >
-          {infoTokens[0]?.value ?? infoTokens.length}
-        </div>
       )}
     </button>
   );
