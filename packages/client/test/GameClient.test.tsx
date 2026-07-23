@@ -173,7 +173,7 @@ describe("GameClient — full game flow integration", () => {
     expect(screen.getByText("Game is full")).toBeInTheDocument();
   });
 
-  describe("[DEV] Skip Turn button", () => {
+  describe("dev panel: Skip Turn", () => {
     function renderActiveGame() {
       render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
       act(() => vi.advanceTimersByTime(0));
@@ -213,16 +213,17 @@ describe("GameClient — full game flow integration", () => {
       });
     }
 
-    it("does not render Skip Turn button when NEXT_PUBLIC_ENABLE_DEV_TOOLS is unset", () => {
+    it("does not render the dev panel toggle when NEXT_PUBLIC_ENABLE_DEV_TOOLS is unset", () => {
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
       renderActiveGame();
-      expect(screen.queryByText("[DEV] Skip Turn")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Open dev tools" })).not.toBeInTheDocument();
     });
 
-    it("renders Skip Turn button when NEXT_PUBLIC_ENABLE_DEV_TOOLS=true", () => {
+    it("renders Skip Turn inside the dev panel when NEXT_PUBLIC_ENABLE_DEV_TOOLS=true", () => {
       process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
       renderActiveGame();
-      expect(screen.getByText("[DEV] Skip Turn")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      expect(screen.getByText("Skip Turn")).toBeInTheDocument();
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
     });
 
@@ -233,8 +234,9 @@ describe("GameClient — full game flow integration", () => {
       vi.stubGlobal("fetch", fetchMock);
 
       renderActiveGame();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
 
-      const btn = screen.getByText("[DEV] Skip Turn");
+      const btn = screen.getByText("Skip Turn");
       fireEvent.click(btn);
 
       expect(fetchMock).toHaveBeenCalledWith(
@@ -250,7 +252,7 @@ describe("GameClient — full game flow integration", () => {
     });
   });
 
-  describe("[DEV] Reveal All Tokens button", () => {
+  describe("dev panel: Reveal All Tokens", () => {
     function renderSetupGame() {
       render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
       act(() => vi.advanceTimersByTime(0));
@@ -311,24 +313,26 @@ describe("GameClient — full game flow integration", () => {
       });
     }
 
-    it("does not render when NEXT_PUBLIC_ENABLE_DEV_TOOLS is unset", () => {
+    it("does not render the dev panel toggle when NEXT_PUBLIC_ENABLE_DEV_TOOLS is unset", () => {
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
       renderSetupGame();
-      expect(screen.queryByText("[DEV] Reveal All Tokens")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Open dev tools" })).not.toBeInTheDocument();
     });
 
     it("renders during setup phase when NEXT_PUBLIC_ENABLE_DEV_TOOLS=true", () => {
       process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
       renderSetupGame();
-      expect(screen.getByText("[DEV] Reveal All Tokens")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      expect(screen.getByText("Reveal All Tokens")).toBeInTheDocument();
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
     });
 
     it("renders during active play alongside Skip Turn", () => {
       process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
       renderActiveGame();
-      expect(screen.getByText("[DEV] Reveal All Tokens")).toBeInTheDocument();
-      expect(screen.getByText("[DEV] Skip Turn")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      expect(screen.getByText("Reveal All Tokens")).toBeInTheDocument();
+      expect(screen.getByText("Skip Turn")).toBeInTheDocument();
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
     });
 
@@ -339,8 +343,9 @@ describe("GameClient — full game flow integration", () => {
       vi.stubGlobal("fetch", fetchMock);
 
       renderSetupGame();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
 
-      const btn = screen.getByText("[DEV] Reveal All Tokens");
+      const btn = screen.getByText("Reveal All Tokens");
       fireEvent.click(btn);
 
       expect(fetchMock).toHaveBeenCalledWith(
@@ -411,23 +416,182 @@ describe("GameClient — full game flow integration", () => {
     expect(screen.getByText("Detonator exploded!")).toBeInTheDocument();
   });
 
-  describe("dev seat switcher", () => {
+  describe("join code visibility (#138)", () => {
+    it("does not duplicate the join code badge in the lobby (Lobby already shows it inline)", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      // Lobby renders the join code itself — exactly one occurrence expected.
+      expect(screen.getAllByText("ABC123")).toHaveLength(1);
+    });
+
+    it("shows the join code badge during setup phase", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+        });
+      });
+      expect(screen.getByText("ABC123")).toBeInTheDocument();
+    });
+
+    it("shows the join code badge during active play", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          game: makeGame({
+            id: "g1",
+            status: "active",
+            captainId: "p1",
+            currentTurnPlayerId: "p1",
+            detonatorPosition: 0,
+            detonatorMax: 4,
+          }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+      expect(screen.getByText("ABC123")).toBeInTheDocument();
+    });
+  });
+
+  describe("prominent error display (#error-visibility)", () => {
+    it("shows an alert-role error toast during setup phase (previously had no error surface at all)", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+        });
+      });
+      act(() => {
+        ws.simulateMessage({ type: "error", message: "Not your turn" });
+      });
+      expect(screen.getByRole("alert")).toHaveTextContent("Not your turn");
+    });
+
+    it("shows an alert-role error toast during active play", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          game: makeGame({
+            id: "g1",
+            status: "active",
+            captainId: "p1",
+            currentTurnPlayerId: "p1",
+            detonatorPosition: 0,
+            detonatorMax: 4,
+          }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+      act(() => {
+        ws.simulateMessage({ type: "error", message: "Invalid action" });
+      });
+      expect(screen.getByRole("alert")).toHaveTextContent("Invalid action");
+    });
+  });
+
+  describe("dev panel seat switching (#144)", () => {
     const seatOptions = [
       { name: "Dev", profileId: "p1" },
       { name: "Alice", profileId: "p2" },
     ];
 
-    it("does not render when seatOptions is empty", () => {
-      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={[]} />);
-      act(() => vi.advanceTimersByTime(0));
-      expect(screen.queryByText("[DEV] Seat:")).not.toBeInTheDocument();
+    beforeEach(() => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
     });
 
-    it("renders a button per seat when seatOptions is provided", () => {
+    afterEach(() => {
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+
+    it("does not render the dev panel toggle when seatOptions is empty and dev tools are off", () => {
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={[]} />);
+      act(() => vi.advanceTimersByTime(0));
+      expect(screen.queryByRole("button", { name: "Open dev tools" })).not.toBeInTheDocument();
+    });
+
+    it("renders a button per seat once the collapsed panel is opened", () => {
       render(
         <GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={seatOptions} />
       );
       act(() => vi.advanceTimersByTime(0));
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
       expect(screen.getByRole("button", { name: "Dev" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Alice" })).toBeInTheDocument();
     });
@@ -442,6 +606,7 @@ describe("GameClient — full game flow integration", () => {
       expect(firstWs.url).toContain("name=Dev");
       expect(MockWebSocket.instances).toHaveLength(1);
 
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
       act(() => {
         fireEvent.click(screen.getByRole("button", { name: "Alice" }));
       });
@@ -461,12 +626,108 @@ describe("GameClient — full game flow integration", () => {
       act(() => vi.advanceTimersByTime(0));
       expect(MockWebSocket.instances).toHaveLength(1);
 
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
       act(() => {
         fireEvent.click(screen.getByRole("button", { name: "Dev" }));
       });
       act(() => vi.advanceTimersByTime(0));
 
       expect(MockWebSocket.instances).toHaveLength(1);
+    });
+  });
+
+  describe("auto-switch to turn holder on setup→active transition (#149)", () => {
+    const seatOptions = [
+      { name: "Dev", profileId: "p1" },
+      { name: "Carol", profileId: "p4" },
+    ];
+
+    beforeEach(() => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+    });
+
+    afterEach(() => {
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+
+    it("follows the turn holder when the last opening-token placement lands on a different seat", () => {
+      render(
+        <GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={seatOptions} />
+      );
+      act(() => vi.advanceTimersByTime(0));
+      const devWs = getWs();
+
+      act(() => {
+        devWs.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Dev" }),
+        });
+      });
+      act(() => {
+        devWs.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1", currentTurnPlayerId: "p4" }),
+          players: [makePlayer({ id: "p1", name: "Dev" }), makePlayer({ id: "p4", name: "Carol" })],
+          wires: [makeWire({ id: "w1", playerId: "p4" })],
+        });
+      });
+
+      // Tester switches to Carol to place the last opening token as her.
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      act(() => {
+        fireEvent.click(screen.getByRole("button", { name: "Carol" }));
+      });
+      act(() => vi.advanceTimersByTime(0));
+      expect(MockWebSocket.instances).toHaveLength(2);
+
+      // Carol's placement was last — game goes active on the CAPTAIN's turn
+      // (Dev), not Carol's. Broadcast arrives on Carol's still-open socket.
+      const carolWs = getWs();
+      act(() => {
+        carolWs.simulateMessage({
+          type: "game_state",
+          game: makeGame({
+            id: "g1",
+            status: "active",
+            captainId: "p1",
+            currentTurnPlayerId: "p1",
+            detonatorPosition: 0,
+            detonatorMax: 3,
+          }),
+          players: [makePlayer({ id: "p1", name: "Dev" }), makePlayer({ id: "p4", name: "Carol" })],
+          wires: [makeWire({ id: "w1", playerId: "p4" })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p4",
+        });
+      });
+      act(() => vi.advanceTimersByTime(0));
+
+      // Auto-followed the turn holder: a third WS connection opens as Dev.
+      expect(MockWebSocket.instances).toHaveLength(3);
+      const finalWs = getWs();
+      expect(finalWs.url).toContain("profileId=p1");
+      expect(finalWs.url).toContain("name=Dev");
+    });
+
+    it("shows which seat is currently being viewed on the collapsed toggle", () => {
+      render(
+        <GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={seatOptions} />
+      );
+      act(() => vi.advanceTimersByTime(0));
+      const toggle = screen.getByRole("button", { name: "Open dev tools" });
+      expect(toggle.textContent).toContain("Viewing: Dev");
+
+      fireEvent.click(toggle);
+      act(() => {
+        fireEvent.click(screen.getByRole("button", { name: "Carol" }));
+      });
+      act(() => vi.advanceTimersByTime(0));
+      fireEvent.click(screen.getByRole("button", { name: "Close dev tools" }));
+
+      const toggleAfter = screen.getByRole("button", { name: "Open dev tools" });
+      expect(toggleAfter.textContent).toContain("Viewing: Carol");
     });
   });
 });

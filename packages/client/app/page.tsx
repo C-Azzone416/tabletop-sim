@@ -6,6 +6,7 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useGameState } from "./hooks/useGameState";
 import { GameRoomScene } from "./components/GameRoomScene";
+import { ErrorToast } from "./components/ErrorToast";
 
 export default function Home() {
   const router = useRouter();
@@ -22,7 +23,7 @@ export default function Home() {
   const playerName = session?.user?.name ?? "";
   const profileId = session?.user?.id ?? "";
 
-  const { state, handleMessage } = useGameState();
+  const { state, handleMessage, clearError } = useGameState();
   const { status, connect, send } = useWebSocket(
     (message) => {
       handleMessage(message);
@@ -140,12 +141,6 @@ export default function Home() {
                   />
                 </div>
 
-                {signInError && (
-                  <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-                    {signInError}
-                  </div>
-                )}
-
                 <button
                   type="submit"
                   disabled={!name.trim() || signInLoading}
@@ -157,6 +152,7 @@ export default function Home() {
             )}
           </div>
         </main>
+        <ErrorToast message={signInError || null} onDismiss={() => setSignInError("")} />
       </div>
     );
   }
@@ -190,12 +186,6 @@ export default function Home() {
         </div>
 
         <div className="space-y-6">
-          {(state.error || actionError) && (
-            <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-              {actionError || state.error}
-            </div>
-          )}
-
           <button
             onClick={handleCreate}
             disabled={mode !== "idle"}
@@ -240,6 +230,13 @@ export default function Home() {
           )}
         </div>
       </main>
+      <ErrorToast
+        message={actionError || state.error}
+        onDismiss={() => {
+          setActionError("");
+          clearError();
+        }}
+      />
     </div>
   );
 }
