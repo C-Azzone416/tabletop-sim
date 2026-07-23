@@ -1,6 +1,6 @@
 "use client";
 
-import type { ValidationToken, WireColor } from "@tabletop/shared";
+import type { ValidationToken } from "@tabletop/shared";
 import { MISSION_CONFIGS } from "@tabletop/shared";
 
 interface ValidationTrackerProps {
@@ -8,33 +8,10 @@ interface ValidationTrackerProps {
   missionNumber: number;
 }
 
-const COLOR_STYLES: Record<
-  WireColor,
-  { validated: string; unvalidated: string; label: string }
-> = {
-  blue: {
-    validated:
-      "border-blue-500 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-    unvalidated:
-      "border-blue-200 bg-white text-blue-300 dark:border-blue-800 dark:bg-zinc-800 dark:text-blue-700",
-    label: "B",
-  },
-  yellow: {
-    validated:
-      "border-yellow-500 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-    unvalidated:
-      "border-yellow-200 bg-white text-yellow-300 dark:border-yellow-800 dark:bg-zinc-800 dark:text-yellow-700",
-    label: "Y",
-  },
-  red: {
-    validated:
-      "border-red-500 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-    unvalidated:
-      "border-red-200 bg-white text-red-300 dark:border-red-800 dark:bg-zinc-800 dark:text-red-700",
-    label: "R",
-  },
-};
-
+// #153 (Caroline, 2026-07-23): validation completion states are green
+// throughout, no per-wire-color coding — outline + number while pending,
+// solid fill once a number fully validates. Pairs with #143's lives
+// countdown as game-status clarity work.
 export function ValidationTracker({
   validationTokens,
   missionNumber,
@@ -54,13 +31,14 @@ export function ValidationTracker({
           group.values.map((value) => {
             const key = `${group.color}-${value}`;
             const validated = validatedKeys.has(key);
-            const styles = COLOR_STYLES[group.color];
             return (
               <div
                 key={key}
                 title={`${group.color} ${value}`}
                 className={`flex h-10 w-10 items-center justify-center rounded-lg border-2 font-bold transition-all ${
-                  validated ? styles.validated : styles.unvalidated
+                  validated
+                    ? "border-green-600 bg-green-600 text-white dark:border-green-500 dark:bg-green-500"
+                    : "border-green-500 bg-white text-green-600 dark:border-green-600 dark:bg-zinc-800 dark:text-green-400"
                 }`}
               >
                 {value}
