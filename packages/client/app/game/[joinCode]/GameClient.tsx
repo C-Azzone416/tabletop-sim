@@ -8,6 +8,8 @@ import { SetupPhase } from "../../components/SetupPhase";
 import { GameBoard } from "../../components/GameBoard";
 import { GameOverOverlay } from "../../components/GameOverOverlay";
 import { SeatSwitcher } from "../../components/SeatSwitcher";
+import { ErrorToast } from "../../components/ErrorToast";
+import { JoinCodeBadge } from "../../components/JoinCodeBadge";
 
 export interface DevSeatOption {
   name: string;
@@ -22,7 +24,7 @@ interface GameClientProps {
 }
 
 export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }: GameClientProps) {
-  const { state, handleMessage } = useGameState();
+  const { state, handleMessage, clearError } = useGameState();
   const [activeSeat, setActiveSeat] = useState<DevSeatOption>({ profileId, name: playerName });
   const { status, connect, disconnect, send } = useWebSocket(
     handleMessage,
@@ -95,11 +97,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
           onStartGame={(mission) => send({ type: "start_game", mission })}
         />
         {seatSwitcher}
-        {state.error && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg dark:bg-red-900/20 dark:text-red-400">
-            {state.error}
-          </div>
-        )}
+        <ErrorToast message={state.error} onDismiss={clearError} />
       </div>
     );
   }
@@ -108,6 +106,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   if (gameStatus === "setup") {
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+        <JoinCodeBadge joinCode={joinCode} />
         {seatSwitcher}
         <SetupPhase
           game={state.game}
@@ -122,6 +121,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
         {revealAllTokensButton && (
           <div className="fixed bottom-4 right-4">{revealAllTokensButton}</div>
         )}
+        <ErrorToast message={state.error} onDismiss={clearError} />
       </div>
     );
   }
@@ -130,6 +130,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   if (gameStatus === "active") {
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+        <JoinCodeBadge joinCode={joinCode} />
         <GameBoard
           game={state.game}
           players={state.players}
@@ -177,11 +178,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
             </button>
           </div>
         )}
-        {state.error && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg dark:bg-red-900/20 dark:text-red-400">
-            {state.error}
-          </div>
-        )}
+        <ErrorToast message={state.error} onDismiss={clearError} />
       </div>
     );
   }
@@ -190,6 +187,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   if (gameStatus === "won" || gameStatus === "lost") {
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+        <JoinCodeBadge joinCode={joinCode} />
         <GameBoard
           game={state.game}
           players={state.players}

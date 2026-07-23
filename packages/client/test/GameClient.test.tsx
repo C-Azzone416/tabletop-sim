@@ -411,6 +411,155 @@ describe("GameClient — full game flow integration", () => {
     expect(screen.getByText("Detonator exploded!")).toBeInTheDocument();
   });
 
+  describe("join code visibility (#138)", () => {
+    it("does not duplicate the join code badge in the lobby (Lobby already shows it inline)", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      // Lobby renders the join code itself — exactly one occurrence expected.
+      expect(screen.getAllByText("ABC123")).toHaveLength(1);
+    });
+
+    it("shows the join code badge during setup phase", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+        });
+      });
+      expect(screen.getByText("ABC123")).toBeInTheDocument();
+    });
+
+    it("shows the join code badge during active play", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          game: makeGame({
+            id: "g1",
+            status: "active",
+            captainId: "p1",
+            currentTurnPlayerId: "p1",
+            detonatorPosition: 0,
+            detonatorMax: 4,
+          }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+      expect(screen.getByText("ABC123")).toBeInTheDocument();
+    });
+  });
+
+  describe("prominent error display (#error-visibility)", () => {
+    it("shows an alert-role error toast during setup phase (previously had no error surface at all)", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+        });
+      });
+      act(() => {
+        ws.simulateMessage({ type: "error", message: "Not your turn" });
+      });
+      expect(screen.getByRole("alert")).toHaveTextContent("Not your turn");
+    });
+
+    it("shows an alert-role error toast during active play", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          game: makeGame({
+            id: "g1",
+            status: "active",
+            captainId: "p1",
+            currentTurnPlayerId: "p1",
+            detonatorPosition: 0,
+            detonatorMax: 4,
+          }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+      act(() => {
+        ws.simulateMessage({ type: "error", message: "Invalid action" });
+      });
+      expect(screen.getByRole("alert")).toHaveTextContent("Invalid action");
+    });
+  });
+
   describe("dev seat switcher", () => {
     const seatOptions = [
       { name: "Dev", profileId: "p1" },
