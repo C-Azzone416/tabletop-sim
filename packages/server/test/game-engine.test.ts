@@ -24,6 +24,7 @@ vi.mock("../src/db/players.js", () => ({
   getPlayerById: vi.fn(),
   markDoubleDetectorUsed: vi.fn(),
   markSetupDone: vi.fn(),
+  resetDoubleDetectorForGame: vi.fn(),
 }));
 
 vi.mock("../src/db/wires.js", () => ({
@@ -35,6 +36,7 @@ vi.mock("../src/db/wires.js", () => ({
   getWiresByValueColorAndGame: vi.fn(),
   revealRedWires: vi.fn(),
   updateWireStatus: vi.fn(),
+  deleteByGameId: vi.fn(),
 }));
 
 vi.mock("../src/db/tokens.js", () => ({
@@ -42,12 +44,14 @@ vi.mock("../src/db/tokens.js", () => ({
   createValidationToken: vi.fn(),
   getInfoTokensByGameId: vi.fn(),
   getValidationTokensByGameId: vi.fn(),
+  deleteValidationTokensByGameId: vi.fn(),
 }));
 
 vi.mock("../src/db/turns.js", () => ({
   createTurn: vi.fn(),
   updateTurnResult: vi.fn(),
   getTurnsByGameId: vi.fn(),
+  deleteByGameId: vi.fn(),
 }));
 
 import * as gamesDb from "../src/db/games.js";
@@ -271,6 +275,99 @@ describe("game-engine", () => {
       mockGamesDb.getGameById.mockResolvedValue(game);
 
       await expect(engine.startGame("g1", "p1")).rejects.toThrow("Game already started");
+    });
+  });
+
+  describe("executeNextMission", () => {
+    function setUp(status: "won" | "lost") {
+      const game = makeGame({ id: "g1", status, captainId: "p1", mission: 1, joinCode: "ABC123" });
+      const players = [
+        makePlayer({ id: "p1", gameId: "g1", name: "Alice", seatOrder: 0 }),
+        makePlayer({ id: "p2", gameId: "g1", name: "Bob", seatOrder: 1 }),
+      ];
+      const setupGame = { ...game, status: "setup" as const, mission: 2 };
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      mockGamesDb.updateMission.mockResolvedValue({ ...game, mission: 2 });
+      mockGamesDb.updateDetonator.mockResolvedValue({ ...game, detonatorPosition: 0 });
+      mockGamesDb.clearPendingDualCut.mockResolvedValue(game);
+      mockGamesDb.updateGameStatus.mockResolvedValue(setupGame);
+      mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1" });
+      mockGamesDb.updateDetonatorMax.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1", detonatorMax: 1 });
+      mockWiresDb.createWire.mockImplementation(async (_gid, _pid, val, col, pos) =>
+        makeWire({ gameId: "g1", value: val, color: col, rackPosition: pos })
+      );
+      return { game, players };
+    }
+
+    it("reuses the same game row (same id/joinCode) to start the next mission after a win", async () => {
+      setUp("won");
+
+      const result = await engine.executeNextMission("g1", "p1", 2);
+
+      expect(result.game.status).toBe("setup");
+      expect(result.game.mission).toBe(2);
+      expect(result.wires).toHaveLength(24);
+      expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", "p1");
+    });
+
+    it("reuses the same game row to retry/pick a mission after a loss", async () => {
+      setUp("lost");
+
+      const result = await engine.executeNextMission("g1", "p1", 1);
+
+      expect(result.game.status).toBe("setup");
+      expect(mockGamesDb.getGameById).toHaveBeenCalledWith("g1");
+    });
+
+    it("clears the prior mission's turns, wires, and validation tokens before dealing new wires — in FK-safe order", async () => {
+      setUp("won");
+      const calls: string[] = [];
+      mockTurnsDb.deleteByGameId.mockImplementation(async () => { calls.push("turns"); });
+      mockWiresDb.deleteByGameId.mockImplementation(async () => { calls.push("wires"); });
+      mockTokensDb.deleteValidationTokensByGameId.mockImplementation(async () => { calls.push("validationTokens"); });
+
+      await engine.executeNextMission("g1", "p1", 2);
+
+      expect(calls).toEqual(["turns", "wires", "validationTokens"]);
+    });
+
+    it("resets double-detector usage for every seated player", async () => {
+      setUp("won");
+
+      await engine.executeNextMission("g1", "p1", 2);
+
+      expect(mockPlayersDb.resetDoubleDetectorForGame).toHaveBeenCalledWith("g1");
+    });
+
+    it("rejects on a game that is still active (won/lost precondition, per heron's note: nothing destructive runs on an active game)", async () => {
+      const game = makeGame({ id: "g1", status: "active", captainId: "p1" });
+      mockGamesDb.getGameById.mockResolvedValue(game);
+
+      await expect(engine.executeNextMission("g1", "p1", 2)).rejects.toThrow(
+        "Game is not in a won or lost state"
+      );
+      expect(mockTurnsDb.deleteByGameId).not.toHaveBeenCalled();
+      expect(mockWiresDb.deleteByGameId).not.toHaveBeenCalled();
+    });
+
+    it("rejects a non-captain requester", async () => {
+      const game = makeGame({ id: "g1", status: "won", captainId: "p1" });
+      mockGamesDb.getGameById.mockResolvedValue(game);
+
+      await expect(engine.executeNextMission("g1", "p2", 2)).rejects.toThrow(
+        "Only the captain can start the next mission"
+      );
+      expect(mockTurnsDb.deleteByGameId).not.toHaveBeenCalled();
+    });
+
+    it("rejects an invalid mission number before any delete runs", async () => {
+      const game = makeGame({ id: "g1", status: "lost", captainId: "p1" });
+      mockGamesDb.getGameById.mockResolvedValue(game);
+
+      await expect(engine.executeNextMission("g1", "p1", 99)).rejects.toThrow("Invalid mission");
+      expect(mockTurnsDb.deleteByGameId).not.toHaveBeenCalled();
     });
   });
 

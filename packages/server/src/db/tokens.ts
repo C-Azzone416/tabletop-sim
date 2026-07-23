@@ -33,6 +33,14 @@ export async function getValidationTokensByGameId(gameId: string): Promise<Valid
   return rows.map(mapValidationToken);
 }
 
+// #157 — clears the prior mission's validation tokens when the same game row
+// starts its next mission. Unlike info_tokens (cascades via wire_id), these
+// key off game_id + wire_value/color with no wire FK, so they need an
+// explicit delete rather than falling out of wiresDb.deleteByGameId.
+export async function deleteValidationTokensByGameId(gameId: string): Promise<void> {
+  await sql`DELETE FROM validation_tokens WHERE game_id = ${gameId}`;
+}
+
 function mapInfoToken(row: Record<string, unknown>): InfoToken {
   return {
     id: row.id as string,

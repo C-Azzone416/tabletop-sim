@@ -65,6 +65,11 @@ function validateMessage(parsed: unknown): ClientMessage | null {
       return { type: 'reveal_reds' };
     case 'player_ready':
       return { type: 'player_ready' };
+    case 'next_mission': {
+      const mission = msg.mission;
+      if (typeof mission !== 'number' || !Number.isInteger(mission) || mission < 1 || mission > 8) return null;
+      return { type: 'next_mission', mission };
+    }
     default:
       return null;
   }
@@ -136,6 +141,9 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       case 'player_ready':
         await handlePlayerReady(socket);
         break;
+      case 'next_mission':
+        await handleNextMission(socket, msg.mission);
+        break;
       default:
         sendError(socket, 'Unknown message type');
     }
@@ -161,6 +169,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Wire does not belong to you',
       'Must hold a matching wire to propose this guess', 'Must hold a yellow wire to propose this guess',
       'You must hold all remaining uncut wires of that number to solo cut it',
+      'Game is not in a won or lost state', 'Only the captain can start the next mission',
     ];
     sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
   } finally {
@@ -208,6 +217,24 @@ async function handleStartGame(socket: WebSocket, mission: number): Promise<void
     const response: ServerMessage = { type: 'game_started', game, players, wires: playerWires };
     playerSocket.send(JSON.stringify(response));
   }
+}
+
+async function handleNextMission(socket: WebSocket, mission: number): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  const { game, players } = await withTimeout(
+    engine.executeNextMission(info.gameId, info.playerId, mission),
+    'executeNextMission',
+  );
+
+  // game_state, same as every other turn action — not the game_started
+  // snowflake handleStartGame uses for the one-time lobby transition. The
+  // fresh wires/infoTokens/validationTokens this pulls are correctly empty
+  // (executeNextMission cleared the prior mission's), and it includes
+  // localPlayerId, which the overlay-to-board transition needs same as any
+  // other live state push.
+  await broadcastGameState(info.gameId, game, players);
 }
 
 async function handlePlaceInfoToken(socket: WebSocket, wireId: string): Promise<void> {

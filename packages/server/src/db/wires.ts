@@ -73,6 +73,14 @@ export async function getWiresByValueColorAndGame(gameId: string, value: string,
   return rows.map(mapWire);
 }
 
+// #157 — clears the prior mission's wires when the same game row starts its
+// next mission. info_tokens cascade automatically (ON DELETE CASCADE on
+// wire_id); turnsDb.deleteByGameId must run first (turns reference wires
+// with no cascade) or this violates the FK constraint.
+export async function deleteByGameId(gameId: string): Promise<void> {
+  await sql`DELETE FROM wires WHERE game_id = ${gameId}`;
+}
+
 export async function revealRedWires(gameId: string): Promise<Wire[]> {
   const rows = await sql`
     UPDATE wires SET status = 'revealed'

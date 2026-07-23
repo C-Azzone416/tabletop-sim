@@ -20,6 +20,7 @@ vi.mock("../src/engine/game-engine.js", () => ({
   executeSelectOpponentWire: vi.fn(),
   executeAnswerWireQuestion: vi.fn(),
   executeNextTurn: vi.fn(),
+  executeNextMission: vi.fn(),
 }));
 
 vi.mock("../src/db/games.js", () => ({
@@ -165,6 +166,18 @@ describe("message-handler", () => {
       await handleMessage(ws, JSON.stringify({ type: "start_game", mission: "3" }));
       expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
     });
+
+    it("rejects next_mission with mission out of range", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({ type: "next_mission", mission: 9 }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+    });
+
+    it("rejects next_mission with non-integer mission", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({ type: "next_mission", mission: 2.5 }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+    });
   });
 
   describe("create_game", () => {
@@ -253,6 +266,40 @@ describe("message-handler", () => {
       await handleMessage(ws, JSON.stringify({ type: "start_game", mission: 5 }));
 
       expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 5);
+    });
+  });
+
+  describe("next_mission", () => {
+    it("starts the next mission and broadcasts game state to all players", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", status: "setup", mission: 2 });
+      const players = [makePlayer({ id: "p1" }), makePlayer({ id: "p2" })];
+      const wires = [makeWire({ playerId: "p1" }), makeWire({ playerId: "p2" })];
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeNextMission.mockResolvedValue({ game, players, wires });
+
+      await handleMessage(ws, JSON.stringify({ type: "next_mission", mission: 2 }));
+
+      expect(mockEngine.executeNextMission).toHaveBeenCalledWith("g1", "p1", 2);
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game, players);
+    });
+
+    it("rejects a missing mission as an invalid message (no captain-only/won-lost guard reached)", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({ type: "next_mission" }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockEngine.executeNextMission).not.toHaveBeenCalled();
+    });
+
+    it("surfaces the captain-only rejection reason to the client, not a generic Internal error", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
+      mockEngine.executeNextMission.mockRejectedValue(new Error("Only the captain can start the next mission"));
+
+      await handleMessage(ws, JSON.stringify({ type: "next_mission", mission: 2 }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Only the captain can start the next mission" });
     });
   });
 

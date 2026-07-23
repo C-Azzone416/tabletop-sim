@@ -55,6 +55,12 @@ export async function markSetupDone(id: string): Promise<Player> {
   return mapPlayer(rows[0]);
 }
 
+// #157 — double detector is a once-per-mission ability; the same game row
+// carrying into its next mission needs every seated player's usage cleared.
+export async function resetDoubleDetectorForGame(gameId: string): Promise<void> {
+  await sql`UPDATE players SET double_detector_used = FALSE WHERE game_id = ${gameId}`;
+}
+
 function mapPlayer(row: Record<string, unknown>): Player {
   return {
     id: row.id as string,

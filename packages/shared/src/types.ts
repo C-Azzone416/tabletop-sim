@@ -92,7 +92,8 @@ export type ClientMessage =
   | { type: 'solo_cut'; wireValue: string }
   | { type: 'double_detector'; targetWireId: string; targetWireId2: string }
   | { type: 'reveal_reds' }
-  | { type: 'player_ready' };
+  | { type: 'player_ready' }
+  | { type: 'next_mission'; mission: number };
 
 export type ServerMessage =
   | { type: 'game_created'; game: Game; player: Player }
