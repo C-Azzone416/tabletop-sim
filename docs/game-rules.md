@@ -50,6 +50,17 @@ question round-trips back to Caroline.
   models are mathematically identical, so this is a display-only
   distinction, not a rule.
 
+## Wire visibility
+
+- A player's own hidden wires are always visible to them; other players'
+  hidden wires are redacted.
+- **Cut and revealed wires are public, face-up information** — in the
+  physical game a cut wire lies face-up on the table, its number visible
+  to everyone. The server never redacts a non-hidden wire's value
+  regardless of owner, and the client displays it (cut wires with a
+  strikethrough treatment, revealed wires plain) rather than an anonymous
+  marker. This is central to deduction — don't hide it.
+
 ## Legacy mechanic (removed)
 
 An earlier design had a separate interrogation exchange
