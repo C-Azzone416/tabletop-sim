@@ -449,7 +449,7 @@ describe("GameClient — full game flow integration", () => {
       const nextMissionButton = screen.getByRole("button", { name: "Next Mission (3)" });
       fireEvent.click(nextMissionButton);
 
-      const sentMessages = ws.send.mock.calls.map(([raw]: [string]) => JSON.parse(raw));
+      const sentMessages = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
       expect(sentMessages).toContainEqual({ type: "next_mission", mission: 3 });
     });
 
