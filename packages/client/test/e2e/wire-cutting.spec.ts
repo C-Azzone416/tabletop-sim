@@ -86,4 +86,10 @@ test("solo cut on two matching-value wires succeeds and cuts both wires", async 
 // failure would need either a UI change (e.g. a free-text value guess) or a
 // dedicated dev endpoint that seeds a hand with a stale duplicate — flagging
 // for product/backend rather than guessing at an implementation.
+//
+// Checklist item 4 ("wrong/loss outcome coverage") is now satisfied instead
+// by dual-cut.spec.ts's "target denies a wrong guess" test, per the
+// 2026-07-22 23:14 turn-structure ruling (#decisions) reframing the wrong-
+// outcome path around dual_cut's deny flow rather than solo_cut, which
+// remains structurally unreachable for this specific case.
 test.skip("solo cut with a wrong/no-match value advances the detonator", () => {});
