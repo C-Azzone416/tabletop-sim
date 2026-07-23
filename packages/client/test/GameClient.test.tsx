@@ -416,6 +416,80 @@ describe("GameClient — full game flow integration", () => {
     expect(screen.getByText("Detonator exploded!")).toBeInTheDocument();
   });
 
+  describe("continue playing after win/loss (#157)", () => {
+    it("captain sees mission controls and sending next_mission over WS", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      const game = makeGame({ id: "g1", status: "active", captainId: "p1", mission: 2 });
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          game,
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+      act(() => {
+        ws.simulateMessage({ type: "game_over", result: "won", reason: "All wires cut!" });
+      });
+
+      const nextMissionButton = screen.getByRole("button", { name: "Next Mission (3)" });
+      fireEvent.click(nextMissionButton);
+
+      const sentMessages = ws.send.mock.calls.map(([raw]: [string]) => JSON.parse(raw));
+      expect(sentMessages).toContainEqual({ type: "next_mission", mission: 3 });
+    });
+
+    it("non-captain sees a waiting message, not mission controls", () => {
+      render(<GameClient joinCode="ABC123" profileId="p2" playerName="Bob" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      const game = makeGame({ id: "g1", status: "active", captainId: "p1", mission: 1 });
+
+      act(() => {
+        ws.simulateMessage({
+          type: "joined_game",
+          game: { ...game, status: "waiting" },
+          player: makePlayer({ id: "p2", name: "Bob" }),
+          players: [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })],
+        });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          game,
+          players: [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" }), makeWire({ id: "w2", playerId: "p2" })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p2",
+        });
+      });
+      act(() => {
+        ws.simulateMessage({ type: "game_over", result: "won", reason: "All wires cut!" });
+      });
+
+      expect(
+        screen.getByText("Waiting for the captain to choose the next mission..."),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Next Mission/ })).not.toBeInTheDocument();
+    });
+  });
+
   describe("join code visibility (#138)", () => {
     it("does not duplicate the join code badge in the lobby (Lobby already shows it inline)", () => {
       render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
