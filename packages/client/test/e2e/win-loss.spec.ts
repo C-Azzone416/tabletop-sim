@@ -146,3 +146,48 @@ test("mission win condition: all safe wires cleared shows Mission Complete overl
     await cleanupGame(seed.joinCode);
   }
 });
+
+// ── Test: Continue playing — win into next mission (#157) ──────────────────
+//
+// Dev is always the captain in a /dev/seed-near-win game (game-engine.ts's
+// createGame assigns the creator as captain). After a real win, the captain
+// clicks "Next Mission" (GameOverOverlay's smart default, mission+1), which
+// sends the next_mission WS message (server PR #168's executeNextMission —
+// same game row, same join code, wires re-dealt, status back to setup) —
+// confirming the whole client→server→client round trip, not just the UI.
+
+test("continue playing: captain wins then starts the next mission, same join code", async ({
+  page,
+}) => {
+  const seed = await seedNearWinGame(1);
+  try {
+    await page.goto(gameUrl(seed));
+    await expect(page.getByText("Your turn — choose an action")).toBeVisible({
+      timeout: 10_000,
+    });
+
+    const dup = await findLocalDuplicateValuePair(page);
+    if (!dup) {
+      throw new Error(
+        "Expected Dev's rack to contain the matching wire pair positioned by /dev/seed-near-win",
+      );
+    }
+
+    await page.getByRole("button", { name: "Solo Cut" }).click();
+    await dup.wires[0].click();
+    await dup.wires[1].click();
+    await page.getByRole("button", { name: "Confirm Solo Cut" }).click();
+    await expect(page.getByText("Mission Complete!")).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole("button", { name: "Next Mission (2)" }).click();
+
+    // Same game row (join code) transitions straight back into a fresh
+    // setup/opening-token-placement flow for mission 2 — no lobby rebuild.
+    await expect(
+      page.getByText("Your turn — place your opening info token"),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(seed.joinCode)).toBeVisible();
+  } finally {
+    await cleanupGame(seed.joinCode);
+  }
+});

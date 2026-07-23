@@ -222,6 +222,9 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
         <GameOverOverlay
           result={gameStatus}
           reason={state.gameOverReason ?? ""}
+          isCaptain={state.localPlayer?.id === state.game.captainId}
+          currentMission={state.game.mission}
+          onNextMission={(mission) => send({ type: "next_mission", mission })}
         />
         {devPanel()}
       </div>
