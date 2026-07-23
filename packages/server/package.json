@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "tsx --env-file .env.local watch src/index.ts",
     "build": "tsc",
+    "migrate": "tsx ../../db/migrate.ts",
+    "prestart": "npm run migrate",
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -17,14 +19,14 @@
     "@neondatabase/serverless": "^1.0.2",
     "@tabletop/shared": "*",
     "fastify": "^5",
-    "pg": "^8"
+    "pg": "^8",
+    "tsx": "^4"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.1",
     "eslint": "^9",
-    "tsx": "^4",
     "typescript": "^5",
     "typescript-eslint": "^8",
     "vitest": "^4.1.1"

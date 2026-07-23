@@ -116,7 +116,32 @@ async function run(): Promise<void> {
     console.log(`OK: cleaned up seeded game ${seeded.joinCode}`);
   }
 
-  console.log('\nSmoke check passed: dev routes registered, CORS allows the stable staging origin.');
+  await checkMigrationsCurrent();
+
+  console.log('\nSmoke check passed: dev routes registered, CORS allows the stable staging origin, schema is current.');
+}
+
+// #141 — assert the DB this deployment is actually talking to has every
+// migration db/migrate.ts knows about applied. Would have caught the
+// 008/009 drift behind #140 immediately instead of waiting for a human to
+// hit a missing column on a live session.
+async function checkMigrationsCurrent(): Promise<void> {
+  const res = await fetch(`${serverUrl}/dev/migrations-status`, {
+    headers: { Origin: stagingOrigin },
+  });
+  if (!res.ok) {
+    console.error(`FAIL: GET ${serverUrl}/dev/migrations-status returned ${res.status} — could not verify schema currency.`);
+    process.exit(1);
+  }
+  const status = await res.json() as { missing: string[]; current: boolean };
+  if (!status.current) {
+    console.error(
+      `FAIL: staging schema is stale — missing migration(s): ${status.missing.join(', ')}\n` +
+      `  Run db/migrate.ts against this deployment's DATABASE_URL.`
+    );
+    process.exit(1);
+  }
+  console.log('OK: schema is current, no missing migrations.');
 }
 
 run().catch((err) => {

@@ -4,10 +4,13 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-const DATABASE_URL = process.argv[2];
+// Falls back to the DATABASE_URL env var so this can run unattended as a
+// deploy hook (#140 — `npm start`'s prestart lifecycle script calls this
+// with no argv) as well as the existing manual CLI usage.
+const DATABASE_URL = process.argv[2] ?? process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
-  console.error('Usage: npx tsx db/migrate.ts <DATABASE_URL>');
+  console.error('Usage: npx tsx db/migrate.ts <DATABASE_URL>  (or set the DATABASE_URL env var)');
   process.exit(1);
 }
 
