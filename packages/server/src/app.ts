@@ -242,12 +242,17 @@ export async function buildApp() {
       };
     };
 
+    // Lands the seeded game at the START of the real opening flow (lobby
+    // readied + started, captain's turn, no tokens placed) — drivable
+    // seat-by-seat through the seat switcher, same as a real game would be.
+    // Use POST /dev/reveal-all-tokens to fast-forward an existing seeded
+    // game to the old all-tokens/active state on demand.
     app.post('/dev/seed', async (request, reply) => {
       try {
         const mission = parseMissionParam(request.body);
         if (typeof mission === 'object') return reply.status(400).send(mission);
 
-        const result = await seedDevGame(mission, { completeSetup: true });
+        const result = await seedDevGame(mission, { completeSetup: false });
         return result;
       } catch (err) {
         app.log.error({ err }, '[POST /dev/seed] error');
@@ -334,16 +339,48 @@ export async function buildApp() {
       }
     });
 
-    app.post('/dev/seed-setup', async (request, reply) => {
+    // Fast-forwards an existing dev-seeded game to full-knowledge omniscience
+    // on demand: completes any remaining opening-token placement (via the
+    // same dev-only completeSetup helper /dev/seed used to run inline) and
+    // backfills an info token for every wire that doesn't already have one
+    // (skips wires a real action already tokened/revealed, so it's safe to
+    // call mid-game too, not just right after seeding).
+    app.post('/dev/reveal-all-tokens', async (request, reply) => {
       try {
-        const mission = parseMissionParam(request.body);
-        if (typeof mission === 'object') return reply.status(400).send(mission);
+        const { joinCode } = request.body as { joinCode?: string };
+        if (!joinCode) return reply.status(400).send({ error: 'joinCode is required' });
 
-        const result = await seedDevGame(mission, { completeSetup: false });
-        return result;
+        const game = await gamesDb.getGameByJoinCode(joinCode);
+        if (!game) return reply.status(404).send({ error: 'Game not found' });
+        if (game.status !== 'setup' && game.status !== 'active') {
+          return reply.status(400).send({ error: `Cannot reveal tokens for a game in '${game.status}' status` });
+        }
+
+        let updatedGame = game;
+        if (game.status === 'setup') {
+          updatedGame = await engine.completeSetup(game.id);
+        }
+
+        const [wires, existingTokens, players] = await Promise.all([
+          wiresDb.getWiresByGameId(game.id),
+          tokensDb.getInfoTokensByGameId(game.id),
+          playersDb.getPlayersByGameId(game.id),
+        ]);
+        const wiresWithTokens = new Set(existingTokens.map(t => t.wireId));
+
+        let created = 0;
+        for (const wire of wires) {
+          if (wire.value === null || wiresWithTokens.has(wire.id)) continue;
+          await tokensDb.createInfoToken(game.id, wire.id, wire.value);
+          created += 1;
+        }
+
+        await broadcastGameState(game.id, updatedGame, players);
+
+        return { joinCode, tokensCreated: created, game: updatedGame };
       } catch (err) {
-        app.log.error({ err }, '[POST /dev/seed-setup] error');
-        return reply.status(500).send({ error: 'Seed failed' });
+        app.log.error({ err }, '[POST /dev/reveal-all-tokens] error');
+        return reply.status(500).send({ error: 'Reveal failed' });
       }
     });
   }
