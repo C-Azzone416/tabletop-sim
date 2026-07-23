@@ -57,6 +57,34 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   };
 
   const gameStatus = state.game?.status;
+  const currentTurnPlayerId = state.game?.currentTurnPlayerId;
+  const prevGameStatusRef = useRef(gameStatus);
+
+  // #149: setup→active previously stranded the dev tester on whatever seat
+  // they last placed a token as — active play starts on the captain's turn,
+  // which is rarely the last placer. Auto-follow the turn holder across
+  // that one transition so the tester isn't left viewing a seat with no
+  // action buttons and no visible explanation why.
+  useEffect(() => {
+    const prevStatus = prevGameStatusRef.current;
+    prevGameStatusRef.current = gameStatus;
+
+    if (prevStatus !== "setup" || gameStatus !== "active") return;
+    if (seatOptions.length === 0 || !currentTurnPlayerId) return;
+
+    const turnHolderPlayer = state.players.find((p) => p.id === currentTurnPlayerId);
+    const turnHolderSeat = turnHolderPlayer
+      ? seatOptions.find((s) => s.name === turnHolderPlayer.name)
+      : undefined;
+
+    if (turnHolderSeat) {
+      handleSwitchSeat(turnHolderSeat);
+    }
+    // Only re-derive on the transition itself — re-running this on every
+    // currentTurnPlayerId change would fight the player's own manual
+    // seat switches during normal active play.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameStatus]);
 
   const devToolsEnabled = process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS === "true";
   const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:3001";

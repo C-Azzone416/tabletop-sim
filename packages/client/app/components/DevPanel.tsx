@@ -33,6 +33,11 @@ export function DevPanel({
 }: DevPanelProps) {
   const [open, setOpen] = useState(false);
 
+  // #149: which seat you're viewing must be obvious without opening the
+  // panel — Caroline got stranded viewing as a non-turn-holder seat with no
+  // visible explanation. Shown on the collapsed toggle itself.
+  const activeSeatName = seatOptions.find((s) => s.profileId === activeProfileId)?.name;
+
   if (!open) {
     return (
       <button
@@ -40,7 +45,7 @@ export function DevPanel({
         aria-label="Open dev tools"
         className="fixed top-24 right-4 z-40 rounded-lg border border-amber-400 bg-amber-100 px-3 py-1.5 font-mono text-xs font-medium text-amber-800 shadow-md hover:bg-amber-200 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
       >
-        [DEV]
+        [DEV]{activeSeatName && ` Viewing: ${activeSeatName}`}
       </button>
     );
   }
@@ -49,7 +54,7 @@ export function DevPanel({
     <div className="fixed top-24 right-4 z-40 flex max-w-xs flex-col gap-3 rounded-lg border border-amber-400 bg-white p-3 font-mono text-xs shadow-lg dark:border-amber-600 dark:bg-zinc-900">
       <div className="flex items-center justify-between">
         <span className="font-semibold text-amber-800 dark:text-amber-400">
-          [DEV] Tools
+          [DEV] Tools{activeSeatName && ` — Viewing: ${activeSeatName}`}
         </span>
         <button
           onClick={() => setOpen(false)}

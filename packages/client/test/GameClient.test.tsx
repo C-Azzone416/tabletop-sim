@@ -635,4 +635,99 @@ describe("GameClient — full game flow integration", () => {
       expect(MockWebSocket.instances).toHaveLength(1);
     });
   });
+
+  describe("auto-switch to turn holder on setup→active transition (#149)", () => {
+    const seatOptions = [
+      { name: "Dev", profileId: "p1" },
+      { name: "Carol", profileId: "p4" },
+    ];
+
+    beforeEach(() => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+    });
+
+    afterEach(() => {
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+
+    it("follows the turn holder when the last opening-token placement lands on a different seat", () => {
+      render(
+        <GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={seatOptions} />
+      );
+      act(() => vi.advanceTimersByTime(0));
+      const devWs = getWs();
+
+      act(() => {
+        devWs.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Dev" }),
+        });
+      });
+      act(() => {
+        devWs.simulateMessage({
+          type: "game_started",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1", currentTurnPlayerId: "p4" }),
+          players: [makePlayer({ id: "p1", name: "Dev" }), makePlayer({ id: "p4", name: "Carol" })],
+          wires: [makeWire({ id: "w1", playerId: "p4" })],
+        });
+      });
+
+      // Tester switches to Carol to place the last opening token as her.
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      act(() => {
+        fireEvent.click(screen.getByRole("button", { name: "Carol" }));
+      });
+      act(() => vi.advanceTimersByTime(0));
+      expect(MockWebSocket.instances).toHaveLength(2);
+
+      // Carol's placement was last — game goes active on the CAPTAIN's turn
+      // (Dev), not Carol's. Broadcast arrives on Carol's still-open socket.
+      const carolWs = getWs();
+      act(() => {
+        carolWs.simulateMessage({
+          type: "game_state",
+          game: makeGame({
+            id: "g1",
+            status: "active",
+            captainId: "p1",
+            currentTurnPlayerId: "p1",
+            detonatorPosition: 0,
+            detonatorMax: 3,
+          }),
+          players: [makePlayer({ id: "p1", name: "Dev" }), makePlayer({ id: "p4", name: "Carol" })],
+          wires: [makeWire({ id: "w1", playerId: "p4" })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p4",
+        });
+      });
+      act(() => vi.advanceTimersByTime(0));
+
+      // Auto-followed the turn holder: a third WS connection opens as Dev.
+      expect(MockWebSocket.instances).toHaveLength(3);
+      const finalWs = getWs();
+      expect(finalWs.url).toContain("profileId=p1");
+      expect(finalWs.url).toContain("name=Dev");
+    });
+
+    it("shows which seat is currently being viewed on the collapsed toggle", () => {
+      render(
+        <GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={seatOptions} />
+      );
+      act(() => vi.advanceTimersByTime(0));
+      const toggle = screen.getByRole("button", { name: "Open dev tools" });
+      expect(toggle.textContent).toContain("Viewing: Dev");
+
+      fireEvent.click(toggle);
+      act(() => {
+        fireEvent.click(screen.getByRole("button", { name: "Carol" }));
+      });
+      act(() => vi.advanceTimersByTime(0));
+      fireEvent.click(screen.getByRole("button", { name: "Close dev tools" }));
+
+      const toggleAfter = screen.getByRole("button", { name: "Open dev tools" });
+      expect(toggleAfter.textContent).toContain("Viewing: Carol");
+    });
+  });
 });
