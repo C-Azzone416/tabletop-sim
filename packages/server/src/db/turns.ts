@@ -31,6 +31,15 @@ export async function getTurnsByGameId(gameId: string): Promise<Turn[]> {
   return rows.map(mapTurn);
 }
 
+// #157 — clears the prior mission's turn log when the same game row starts
+// its next mission. Must run before wiresDb.deleteByGameId: turns.target_wire_id
+// / target_wire_id_2 reference wires(id) with no ON DELETE clause (unlike
+// info_tokens, which cascades), so a wire delete with turns still pointing at
+// it would violate the FK constraint.
+export async function deleteByGameId(gameId: string): Promise<void> {
+  await sql`DELETE FROM turns WHERE game_id = ${gameId}`;
+}
+
 function mapTurn(row: Record<string, unknown>): Turn {
   return {
     id: row.id as string,

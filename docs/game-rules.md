@@ -82,6 +82,23 @@ question round-trips back to Caroline.
 - A fully-cut player also can't be a dual-cut target, since they have no
   hidden wires to select.
 
+## Continuing play after a win or loss
+
+- After a mission ends (win or loss), the same group keeps playing without
+  rebuilding the lobby — no re-joining, no new join code, same seats. The
+  captain picks the next mission (default: next-mission-up) from the
+  win/loss overlay; a loss also offers retrying the same mission.
+- Server-side this reuses the same game row (same id, same joinCode, same
+  captain/players) rather than creating a new linked game — the only way to
+  keep the join code stable. The prior mission's wires, turns, and
+  validation tokens are hard-deleted (not archived) when the next mission
+  starts; cross-mission history/recaps are a deliberate future follow-up
+  (#163), not supported yet.
+- Only the captain can trigger it; everyone else follows automatically once
+  they do. The opening info-token placement round runs again — it's part of
+  every mission, not a one-time lobby step (see above).
+- Each seated player's once-per-mission double-detector usage resets.
+
 ## Legacy mechanic (removed)
 
 An earlier design had a separate interrogation exchange

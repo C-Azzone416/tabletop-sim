@@ -77,6 +77,57 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
   return { game: updatedGame, players, wires: createdWires };
 }
 
+// #157 — "continue playing" after a win or loss: the same game row (same id,
+// same joinCode, same seated players) is reused for the next mission rather
+// than rebuilding a lobby. Ruled approved (#continue-playing, 2026-07-23):
+// same-game-row transition, hard-delete the prior mission's wires/tokens/
+// turns (round-scoped history is a deliberate future follow-up, #163), next-
+// mission-up default clamped/validated by the caller via `mission`.
+export async function executeNextMission(
+  gameId: string,
+  requestingPlayerId: string,
+  mission: number,
+): Promise<{ game: Game; players: Player[]; wires: Wire[] }> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.status !== 'won' && game.status !== 'lost') throw new Error('Game is not in a won or lost state');
+  if (game.captainId !== requestingPlayerId) throw new Error('Only the captain can start the next mission');
+
+  const missionConfig = MISSION_CONFIGS[mission];
+  if (!missionConfig) throw new Error('Invalid mission');
+
+  const players = await playersDb.getPlayersByGameId(gameId);
+
+  // Clear the prior mission's per-mission artifacts before dealing new ones.
+  // Order matters: turns reference wires with no ON DELETE cascade, so they
+  // must go first; info_tokens cascade from wires automatically.
+  await turnsDb.deleteByGameId(gameId);
+  await wiresDb.deleteByGameId(gameId);
+  await tokensDb.deleteValidationTokensByGameId(gameId);
+  await playersDb.resetDoubleDetectorForGame(gameId);
+
+  const detonatorMax = Math.max(1, players.length - 1);
+
+  await gamesDb.updateMission(gameId, mission);
+
+  const playerIds = players.map(p => p.id);
+  const dealedWires = dealWires(playerIds, game.captainId!, mission);
+
+  const createdWires: Wire[] = [];
+  for (const dw of dealedWires) {
+    const wire = await wiresDb.createWire(gameId, dw.playerId, dw.value, dw.color, dw.rackPosition);
+    createdWires.push(wire);
+  }
+
+  await gamesDb.updateDetonator(gameId, 0);
+  await gamesDb.clearPendingDualCut(gameId);
+  await gamesDb.updateGameStatus(gameId, 'setup');
+  await gamesDb.updateCurrentTurn(gameId, game.captainId!);
+  const updatedGame = await gamesDb.updateDetonatorMax(gameId, detonatorMax);
+
+  return { game: updatedGame, players, wires: createdWires };
+}
+
 // Turn-ordered opening placement: captain places first (set as currentTurnPlayerId
 // by startGame), then clockwise. Placing a token is the per-player "ready" action
 // itself — there's no separate completion step. Once every player has placed,
