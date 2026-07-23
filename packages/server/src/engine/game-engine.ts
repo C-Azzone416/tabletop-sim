@@ -46,6 +46,7 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
 
   const players = await playersDb.getPlayersByGameId(gameId);
   if (players.length < 1) throw new Error('Need at least 1 player');
+  if (!players.every(p => p.ready)) throw new Error('Not all players are ready');
 
   const missionConfig = MISSION_CONFIGS[mission];
   if (!missionConfig) throw new Error('Invalid mission');
@@ -66,13 +67,73 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
     createdWires.push(wire);
   }
 
-  // Update game to setup phase
+  // Update game to setup phase and kick off turn-ordered opening placement:
+  // captain (always seat 0) places first, then clockwise via advanceTurn.
   await gamesDb.updateDetonator(gameId, 0);
-  const updatedGame = await gamesDb.updateGameStatus(gameId, 'setup');
+  await gamesDb.updateGameStatus(gameId, 'setup');
+  await gamesDb.updateCurrentTurn(gameId, game.captainId!);
+  const updatedGame = await gamesDb.updateDetonatorMax(gameId, detonatorMax);
 
-  return { game: { ...updatedGame, detonatorMax }, players, wires: createdWires };
+  return { game: updatedGame, players, wires: createdWires };
 }
 
+// #157 — "continue playing" after a win or loss: the same game row (same id,
+// same joinCode, same seated players) is reused for the next mission rather
+// than rebuilding a lobby. Ruled approved (#continue-playing, 2026-07-23):
+// same-game-row transition, hard-delete the prior mission's wires/tokens/
+// turns (round-scoped history is a deliberate future follow-up, #163), next-
+// mission-up default clamped/validated by the caller via `mission`.
+export async function executeNextMission(
+  gameId: string,
+  requestingPlayerId: string,
+  mission: number,
+): Promise<{ game: Game; players: Player[]; wires: Wire[] }> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.status !== 'won' && game.status !== 'lost') throw new Error('Game is not in a won or lost state');
+  if (game.captainId !== requestingPlayerId) throw new Error('Only the captain can start the next mission');
+
+  const missionConfig = MISSION_CONFIGS[mission];
+  if (!missionConfig) throw new Error('Invalid mission');
+
+  const players = await playersDb.getPlayersByGameId(gameId);
+
+  // Clear the prior mission's per-mission artifacts before dealing new ones.
+  // Order matters: turns reference wires with no ON DELETE cascade, so they
+  // must go first; info_tokens cascade from wires automatically.
+  await turnsDb.deleteByGameId(gameId);
+  await wiresDb.deleteByGameId(gameId);
+  await tokensDb.deleteValidationTokensByGameId(gameId);
+  await playersDb.resetDoubleDetectorForGame(gameId);
+
+  const detonatorMax = Math.max(1, players.length - 1);
+
+  await gamesDb.updateMission(gameId, mission);
+
+  const playerIds = players.map(p => p.id);
+  const dealedWires = dealWires(playerIds, game.captainId!, mission);
+
+  const createdWires: Wire[] = [];
+  for (const dw of dealedWires) {
+    const wire = await wiresDb.createWire(gameId, dw.playerId, dw.value, dw.color, dw.rackPosition);
+    createdWires.push(wire);
+  }
+
+  await gamesDb.updateDetonator(gameId, 0);
+  await gamesDb.clearPendingDualCut(gameId);
+  await gamesDb.updateGameStatus(gameId, 'setup');
+  await gamesDb.updateCurrentTurn(gameId, game.captainId!);
+  const updatedGame = await gamesDb.updateDetonatorMax(gameId, detonatorMax);
+
+  return { game: updatedGame, players, wires: createdWires };
+}
+
+// Turn-ordered opening placement: captain places first (set as currentTurnPlayerId
+// by startGame), then clockwise. Placing a token is the per-player "ready" action
+// itself — there's no separate completion step. Once every player has placed,
+// this same call transitions the game to 'active' and advances the turn onto
+// whoever's real first mission turn is, via the same advanceTurn used for
+// ordinary gameplay turns.
 export async function executePlaceInfoToken(
   gameId: string,
   playerId: string,
@@ -81,6 +142,7 @@ export async function executePlaceInfoToken(
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');
   if (game.status !== 'setup') throw new Error('Game is not in setup phase');
+  if (game.currentTurnPlayerId !== playerId) throw new Error('Not your turn');
 
   const wire = await wiresDb.getWireById(wireId);
   if (!wire) throw new Error('Wire not found');
@@ -88,31 +150,30 @@ export async function executePlaceInfoToken(
   if (wire.playerId !== playerId) throw new Error('Can only place info token on your own wire');
   if (wire.status !== 'hidden') throw new Error('Wire already cut or revealed');
 
+  const [allWires, existingTokens, players] = await Promise.all([
+    wiresDb.getWiresByGameId(gameId),
+    tokensDb.getInfoTokensByGameId(gameId),
+    playersDb.getPlayersByGameId(gameId),
+  ]);
+  const wireOwner = new Map(allWires.map(w => [w.id, w.playerId]));
+  const alreadyPlaced = existingTokens.some(t => wireOwner.get(t.wireId) === playerId);
+  if (alreadyPlaced) throw new Error('Info token already placed');
+
   const infoToken = await tokensDb.createInfoToken(gameId, wireId, wire.value!);
-  return { infoToken };
-}
 
-export async function executeCompleteSetup(
-  gameId: string,
-  playerId: string,
-): Promise<{ game: Game; players: Player[]; allDone: boolean }> {
-  const game = await gamesDb.getGameById(gameId);
-  if (!game) throw new Error('Game not found');
-  if (game.status !== 'setup') throw new Error('Game is not in setup phase');
+  const playersWithTokens = new Set(
+    [...existingTokens, infoToken]
+      .map(t => wireOwner.get(t.wireId))
+      .filter((id): id is string => !!id)
+  );
+  const allDone = playersWithTokens.size === players.length;
 
-  await playersDb.markSetupDone(playerId);
-  const players = await playersDb.getPlayersByGameId(gameId);
-  const allDone = players.every(p => p.setupDone);
-
+  await advanceTurn(gameId);
   if (allDone) {
-    const captain = players.find(p => p.id === game.captainId);
-    if (!captain) throw new Error('Captain not found');
-    await gamesDb.updateCurrentTurn(gameId, captain.id);
-    const activeGame = await gamesDb.updateGameStatus(gameId, 'active');
-    return { game: activeGame, players, allDone: true };
+    await gamesDb.updateGameStatus(gameId, 'active');
   }
 
-  return { game, players, allDone: false };
+  return { infoToken };
 }
 
 export async function completeSetup(gameId: string): Promise<Game> {
@@ -147,6 +208,17 @@ export async function executeProposeDualCut(
 
   const targetPlayer = await playersDb.getPlayerById(wire.playerId);
   if (!targetPlayer) throw new Error('Player not found');
+
+  // Physical-game rule: you must already hold a matching tile before you can
+  // guess it. Mirrors executeCompleteDualCut's completion-time checks.
+  const proposerWires = await wiresDb.getWiresByPlayerId(playerId);
+  if (wire.color === 'blue') {
+    const holdsMatch = proposerWires.some(w => w.status === 'hidden' && w.value === guessedValue);
+    if (!holdsMatch) throw new Error('Must hold a matching wire to propose this guess');
+  } else if (wire.color === 'yellow') {
+    const holdsYellow = proposerWires.some(w => w.status === 'hidden' && w.color === 'yellow');
+    if (!holdsYellow) throw new Error('Must hold a yellow wire to propose this guess');
+  }
 
   const updatedGame = await gamesDb.setPendingDualCut(gameId, playerId, targetWireId, guessedValue);
   return { game: updatedGame, wire, targetPlayer };
@@ -268,51 +340,48 @@ export async function executeSoloCut(
   playerId: string,
   wireValue: string,
 ): Promise<{ turn: Turn; game: Game; updatedWires: Wire[] }> {
-  const game = await validateTurn(gameId, playerId);
+  await validateTurn(gameId, playerId);
 
-  // Find all of the player's hidden wires with the guessed value
-  const playerWires = await wiresDb.getWiresByPlayerId(playerId);
-  const matchingWires = playerWires.filter(w => w.status === 'hidden' && w.value === wireValue);
+  // Rules-correction (#150): solo cut is legal ONLY when the player holds
+  // ALL remaining uncut wires of that number — every currently-hidden wire
+  // with this value across the whole game must be owned by this player.
+  // Hard-rejected up front, before any turn record or detonator change, the
+  // same way #133's must-hold-value dual-cut guard rejects at propose time.
+  const wiresOfValue = await wiresDb.getWiresByValueAndGame(gameId, wireValue);
+  const hiddenOfValue = wiresOfValue.filter(w => w.status === 'hidden');
+  const holdsAllRemaining = hiddenOfValue.length > 0 && hiddenOfValue.every(w => w.playerId === playerId);
+  if (!holdsAllRemaining) {
+    throw new Error('You must hold all remaining uncut wires of that number to solo cut it');
+  }
 
   const turn = await turnsDb.createTurn(gameId, playerId, 'solo_cut', null, wireValue);
 
+  // Legality guarantees every hidden wire of this value belongs to the
+  // player — cut them all. Solo cut can no longer fail (that path lived on
+  // wrong-guess penalties, which now belong to dual cuts only), so this is
+  // always a success.
   const updatedWires: Wire[] = [];
-
-  if (matchingWires.length > 0) {
-    // Cut all matching wires
-    for (const w of matchingWires) {
-      const updated = await wiresDb.updateWireStatus(w.id, 'cut');
-      updatedWires.push(updated);
-    }
-    await turnsDb.updateTurnResult(turn.id, 'success');
-  } else {
-    // Fail — advance detonator
-    await turnsDb.updateTurnResult(turn.id, 'fail');
-    const newPosition = game.detonatorPosition + 1;
-    const updatedGame = await gamesDb.updateDetonator(gameId, newPosition);
-
-    if (newPosition >= game.detonatorMax) {
-      const lostGame = await gamesDb.updateGameStatus(gameId, 'lost');
-      return { turn: { ...turn, result: 'fail' }, game: lostGame, updatedWires };
-    }
+  for (const w of hiddenOfValue) {
+    const updated = await wiresDb.updateWireStatus(w.id, 'cut');
+    updatedWires.push(updated);
   }
+  await turnsDb.updateTurnResult(turn.id, 'success');
 
   // Check validation per color for any cut wires
-  const cutColors = new Set(matchingWires.map(w => w.color));
+  const cutColors = new Set(hiddenOfValue.map(w => w.color));
   for (const color of cutColors) {
     await checkValidation(gameId, wireValue, color);
   }
 
   // Check win
-  const game2 = await gamesDb.getGameById(gameId);
   const winResult = await checkWinCondition(gameId);
   if (winResult) {
     const wonGame = await gamesDb.updateGameStatus(gameId, 'won');
-    return { turn: { ...turn, result: matchingWires.length > 0 ? 'success' : 'fail' }, game: wonGame, updatedWires };
+    return { turn: { ...turn, result: 'success' }, game: wonGame, updatedWires };
   }
 
   const advancedGame = await advanceTurn(gameId);
-  return { turn: { ...turn, result: matchingWires.length > 0 ? 'success' : 'fail' }, game: advancedGame, updatedWires };
+  return { turn: { ...turn, result: 'success' }, game: advancedGame, updatedWires };
 }
 
 export async function executeDoubleDetector(
@@ -321,7 +390,7 @@ export async function executeDoubleDetector(
   targetWireId1: string,
   targetWireId2: string,
 ): Promise<{ turn: Turn; game: Game; updatedWires: Wire[] }> {
-  const game = await validateTurn(gameId, playerId);
+  await validateTurn(gameId, playerId);
 
   const player = await playersDb.getPlayerById(playerId);
   if (!player) throw new Error('Player not found');
@@ -404,95 +473,6 @@ export async function executeRevealReds(
   return { turn: { ...turn, result: 'success' }, game: advancedGame, updatedWires };
 }
 
-export async function executeSelectOpponentWire(
-  gameId: string,
-  playerId: string,
-  wireId: string,
-): Promise<{ game: Game; wire: Wire; answererPlayer: Player }> {
-  const game = await gamesDb.getGameById(gameId);
-  if (!game) throw new Error('Game not found');
-  if (game.status !== 'setup') throw new Error('Game is not in setup phase');
-  if (game.currentTurnPlayerId !== playerId) throw new Error('Not your turn');
-
-  const wire = await wiresDb.getWireById(wireId);
-  if (!wire) throw new Error('Wire not found');
-  if (wire.gameId !== gameId) throw new Error('Wire does not belong to this game');
-  if (wire.playerId === playerId) throw new Error('Cannot select your own wire');
-  if (wire.status !== 'hidden') throw new Error('Wire already revealed or cut');
-
-  const answererPlayer = await playersDb.getPlayerById(wire.playerId);
-  if (!answererPlayer) throw new Error('Player not found');
-
-  // Set pending interrogation
-  const updatedGame = await gamesDb.setPendingInterrogation(gameId, playerId, wire.playerId, wireId);
-
-  return { game: updatedGame, wire, answererPlayer };
-}
-
-export async function executeAnswerWireQuestion(
-  gameId: string,
-  playerId: string,
-  answer: 'yes' | 'no',
-): Promise<{ game: Game; message: string; updatedWires: Wire[] }> {
-  const game = await gamesDb.getGameById(gameId);
-  if (!game) throw new Error('Game not found');
-  if (game.status !== 'setup') throw new Error('Game is not in setup phase');
-  if (!game.pendingInterrogationAnswererId) throw new Error('No pending question');
-  if (game.pendingInterrogationAnswererId !== playerId) throw new Error('This question is not for you');
-
-  const wire = await wiresDb.getWireById(game.pendingInterrogationWireId!);
-  if (!wire) throw new Error('Wire not found');
-
-  const askerPlayer = await playersDb.getPlayerById(game.pendingInterrogationAskerId!);
-  if (!askerPlayer) throw new Error('Asker not found');
-
-  const updatedWires: Wire[] = [];
-  let message = '';
-
-  if (answer === 'yes') {
-    // Answer is correct - reveal the wire and create validation token
-    const revealedWire = await wiresDb.updateWireStatus(wire.id, 'revealed');
-    updatedWires.push(revealedWire);
-
-    // Create validation token for the asker
-    await tokensDb.createValidationToken(gameId, wire.value!, wire.color);
-    message = `Correct! Wire ${wire.rackPosition + 1} is revealed as ${wire.value}`;
-  } else {
-    // Answer is incorrect
-    if (wire.color === 'red') {
-      // Game over - red wire was guessed
-      const lostGame = await gamesDb.updateGameStatus(gameId, 'lost');
-      await gamesDb.clearPendingInterrogation(gameId);
-      return { game: lostGame, message: 'Game Over! Red wire guessed!', updatedWires };
-    } else {
-      // Place info token on the wire
-      await tokensDb.createInfoToken(gameId, wire.id, wire.value!);
-      updatedWires.push(wire);
-      message = `Incorrect! Info token placed on wire ${wire.rackPosition + 1}`;
-    }
-  }
-
-  // Clear pending interrogation - answer has been given
-  const updatedGame = await gamesDb.clearPendingInterrogation(gameId);
-
-  return { game: updatedGame, message, updatedWires };
-}
-
-export async function executeNextTurn(gameId: string, playerId: string): Promise<{ game: Game }> {
-  const game = await gamesDb.getGameById(gameId);
-  if (!game) throw new Error('Game not found');
-  if (game.status !== 'setup') throw new Error('Game is not in setup phase');
-  if (game.currentTurnPlayerId !== playerId) throw new Error('Not your turn');
-  if (game.pendingInterrogationAnswererId) throw new Error('Cannot advance turn while question is pending');
-
-  const players = await playersDb.getPlayersByGameId(gameId);
-  const currentIndex = players.findIndex(p => p.id === game.currentTurnPlayerId);
-  const nextIndex = (currentIndex + 1) % players.length;
-  const nextGame = await gamesDb.updateCurrentTurn(gameId, players[nextIndex].id);
-
-  return { game: nextGame };
-}
-
 async function checkWinCondition(gameId: string): Promise<boolean> {
   const allWires = await wiresDb.getWiresByGameId(gameId);
   return allWires.every(w => w.status === 'cut');
@@ -503,7 +483,26 @@ export async function advanceTurn(gameId: string): Promise<Game> {
   if (!game) throw new Error('Game not found');
 
   const players = await playersDb.getPlayersByGameId(gameId);
+  const wires = await wiresDb.getWiresByGameId(gameId);
+  const hiddenCountByPlayer = new Map<string, number>();
+  for (const w of wires) {
+    if (w.status === 'hidden') {
+      hiddenCountByPlayer.set(w.playerId, (hiddenCountByPlayer.get(w.playerId) ?? 0) + 1);
+    }
+  }
+
+  // Rules-correction (#152): a player with no uncut wires left is skipped
+  // when rotating clockwise — no dead turns. Bounded to one full lap; if
+  // every player is fully cut (should be unreachable, the win condition
+  // fires first) this falls through to the plain next seat instead of
+  // looping forever.
   const currentIndex = players.findIndex(p => p.id === game.currentTurnPlayerId);
-  const nextIndex = (currentIndex + 1) % players.length;
+  let nextIndex = currentIndex;
+  for (let i = 0; i < players.length; i++) {
+    nextIndex = (nextIndex + 1) % players.length;
+    if ((hiddenCountByPlayer.get(players[nextIndex].id) ?? 0) > 0) {
+      return await gamesDb.updateCurrentTurn(gameId, players[nextIndex].id);
+    }
+  }
   return await gamesDb.updateCurrentTurn(gameId, players[nextIndex].id);
 }

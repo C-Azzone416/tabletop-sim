@@ -175,7 +175,7 @@ export function ActionPanel({
                       : "border-zinc-300 dark:border-zinc-600"
                   }`}
                 >
-                  Wire #{w.rackPosition + 1}
+                  Wire #{w.rackPosition}
                 </button>
               );
             })}

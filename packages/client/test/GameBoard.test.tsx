@@ -27,10 +27,10 @@ describe("GameBoard", () => {
     const localPlayer = makePlayer({ id: "p1", name: "Alice" });
     const otherPlayer = makePlayer({ id: "p2", name: "Bob" });
     const wires = [
-      makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: null }),
-      makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: null }),
-      makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: "3" }),
-      makeWire({ id: "w4", playerId: "p2", rackPosition: 1, value: "5" }),
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 1, value: null }),
+      makeWire({ id: "w2", playerId: "p1", rackPosition: 2, value: null }),
+      makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: "3" }),
+      makeWire({ id: "w4", playerId: "p2", rackPosition: 2, value: "5" }),
     ];
 
     return {
@@ -76,6 +76,16 @@ describe("GameBoard", () => {
   it("shows other player name", () => {
     render(<GameBoard {...setup()} />);
     expect(screen.getByText("Bob")).toBeInTheDocument();
+  });
+
+  it("renders racks in fixed seat order, not local-player-first (#148)", () => {
+    // localPlayerId is p2 ("Bob"), but he's listed SECOND in players — the
+    // rack order should stay Alice-then-Bob (matching SetupPhase's fixed
+    // order), not reorder to put the local player's rack first.
+    const props = setup({ localPlayerId: "p2" });
+    render(<GameBoard {...props} />);
+    const rackHeadings = screen.getAllByText(/^(You|Alice|Bob)$/);
+    expect(rackHeadings.map((el) => el.textContent)).toEqual(["Alice", "You"]);
   });
 
   it("marks captain", () => {
@@ -214,7 +224,7 @@ describe("GameBoard", () => {
         proposingPlayerId: "p1",
         targetPlayerId: "p2",
         targetWireId: "w3",
-        targetWireRackPosition: 0,
+        targetWireRackPosition: 1,
         guessedValue: "3",
       },
     });
@@ -231,7 +241,7 @@ describe("GameBoard", () => {
         proposingPlayerId: "p1",
         targetPlayerId: "p2",
         targetWireId: "w3",
-        targetWireRackPosition: 0,
+        targetWireRackPosition: 1,
         guessedValue: "3",
       },
     });
@@ -250,7 +260,7 @@ describe("GameBoard", () => {
         proposingPlayerId: "p1",
         targetPlayerId: "p2",
         targetWireId: "w3",
-        targetWireRackPosition: 0,
+        targetWireRackPosition: 1,
         guessedValue: "3",
       },
     });
@@ -267,21 +277,21 @@ describe("GameBoard", () => {
         proposingPlayerId: "p1",
         targetPlayerId: "p2",
         targetWireId: "w3",
-        targetWireRackPosition: 0,
+        targetWireRackPosition: 1,
         guessedValue: "3",
       },
       pendingDualCutCorrect: {
         type: "dual_cut_correct" as const,
         targetWireId: "w3",
-        targetWireRackPosition: 0,
+        targetWireRackPosition: 1,
         targetWireColor: "blue" as const,
       },
       // local wires need a value to be selectable
       wires: [
-        makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "3" }),
-        makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "5" }),
-        makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: null }),
-        makeWire({ id: "w4", playerId: "p2", rackPosition: 1, value: null }),
+        makeWire({ id: "w1", playerId: "p1", rackPosition: 1, value: "3" }),
+        makeWire({ id: "w2", playerId: "p1", rackPosition: 2, value: "5" }),
+        makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: null }),
+        makeWire({ id: "w4", playerId: "p2", rackPosition: 2, value: null }),
       ],
     });
     render(<GameBoard {...props} />);
@@ -306,9 +316,9 @@ describe("GameBoard", () => {
     const props = setup();
     // Both local wires have value "4" (revealed, so selectable)
     props.wires = [
-      makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "4" }),
-      makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "4" }),
-      makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: "3" }),
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 1, value: "4" }),
+      makeWire({ id: "w2", playerId: "p1", rackPosition: 2, value: "4" }),
+      makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: "3" }),
     ];
     render(<GameBoard {...props} />);
     await user.click(screen.getByRole("button", { name: "Solo Cut" }));
@@ -327,9 +337,9 @@ describe("GameBoard", () => {
     const props = setup();
     // Local wires have different values — mismatch
     props.wires = [
-      makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "3" }),
-      makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "5" }),
-      makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: "2" }),
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 1, value: "3" }),
+      makeWire({ id: "w2", playerId: "p1", rackPosition: 2, value: "5" }),
+      makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: "2" }),
     ];
     render(<GameBoard {...props} />);
     await user.click(screen.getByRole("button", { name: "Solo Cut" }));
@@ -347,9 +357,9 @@ describe("GameBoard", () => {
     const user = userEvent.setup();
     const props = setup();
     props.wires = [
-      makeWire({ id: "w1", playerId: "p1", rackPosition: 0, value: "4" }),
-      makeWire({ id: "w2", playerId: "p1", rackPosition: 1, value: "4" }),
-      makeWire({ id: "w3", playerId: "p2", rackPosition: 0, value: "3" }),
+      makeWire({ id: "w1", playerId: "p1", rackPosition: 1, value: "4" }),
+      makeWire({ id: "w2", playerId: "p1", rackPosition: 2, value: "4" }),
+      makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: "3" }),
     ];
     render(<GameBoard {...props} />);
     await user.click(screen.getByRole("button", { name: "Solo Cut" }));
@@ -361,24 +371,26 @@ describe("GameBoard", () => {
     expect(props.onSoloCut).toHaveBeenCalledWith("4");
   });
 
-  it("shows info token badge on opponent wire", () => {
+  it("shows info token badge with value on opponent wire", () => {
     const props = setup({
-      infoTokens: [makeInfoToken({ wireId: "w3", value: "3" })],
+      // A hidden opponent wire is redacted by the server (value: null) —
+      // the display falls back to the info token's tracked value.
+      wires: [makeWire({ id: "w3", playerId: "p2", rackPosition: 1, value: null })],
+      infoTokens: [makeInfoToken({ wireId: "w3", value: "7" })],
     });
     render(<GameBoard {...props} />);
-    // Scope to Bob's rack — the badge "1" must appear there
     const bobContainer = getRackContainer("Bob");
-    expect(within(bobContainer).getByText("1")).toBeInTheDocument();
+    expect(within(bobContainer).getByText("7")).toBeInTheDocument();
   });
 
-  it("does not show info token badge on local player's own wire", () => {
+  it("shows info token badge on local player's own wire", () => {
     const props = setup({
-      infoTokens: [makeInfoToken({ wireId: "w1", value: "3" })],
+      infoTokens: [makeInfoToken({ wireId: "w1", value: "7" })],
     });
     render(<GameBoard {...props} />);
-    // w1 belongs to p1 (local) — badge must not appear in "You" rack
+    // w1 belongs to p1 (local), value=null — badge shows "7"
     const youContainer = getRackContainer("You");
-    expect(within(youContainer).queryByText("1")).not.toBeInTheDocument();
+    expect(within(youContainer).getByText("7")).toBeInTheDocument();
   });
 
   it("renders validation tracker with validated values", () => {
@@ -390,5 +402,49 @@ describe("GameBoard", () => {
     });
     render(<GameBoard {...props} />);
     expect(screen.getByText("Validated")).toBeInTheDocument();
+  });
+
+  describe("lives display (#143)", () => {
+    // Internal model is unchanged (detonatorPosition counts UP toward
+    // detonatorMax) — the UI transforms it into a countdown per the ruling.
+    it("shows lives remaining (max - position), counting down", () => {
+      const props = setup({
+        game: makeGame({
+          id: "g1",
+          status: "active",
+          detonatorPosition: 1,
+          detonatorMax: 4,
+        }),
+      });
+      render(<GameBoard {...props} />);
+      expect(screen.getByText("Lives")).toBeInTheDocument();
+      expect(screen.getByText("3 / 4")).toBeInTheDocument();
+    });
+
+    it("shows 0 lives remaining at detonatorPosition === detonatorMax (loss threshold)", () => {
+      const props = setup({
+        game: makeGame({
+          id: "g1",
+          status: "active",
+          detonatorPosition: 4,
+          detonatorMax: 4,
+        }),
+      });
+      render(<GameBoard {...props} />);
+      expect(screen.getByText("0 / 4")).toBeInTheDocument();
+    });
+
+    it("shows full lives at detonatorPosition 0 (game start)", () => {
+      const props = setup({
+        game: makeGame({
+          id: "g1",
+          status: "active",
+          detonatorPosition: 0,
+          detonatorMax: 3,
+        }),
+      });
+      render(<GameBoard {...props} />);
+      expect(screen.getByText("3 / 3")).toBeInTheDocument();
+    });
   });
 });

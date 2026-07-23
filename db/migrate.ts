@@ -1,16 +1,24 @@
-import { Client } from '@neondatabase/serverless';
+import { Client as NeonClient } from '@neondatabase/serverless';
+import { Client as PgClient } from 'pg';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-const DATABASE_URL = process.argv[2];
+// Falls back to the DATABASE_URL env var so this can run unattended as a
+// deploy hook (#140 — `npm start`'s prestart lifecycle script calls this
+// with no argv) as well as the existing manual CLI usage.
+const DATABASE_URL = process.argv[2] ?? process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
-  console.error('Usage: npx tsx db/migrate.ts <DATABASE_URL>');
+  console.error('Usage: npx tsx db/migrate.ts <DATABASE_URL>  (or set the DATABASE_URL env var)');
   process.exit(1);
 }
 
-const client = new Client(DATABASE_URL);
+// Neon's serverless driver expects Neon's WebSocket proxy, which a plain local
+// Postgres doesn't provide — use the standard pg client for localhost targets
+// (matches the same isLocal pattern as packages/server/src/db/client.ts).
+const isLocal = DATABASE_URL.includes('localhost') || DATABASE_URL.includes('127.0.0.1');
+const client = isLocal ? new PgClient(DATABASE_URL) : new NeonClient(DATABASE_URL);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = join(__dirname, 'migrations');
 

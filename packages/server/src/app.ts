@@ -6,6 +6,7 @@ import * as playersDb from './db/players.js';
 import * as profilesDb from './db/profiles.js';
 import * as tokensDb from './db/tokens.js';
 import * as wiresDb from './db/wires.js';
+import { getMigrationsStatus } from './db/migrations.js';
 import * as engine from './engine/game-engine.js';
 import { handleMessage } from './ws/message-handler.js';
 import { removeConnection, setAuthenticatedUser, registerConnection } from './ws/connection-manager.js';
@@ -18,7 +19,26 @@ export async function buildApp() {
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
     : ['http://localhost:3000'];
-  await app.register(cors, { origin: allowedOrigins });
+
+  // Vercel's dashboard "Visit" button lands on the per-deployment preview URL
+  // (hash rotates every deploy), not the stable branch alias in CORS_ORIGINS —
+  // that's the natural-but-blocked click path (issue #121). Anchored on the
+  // full origin including scheme, not a substring/includes() check, so an
+  // attacker-registered lookalike project can't slip through. Confirmed
+  // pattern from 4 real deployments (2026-07-22): `tabletop-<hash>-c-azzone416s-projects.vercel.app`
+  // — note the prefix is `tabletop-`, not `tabletop-sim-` (project rename artifact).
+  const VERCEL_PREVIEW_ORIGIN = /^https:\/\/tabletop-[a-z0-9]+-c-azzone416s-projects\.vercel\.app$/;
+  // Same condition as every other /dev/* route gate — structurally impossible
+  // to activate in production regardless of misconfiguration elsewhere.
+  const allowVercelPreviews = process.env.ENABLE_DEV_SEED === 'true' && process.env.NODE_ENV !== 'production';
+
+  await app.register(cors, {
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      if (allowVercelPreviews && VERCEL_PREVIEW_ORIGIN.test(origin)) return callback(null, true);
+      return callback(new Error('Not allowed by CORS'), false);
+    },
+  });
   await app.register(websocket, { options: { maxPayload: 4096 } });
 
   app.get('/health', async () => ({ status: 'ok' }));
@@ -139,7 +159,7 @@ export async function buildApp() {
     }
   });
 
-  if (process.env.ENABLE_DEV_SEED === 'true') {
+  if (process.env.ENABLE_DEV_SEED === 'true' && process.env.NODE_ENV !== 'production') {
     app.post('/dev/advance-turn', async (request, reply) => {
       try {
         const { joinCode } = request.body as { joinCode?: string };
@@ -161,25 +181,39 @@ export async function buildApp() {
       }
     });
 
-    app.post('/dev/seed', async (request, reply) => {
-      try {
-        const body = request.body as { mission?: unknown } | null ?? {};
-        const rawMission = (body as Record<string, unknown>).mission;
-        let mission = 1;
-        if (rawMission !== undefined) {
-          if (typeof rawMission !== 'number' || !Number.isInteger(rawMission) || rawMission < 1 || rawMission > 8) {
-            return reply.status(400).send({ error: 'mission must be an integer between 1 and 8' });
-          }
-          mission = rawMission;
-        }
+    const parseMissionParam = (body: unknown): number | { error: string } => {
+      const rawMission = (body as Record<string, unknown> | null ?? {}).mission;
+      if (rawMission === undefined) return 1;
+      if (typeof rawMission !== 'number' || !Number.isInteger(rawMission) || rawMission < 1 || rawMission > 8) {
+        return { error: 'mission must be an integer between 1 and 8' };
+      }
+      return rawMission;
+    };
 
-        const existing = await profilesDb.getProfileByName('Dev');
-        const profile = existing ?? await profilesDb.createProfile('Dev');
-        const { game, player } = await engine.createGame('Dev', profile.id);
-        await engine.joinGame(game.joinCode, 'Alice');
-        await engine.joinGame(game.joinCode, 'Bob');
-        await engine.joinGame(game.joinCode, 'Carol');
-        await engine.startGame(game.id, player.id, mission);
+    const getOrCreateProfile = async (name: string) => {
+      const existing = await profilesDb.getProfileByName(name);
+      return existing ?? await profilesDb.createProfile(name);
+    };
+
+    const seedDevGame = async (mission: number, options: { completeSetup: boolean }) => {
+      const devProfile = await getOrCreateProfile('Dev');
+      const { game, player } = await engine.createGame('Dev', devProfile.id);
+
+      const aliceProfile = await getOrCreateProfile('Alice');
+      const bobProfile = await getOrCreateProfile('Bob');
+      const carolProfile = await getOrCreateProfile('Carol');
+      const { player: alice } = await engine.joinGame(game.joinCode, 'Alice', aliceProfile.id);
+      const { player: bob } = await engine.joinGame(game.joinCode, 'Bob', bobProfile.id);
+      const { player: carol } = await engine.joinGame(game.joinCode, 'Carol', carolProfile.id);
+
+      // startGame now requires every player to have readied up in the lobby;
+      // dev seeding skips the real ready flow, so ready everyone up here.
+      for (const p of [player, alice, bob, carol]) {
+        await engine.executePlayerReady(game.id, p.id);
+      }
+
+      await engine.startGame(game.id, player.id, mission);
+      if (options.completeSetup) {
         await engine.completeSetup(game.id);
         // Auto-generate info tokens for each player's wires so dev games start with full knowledge
         const gamePlayers = await playersDb.getPlayersByGameId(game.id);
@@ -191,10 +225,180 @@ export async function buildApp() {
             }
           }
         }
-        return { joinCode: game.joinCode, profileId: profile.id, playerName: 'Dev', mission };
+      }
+      return {
+        joinCode: game.joinCode,
+        profileId: devProfile.id,
+        playerName: 'Dev',
+        mission,
+        // Real profileIds for every dev-seeded player, so a dev-mode client can connect via
+        // the standard WS auth (profileId + name) as any seat, not just the creator. Bounded
+        // strictly to the Alice/Bob/Carol/Dev rows this seed call itself creates/reuses.
+        players: [
+          { name: 'Dev', profileId: devProfile.id },
+          { name: 'Alice', profileId: aliceProfile.id },
+          { name: 'Bob', profileId: bobProfile.id },
+          { name: 'Carol', profileId: carolProfile.id },
+        ],
+      };
+    };
+
+    // Lands the seeded game at the START of the real opening flow (lobby
+    // readied + started, captain's turn, no tokens placed) — drivable
+    // seat-by-seat through the seat switcher, same as a real game would be.
+    // Use POST /dev/reveal-all-tokens to fast-forward an existing seeded
+    // game to the old all-tokens/active state on demand.
+    app.post('/dev/seed', async (request, reply) => {
+      try {
+        const mission = parseMissionParam(request.body);
+        if (typeof mission === 'object') return reply.status(400).send(mission);
+
+        const result = await seedDevGame(mission, { completeSetup: false });
+        return result;
       } catch (err) {
         app.log.error({ err }, '[POST /dev/seed] error');
         return reply.status(500).send({ error: 'Seed failed' });
+      }
+    });
+
+    // Positions a freshly-seeded active game one correct solo cut from
+    // victory: finds a same-value, same-color hidden wire pair (never red —
+    // solo cutting a red pair isn't the intended win path, and every mission
+    // config guarantees a blue group to pick from instead), reassigns both
+    // wires to the Dev player, cuts every other hidden wire, and hands Dev
+    // the turn. Lets E2E/manual testing exercise the win flow (checklist
+    // item 7) via a single real solo_cut instead of an unverified
+    // multi-identity turn-ordered solver.
+    const positionNearWin = async (gameId: string, devPlayerId: string): Promise<{ value: string; color: string }> => {
+      const wires = await wiresDb.getWiresByGameId(gameId);
+      const hiddenByKey = new Map<string, typeof wires>();
+      for (const w of wires) {
+        if (w.status !== 'hidden') continue;
+        const key = `${w.color}:${w.value}`;
+        const group = hiddenByKey.get(key) ?? [];
+        group.push(w);
+        hiddenByKey.set(key, group);
+      }
+
+      const pair = [...hiddenByKey.entries()]
+        .filter(([key, group]) => !key.startsWith('red:') && group.length >= 2)
+        .sort(([a], [b]) => a.localeCompare(b))[0]?.[1];
+      if (!pair) throw new Error(`No matching non-red wire pair available to seed a near-win for this mission`);
+      const [wireA, wireB] = pair;
+
+      const devWires = await wiresDb.getWiresByPlayerId(devPlayerId);
+      const nextRackPosition = Math.max(0, ...devWires.map(w => w.rackPosition)) + 1;
+      await wiresDb.updateWirePlayer(wireA.id, devPlayerId, nextRackPosition);
+      await wiresDb.updateWirePlayer(wireB.id, devPlayerId, nextRackPosition + 1);
+
+      for (const w of wires) {
+        if (w.id === wireA.id || w.id === wireB.id) continue;
+        if (w.status === 'hidden') {
+          await wiresDb.updateWireStatus(w.id, 'cut');
+        }
+      }
+
+      await gamesDb.updateCurrentTurn(gameId, devPlayerId);
+
+      return { value: wireA.value!, color: wireA.color };
+    };
+
+    app.post('/dev/seed-near-win', async (request, reply) => {
+      try {
+        const mission = parseMissionParam(request.body);
+        if (typeof mission === 'object') return reply.status(400).send(mission);
+
+        const result = await seedDevGame(mission, { completeSetup: true });
+        const game = await gamesDb.getGameByJoinCode(result.joinCode);
+        if (!game) throw new Error('Seeded game not found');
+        const players = await playersDb.getPlayersByGameId(game.id);
+        const devPlayer = players.find(p => p.name === 'Dev');
+        if (!devPlayer) throw new Error('Dev player not found in seeded game');
+
+        const nearWin = await positionNearWin(game.id, devPlayer.id);
+
+        return { ...result, nearWinValue: nearWin.value, nearWinColor: nearWin.color };
+      } catch (err) {
+        app.log.error({ err }, '[POST /dev/seed-near-win] error');
+        return reply.status(500).send({ error: 'Seed failed' });
+      }
+    });
+
+    app.post('/dev/cleanup', async (request, reply) => {
+      try {
+        const { joinCode } = request.body as { joinCode?: string };
+        if (!joinCode) return reply.status(400).send({ error: 'joinCode is required' });
+
+        const game = await gamesDb.getGameByJoinCode(joinCode);
+        if (!game) return reply.status(404).send({ error: 'Game not found' });
+
+        await gamesDb.deleteGame(game.id);
+        return { deleted: true, joinCode };
+      } catch (err) {
+        app.log.error({ err }, '[POST /dev/cleanup] error');
+        return reply.status(500).send({ error: 'Cleanup failed' });
+      }
+    });
+
+    // Fast-forwards an existing dev-seeded game to full-knowledge omniscience
+    // on demand: completes any remaining opening-token placement (via the
+    // same dev-only completeSetup helper /dev/seed used to run inline) and
+    // backfills an info token for every wire that doesn't already have one
+    // (skips wires a real action already tokened/revealed, so it's safe to
+    // call mid-game too, not just right after seeding).
+    app.post('/dev/reveal-all-tokens', async (request, reply) => {
+      try {
+        const { joinCode } = request.body as { joinCode?: string };
+        if (!joinCode) return reply.status(400).send({ error: 'joinCode is required' });
+
+        const game = await gamesDb.getGameByJoinCode(joinCode);
+        if (!game) return reply.status(404).send({ error: 'Game not found' });
+        if (game.status !== 'setup' && game.status !== 'active') {
+          return reply.status(400).send({ error: `Cannot reveal tokens for a game in '${game.status}' status` });
+        }
+
+        let updatedGame = game;
+        if (game.status === 'setup') {
+          updatedGame = await engine.completeSetup(game.id);
+        }
+
+        const [wires, existingTokens, players] = await Promise.all([
+          wiresDb.getWiresByGameId(game.id),
+          tokensDb.getInfoTokensByGameId(game.id),
+          playersDb.getPlayersByGameId(game.id),
+        ]);
+        const wiresWithTokens = new Set(existingTokens.map(t => t.wireId));
+
+        let created = 0;
+        for (const wire of wires) {
+          if (wire.value === null || wiresWithTokens.has(wire.id)) continue;
+          await tokensDb.createInfoToken(game.id, wire.id, wire.value);
+          created += 1;
+        }
+
+        await broadcastGameState(game.id, updatedGame, players);
+
+        return { joinCode, tokensCreated: created, game: updatedGame };
+      } catch (err) {
+        app.log.error({ err }, '[POST /dev/reveal-all-tokens] error');
+        return reply.status(500).send({ error: 'Reveal failed' });
+      }
+    });
+
+    // Schema-currency check (#141) — reports whether every migration
+    // db/migrate.ts knows about has actually been applied to the DB this
+    // server instance is talking to. Wired into the post-deploy staging
+    // smoke check so drift (like #140's 6-week-stale staging incident) is
+    // caught within one scheduled run instead of waiting for a human to
+    // hit a missing column live. Dev-gated like every other /dev/* route —
+    // prod is exempt per the #122 pattern (this never runs there).
+    app.get('/dev/migrations-status', async (_request, reply) => {
+      try {
+        const status = await getMigrationsStatus();
+        return status;
+      } catch (err) {
+        app.log.error({ err }, '[GET /dev/migrations-status] error');
+        return reply.status(500).send({ error: 'Migrations status check failed' });
       }
     });
   }

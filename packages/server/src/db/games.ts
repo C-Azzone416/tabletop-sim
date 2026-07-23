@@ -20,6 +20,11 @@ export async function getGameByJoinCode(joinCode: string): Promise<Game | null> 
   return rows[0] ? mapGame(rows[0]) : null;
 }
 
+export async function deleteGame(id: string): Promise<boolean> {
+  const rows = await sql`DELETE FROM games WHERE id = ${id} RETURNING id`;
+  return rows.length > 0;
+}
+
 export async function updateGameStatus(id: string, status: GameStatus): Promise<Game> {
   const rows = await sql`
     UPDATE games SET status = ${status} WHERE id = ${id} RETURNING *

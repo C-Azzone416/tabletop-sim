@@ -42,6 +42,11 @@ export interface Wire {
   playerId: string;
   value: string | null;
   color: WireColor;
+  /**
+   * 1-based position in the player's rack (wire-dealer.ts assigns
+   * index + 1, never 0). This is already the player-facing "Wire #N"
+   * number — display it as-is, do not add 1 again (#147).
+   */
   rackPosition: number;
   status: WireStatus;
 }
@@ -88,10 +93,7 @@ export type ClientMessage =
   | { type: 'double_detector'; targetWireId: string; targetWireId2: string }
   | { type: 'reveal_reds' }
   | { type: 'player_ready' }
-  | { type: 'complete_setup' }
-  | { type: 'select_opponent_wire'; wireId: string }
-  | { type: 'answer_wire_question'; answer: 'yes' | 'no' }
-  | { type: 'next_turn' };
+  | { type: 'next_mission'; mission: number };
 
 export type ServerMessage =
   | { type: 'game_created'; game: Game; player: Player }
@@ -107,6 +109,4 @@ export type ServerMessage =
   | { type: 'wire_updated'; wire: Wire }
   | { type: 'players_updated'; players: Player[] }
   | { type: 'game_over'; result: 'won' | 'lost'; reason: string }
-  | { type: 'wire_question'; askerPlayerId: string; wireValue: string }
-  | { type: 'interrogation_result'; success: boolean; message: string; game: Game; updatedWires: Wire[] }
   | { type: 'error'; message: string };

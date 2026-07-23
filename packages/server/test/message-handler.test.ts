@@ -17,6 +17,10 @@ vi.mock("../src/engine/game-engine.js", () => ({
   executeRevealReds: vi.fn(),
   executePlayerReady: vi.fn(),
   executeCompleteSetup: vi.fn(),
+  executeSelectOpponentWire: vi.fn(),
+  executeAnswerWireQuestion: vi.fn(),
+  executeNextTurn: vi.fn(),
+  executeNextMission: vi.fn(),
 }));
 
 vi.mock("../src/db/games.js", () => ({
@@ -39,6 +43,7 @@ vi.mock("../src/ws/connection-manager.js", () => ({
   registerConnection: vi.fn(),
   getConnectionInfo: vi.fn(),
   getGameSockets: vi.fn(),
+  getPlayerSocket: vi.fn(),
   broadcastToGame: vi.fn(),
   getAuthenticatedUser: vi.fn(),
   setAuthenticatedUser: vi.fn(),
@@ -161,6 +166,18 @@ describe("message-handler", () => {
       await handleMessage(ws, JSON.stringify({ type: "start_game", mission: "3" }));
       expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
     });
+
+    it("rejects next_mission with mission out of range", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({ type: "next_mission", mission: 9 }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+    });
+
+    it("rejects next_mission with non-integer mission", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({ type: "next_mission", mission: 2.5 }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+    });
   });
 
   describe("create_game", () => {
@@ -249,6 +266,40 @@ describe("message-handler", () => {
       await handleMessage(ws, JSON.stringify({ type: "start_game", mission: 5 }));
 
       expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 5);
+    });
+  });
+
+  describe("next_mission", () => {
+    it("starts the next mission and broadcasts game state to all players", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", status: "setup", mission: 2 });
+      const players = [makePlayer({ id: "p1" }), makePlayer({ id: "p2" })];
+      const wires = [makeWire({ playerId: "p1" }), makeWire({ playerId: "p2" })];
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeNextMission.mockResolvedValue({ game, players, wires });
+
+      await handleMessage(ws, JSON.stringify({ type: "next_mission", mission: 2 }));
+
+      expect(mockEngine.executeNextMission).toHaveBeenCalledWith("g1", "p1", 2);
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game, players);
+    });
+
+    it("rejects a missing mission as an invalid message (no captain-only/won-lost guard reached)", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({ type: "next_mission" }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockEngine.executeNextMission).not.toHaveBeenCalled();
+    });
+
+    it("surfaces the captain-only rejection reason to the client, not a generic Internal error", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
+      mockEngine.executeNextMission.mockRejectedValue(new Error("Only the captain can start the next mission"));
+
+      await handleMessage(ws, JSON.stringify({ type: "next_mission", mission: 2 }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Only the captain can start the next mission" });
     });
   });
 
@@ -341,6 +392,43 @@ describe("message-handler", () => {
     });
   });
 
+  describe("reveal_reds", () => {
+    it("reveals red wires and broadcasts turn_result with per-player wire views", async () => {
+      const ws = mockSocket();
+      const otherWs = mockSocket();
+      const game = makeGame({ id: "g1", status: "active" });
+      const turn = makeTurn({ actionType: "reveal_reds", result: "success" });
+      const updatedWires = [
+        makeWire({ id: "w1", color: "red", status: "revealed", rackPosition: 1 }),
+        makeWire({ id: "w2", color: "red", status: "revealed", rackPosition: 2 }),
+      ];
+      const gameSockets = new Map<string, WebSocket>();
+      gameSockets.set("p1", ws);
+      gameSockets.set("p2", otherWs);
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeRevealReds.mockResolvedValue({ turn, game, updatedWires });
+      mockConnManager.getGameSockets.mockReturnValue(gameSockets);
+
+      await handleMessage(ws, JSON.stringify({ type: "reveal_reds" }));
+
+      expect(mockEngine.executeRevealReds).toHaveBeenCalledWith("g1", "p1");
+      expect(lastSent(ws)).toEqual({ type: "turn_result", turn, game, updatedWires });
+      expect(lastSent(otherWs)).toEqual({ type: "turn_result", turn, game, updatedWires });
+    });
+
+    it("propagates engine errors as an error message instead of broadcasting", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeRevealReds.mockRejectedValue(new Error("Not your turn"));
+
+      await handleMessage(ws, JSON.stringify({ type: "reveal_reds" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Not your turn" });
+      expect(mockConnManager.getGameSockets).not.toHaveBeenCalled();
+    });
+  });
+
   describe("place_info_token", () => {
     it("places an info token and broadcasts game state to all players", async () => {
       const ws = mockSocket();
@@ -358,6 +446,27 @@ describe("message-handler", () => {
 
       expect(mockEngine.executePlaceInfoToken).toHaveBeenCalledWith("g1", "p1", "w1");
       expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game, players);
+    });
+  });
+
+  describe("double_detector", () => {
+    it("sends the requester a full result and broadcasts a detail-free result to others", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", status: "active" });
+      const turn = makeTurn({ actionType: "double_detector", result: "success" });
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeDoubleDetector.mockResolvedValue({ turn, game });
+
+      await handleMessage(ws, JSON.stringify({ type: "double_detector", targetWireId: "w1", targetWireId2: "w2" }));
+
+      expect(mockEngine.executeDoubleDetector).toHaveBeenCalledWith("g1", "p1", "w1", "w2");
+      expect(lastSent(ws)).toEqual({ type: "turn_result", turn, game, updatedWires: [] });
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
+        "g1",
+        expect.objectContaining({ type: "turn_result", turn: { ...turn, result: null }, game, updatedWires: [] }),
+        "p1",
+      );
     });
   });
 
@@ -381,51 +490,16 @@ describe("message-handler", () => {
     });
   });
 
-  describe("complete_setup", () => {
-    it("broadcasts players_updated when not all players are done", async () => {
+  describe("complete_setup (retired)", () => {
+    it("is no longer a recognized message and yields an invalid-format error", async () => {
       const ws = mockSocket();
-      const game = makeGame({ id: "g1", status: "setup" });
-      const players = [makePlayer({ id: "p1", setupDone: true }), makePlayer({ id: "p2", setupDone: false })];
-
       mockConnManager.getConnectionInfo.mockReturnValue({
         playerId: "p1", gameId: "g1", socket: ws,
       });
-      mockEngine.executeCompleteSetup.mockResolvedValue({ game, players, allDone: false });
 
       await handleMessage(ws, JSON.stringify({ type: "complete_setup" }));
 
-      expect(mockEngine.executeCompleteSetup).toHaveBeenCalledWith("g1", "p1");
-      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
-        "g1",
-        expect.objectContaining({ type: "players_updated", players }),
-      );
-    });
-
-    it("broadcasts setup_complete to all when all players are done", async () => {
-      const ws = mockSocket();
-      const activeGame = makeGame({ id: "g1", status: "active" });
-      const players = [makePlayer({ id: "p1", setupDone: true }), makePlayer({ id: "p2", setupDone: true })];
-
-      mockConnManager.getConnectionInfo.mockReturnValue({
-        playerId: "p2", gameId: "g1", socket: ws,
-      });
-      mockEngine.executeCompleteSetup.mockResolvedValue({ game: activeGame, players, allDone: true });
-
-      await handleMessage(ws, JSON.stringify({ type: "complete_setup" }));
-
-      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
-        "g1",
-        expect.objectContaining({ type: "setup_complete", game: activeGame }),
-      );
-    });
-
-    it("sends 'Not connected to a game' when no connection info", async () => {
-      const ws = mockSocket();
-      mockConnManager.getConnectionInfo.mockReturnValue(undefined);
-
-      await handleMessage(ws, JSON.stringify({ type: "complete_setup" }));
-
-      expect(lastSent(ws)).toEqual({ type: "error", message: "Not connected to a game" });
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
     });
   });
 
@@ -457,6 +531,21 @@ describe("message-handler", () => {
       await handleMessage(ws, JSON.stringify({ type: "start_game" }));
 
       expect(lastSent(ws)).toEqual({ type: "error", message: "Not connected to a game" });
+    });
+
+    it("sends the solo-cut legality rejection reason to the client, not a generic Internal error (#150/#161)", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ gameId: "g1", playerId: "p1" });
+      mockEngine.executeSoloCut.mockRejectedValue(
+        new Error("You must hold all remaining uncut wires of that number to solo cut it")
+      );
+
+      await handleMessage(ws, JSON.stringify({ type: "solo_cut", wireValue: "3" }));
+
+      expect(lastSent(ws)).toEqual({
+        type: "error",
+        message: "You must hold all remaining uncut wires of that number to solo cut it",
+      });
     });
   });
 });

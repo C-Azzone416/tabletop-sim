@@ -117,12 +117,6 @@ export function GameBoard({
     }
   };
 
-  // Sort players: local player first
-  const sortedPlayers = [
-    ...players.filter((p) => p.id === localPlayerId),
-    ...players.filter((p) => p.id !== localPlayerId),
-  ];
-
   // Dual cut state derivations
   const isProposer = pendingDualCut?.proposingPlayerId === localPlayerId;
   const isTarget = pendingDualCut?.targetPlayerId === localPlayerId;
@@ -149,7 +143,11 @@ export function GameBoard({
   const dualCutInFlight = !!(pendingDualCut || isCompletingDualCut);
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    // pt-14 clears the fixed JoinCodeBadge (top-4 left-4) — GameClient
+    // renders it as a sibling overlay, so this content needs enough top
+    // clearance on its own; the tighter gap-3/p-3 elsewhere is #159's
+    // density pass (action panel visible without scrolling).
+    <div className="flex flex-col gap-3 p-3 pt-14">
       {/* Status bar */}
       <div className="grid grid-cols-3 items-center gap-4">
         <TurnIndicator
@@ -196,9 +194,13 @@ export function GameBoard({
         </div>
       )}
 
-      {/* Player racks */}
-      <div className="space-y-4">
-        {sortedPlayers.map((player) => {
+      {/* Player racks — fixed seat order, not local-player-first (#148):
+          matches SetupPhase's existing layout so switching seats via the
+          dev panel doesn't rearrange the board differently between phases.
+          "Your Rack" / player name labeling below still reflects whichever
+          seat is currently selected. */}
+      <div className="space-y-2">
+        {players.map((player) => {
           const playerWires = wires
             .filter((w) => w.playerId === player.id)
             .sort((a, b) => a.rackPosition - b.rackPosition);
@@ -221,15 +223,17 @@ export function GameBoard({
               ? pendingDualCut.targetWireId
               : null;
 
+          const isActiveTurn = player.id === game.currentTurnPlayerId;
+
           return (
             <div key={player.id}>
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-1 flex items-center gap-2">
                 <span
-                  className={`text-sm font-medium ${
+                  className={
                     isLocal
-                      ? "text-blue-600 dark:text-blue-400"
-                      : "text-zinc-600 dark:text-zinc-400"
-                  }`}
+                      ? "text-base font-bold text-blue-700 dark:text-blue-300"
+                      : "text-sm font-medium text-zinc-600 dark:text-zinc-400"
+                  }
                 >
                   {isLocal ? "You" : player.name}
                 </span>
@@ -238,8 +242,12 @@ export function GameBoard({
                     Captain
                   </span>
                 )}
-                {player.id === game.currentTurnPlayerId && (
-                  <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                {/* #159 item 3: active-turn flag must be unmistakable —
+                    solid fill rather than the previous light tint, since
+                    whose-turn-it-is is exactly the ambiguity #149 filed
+                    against. */}
+                {isActiveTurn && (
+                  <span className="rounded bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm dark:bg-blue-500">
                     Active
                   </span>
                 )}
@@ -301,7 +309,7 @@ export function GameBoard({
             </h2>
             <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
               Guess the value of {dualCutTargetOwner.name}&apos;s wire #
-              {dualCutTargetWire.rackPosition + 1}.
+              {dualCutTargetWire.rackPosition}.
             </p>
             <input
               type="text"
@@ -340,7 +348,7 @@ export function GameBoard({
             </h2>
             <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
               {pendingProposerPlayer.name} guesses your wire #
-              {pendingDualCut.targetWireRackPosition + 1} has value{" "}
+              {pendingDualCut.targetWireRackPosition} has value{" "}
               <span className="font-semibold text-zinc-900 dark:text-zinc-100">
                 {pendingDualCut.guessedValue}
               </span>
@@ -381,7 +389,7 @@ export function GameBoard({
                   onClick={() => onCompleteDualCut(w.id)}
                   className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:border-blue-500 hover:bg-blue-50 dark:border-zinc-600 dark:hover:border-blue-400 dark:hover:bg-blue-900/20"
                 >
-                  Wire #{w.rackPosition + 1}
+                  Wire #{w.rackPosition}
                 </button>
               ))}
             </div>
@@ -399,8 +407,14 @@ function DetonatorDisplay({
   position: number;
   max: number;
 }) {
-  const urgent = position >= max - 1;
-  const warning = !urgent && position >= Math.ceil(max / 2);
+  // #143 (Caroline, 2026-07-23): lives count DOWN in the UI — players start
+  // with `max` lives and lose one per wrong guess, reaching 0 = loss. The
+  // internal model (detonatorPosition counting up to detonatorMax) is
+  // mathematically identical, so this is a display-only transform; nothing
+  // server-side changes.
+  const livesRemaining = max - position;
+  const urgent = livesRemaining <= 1;
+  const warning = !urgent && livesRemaining <= Math.floor(max / 2);
 
   const colorClass = urgent
     ? "text-red-600 dark:text-red-400 font-bold"
@@ -411,10 +425,10 @@ function DetonatorDisplay({
   return (
     <div className="flex flex-col items-center gap-2">
       <h3 className="text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-        Detonator
+        Lives
       </h3>
       <span className={`text-sm tabular-nums ${colorClass}`}>
-        {position} / {max}
+        {livesRemaining} / {max}
       </span>
     </div>
   );

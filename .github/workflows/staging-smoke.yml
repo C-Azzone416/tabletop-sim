@@ -1,0 +1,31 @@
+name: Staging Smoke Check
+
+# Post-deploy check for the dev-tooling gate on staging (issue #122). PR #98's
+# fail-closed gate (ENABLE_DEV_SEED === 'true' && NODE_ENV !== 'production')
+# silently disabled /dev/* routes on staging for ~26 hours because Render
+# defaults Node services to NODE_ENV=production — nothing caught it until a
+# human noticed manually. This runs on a schedule (Render deploys aren't wired
+# to a GitHub Actions trigger) and via workflow_dispatch/repository_dispatch so
+# it can also be triggered on-demand or by a future deploy webhook.
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+  repository_dispatch:
+    types: [staging-deployed]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check dev tooling is reachable and CORS-correct on staging
+        # vars.* (not secrets.*) — a server URL and an origin string aren't
+        # sensitive. Gracefully skips (exit 0) if unconfigured, same pattern
+        # as the old E2E_STAGING_CONFIGURED gate.
+        run: npx tsx scripts/staging-smoke-check.ts "${{ vars.STAGING_SERVER_URL }}" "${{ vars.STAGING_ORIGIN }}"

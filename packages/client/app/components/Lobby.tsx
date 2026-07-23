@@ -2,23 +2,14 @@
 
 import { useState } from "react";
 import type { Player } from "@tabletop/shared";
-
-const MISSION_DESCRIPTIONS: Record<number, string> = {
-  1: "Blue wires only — learn the basics",
-  2: "Blue wires, tighter detonator — learn efficiency",
-  3: "Yellow wires join the mix",
-  4: "More yellow, fewer blue — harder deduction",
-  5: "Red wires appear — reveal_reds unlocked",
-  6: "More reds, tighter detonator",
-  7: "All wire types, all mechanics",
-  8: "Final training — tightest detonator",
-};
+import { MissionSelector } from "./MissionSelector";
 
 interface LobbyProps {
   joinCode: string;
   players: Player[];
   localPlayerId: string;
   captainId: string | null;
+  onReady: () => void;
   onStartGame: (mission: number) => void;
 }
 
@@ -27,10 +18,15 @@ export function Lobby({
   players,
   localPlayerId,
   captainId,
+  onReady,
   onStartGame,
 }: LobbyProps) {
   const isCaptain = localPlayerId === captainId;
-  const canStart = players.length >= 1 && players.length <= 4;
+  const localPlayer = players.find((p) => p.id === localPlayerId);
+  const isLocalPlayerReady = localPlayer?.ready ?? false;
+  const allPlayersReady = players.every((p) => p.ready);
+  const notReadyPlayerNames = players.filter((p) => !p.ready).map((p) => p.name);
+  const canStart = players.length >= 1 && players.length <= 4 && allPlayersReady;
   const [selectedMission, setSelectedMission] = useState(1);
   const [isStarting, setIsStarting] = useState(false);
 
@@ -71,8 +67,9 @@ export function Lobby({
             >
               <div
                 className={`h-2 w-2 rounded-full ${
-                  player.id === captainId ? "bg-amber-500" : "bg-green-500"
+                  player.ready ? "bg-green-500" : "bg-zinc-300 dark:bg-zinc-600"
                 }`}
+                title={player.ready ? "Ready" : "Not ready"}
               />
               <span className="font-medium text-zinc-900 dark:text-zinc-100">
                 {player.name}
@@ -83,7 +80,9 @@ export function Lobby({
                 </span>
               )}
               {player.id === localPlayerId && (
-                <span className="ml-auto text-xs text-zinc-400">(you)</span>
+                <span className={player.id === captainId ? "text-xs text-zinc-400" : "ml-auto text-xs text-zinc-400"}>
+                  (you)
+                </span>
               )}
             </li>
           ))}
@@ -91,49 +90,28 @@ export function Lobby({
       </div>
 
       {isCaptain && (
-        <>
-          <div className="w-full max-w-sm">
-            <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-              Select Mission
-            </h3>
-            <div className="grid grid-cols-2 gap-2">
-              {Object.entries(MISSION_DESCRIPTIONS).map(([num, desc]) => {
-                const mission = Number(num);
-                const isSelected = selectedMission === mission;
-                return (
-                  <button
-                    key={mission}
-                    onClick={() => setSelectedMission(mission)}
-                    className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                      isSelected
-                        ? "border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20"
-                        : "border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600"
-                    }`}
-                  >
-                    <span
-                      className={`text-sm font-semibold ${
-                        isSelected
-                          ? "text-blue-700 dark:text-blue-300"
-                          : "text-zinc-900 dark:text-zinc-100"
-                      }`}
-                    >
-                      Mission {mission}
-                    </span>
-                    <p
-                      className={`mt-0.5 text-xs ${
-                        isSelected
-                          ? "text-blue-600 dark:text-blue-400"
-                          : "text-zinc-500 dark:text-zinc-400"
-                      }`}
-                    >
-                      {desc}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+        <div className="w-full max-w-sm">
+          <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            Select Mission
+          </h3>
+          <MissionSelector
+            selectedMission={selectedMission}
+            onSelectMission={setSelectedMission}
+          />
+        </div>
+      )}
 
+      <div className="flex flex-col items-center gap-3">
+        {!isLocalPlayerReady && (
+          <button
+            onClick={onReady}
+            className="rounded-full bg-teal-600 px-8 py-3 font-medium text-white transition-colors hover:bg-teal-700"
+          >
+            Ready
+          </button>
+        )}
+
+        {isCaptain && isLocalPlayerReady && (
           <button
             onClick={handleStartGame}
             disabled={!canStart || isStarting}
@@ -141,20 +119,20 @@ export function Lobby({
           >
             {isStarting ? "Starting..." : `Start Mission ${selectedMission}`}
           </button>
+        )}
 
-          {!canStart && (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Waiting for at least 1 more player...
-            </p>
-          )}
-        </>
-      )}
+        {isLocalPlayerReady && !allPlayersReady && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Waiting for {notReadyPlayerNames.join(", ")} to ready up...
+          </p>
+        )}
 
-      {!isCaptain && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Waiting for the host to start the game...
-        </p>
-      )}
+        {isLocalPlayerReady && allPlayersReady && !isCaptain && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Waiting for the host to start the game...
+          </p>
+        )}
+      </div>
     </div>
   );
 }

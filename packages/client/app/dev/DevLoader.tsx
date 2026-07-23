@@ -28,10 +28,11 @@ export function DevLoader() {
         body: JSON.stringify({ mission }),
       });
       if (!res.ok) throw new Error(`Seed failed: ${res.status}`);
-      const { joinCode, profileId, playerName } = await res.json();
+      const { joinCode, profileId, playerName, players } = await res.json();
       await signIn("credentials", { name: playerName, redirect: false });
+      const seatOptions = encodeURIComponent(JSON.stringify(players ?? []));
       router.push(
-        `/game/${joinCode}?profileId=${profileId}&playerName=${encodeURIComponent(playerName)}`
+        `/game/${joinCode}?profileId=${profileId}&playerName=${encodeURIComponent(playerName)}&seatOptions=${seatOptions}`
       );
     } catch (err) {
       setSeedError(err instanceof Error ? err.message : "Seed failed");
