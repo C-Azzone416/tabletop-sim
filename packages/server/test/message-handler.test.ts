@@ -485,5 +485,20 @@ describe("message-handler", () => {
 
       expect(lastSent(ws)).toEqual({ type: "error", message: "Not connected to a game" });
     });
+
+    it("sends the solo-cut legality rejection reason to the client, not a generic Internal error (#150/#161)", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ gameId: "g1", playerId: "p1" });
+      mockEngine.executeSoloCut.mockRejectedValue(
+        new Error("You must hold all remaining uncut wires of that number to solo cut it")
+      );
+
+      await handleMessage(ws, JSON.stringify({ type: "solo_cut", wireValue: "3" }));
+
+      expect(lastSent(ws)).toEqual({
+        type: "error",
+        message: "You must hold all remaining uncut wires of that number to solo cut it",
+      });
+    });
   });
 });

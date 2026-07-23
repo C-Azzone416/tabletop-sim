@@ -101,9 +101,18 @@ export async function advanceTurn(joinCode: string): Promise<{ currentTurnPlayer
  * Playwright action timeout per wire before the .catch() fires — fine when
  * every wire is hidden (the original scenario this was written for), but
  * pathological once some wires are already cut (e.g. a near-win seed).
+ *
+ * Since #150 (solo-cut hard legality), a candidate pair is only useful if
+ * it's actually a LEGAL solo cut — the local player must hold every
+ * remaining hidden wire of that value, not just 2 of them. A value is
+ * rejected if any named opponent still has a hidden wire of it (readable
+ * via that wire's info-token badge — see findDualCutOpportunity's doc
+ * comment for why that's visible even though the wire itself is "hidden").
+ * opponentNames defaults to the standard /dev/seed 4-player deal.
  */
 export async function findLocalDuplicateValuePair(
   page: Page,
+  opponentNames: string[] = ["Alice", "Bob", "Carol"],
 ): Promise<{ value: string; wires: [Locator, Locator] } | null> {
   const rack = page.locator('[data-testid="player-rack"]').first();
   const wireButtons = rack.locator("button[data-wire-position]");
@@ -123,8 +132,24 @@ export async function findLocalDuplicateValuePair(
     byValue.set(valueText, existing);
   }
 
-  for (const [value, btns] of byValue) {
-    if (btns.length >= 2) return { value, wires: [btns[0], btns[1]] };
+  const candidates = [...byValue.entries()].filter(([, btns]) => btns.length >= 2);
+  if (candidates.length === 0) return null;
+
+  const opponentHiddenValues = new Set<string>();
+  for (const name of opponentNames) {
+    const rack = playerContainer(page, name).locator('[data-testid="player-rack"]');
+    const wires = rack.locator('button[data-wire-position][data-wire-status="hidden"]');
+    const wireCount = await wires.count();
+    for (let i = 0; i < wireCount; i++) {
+      const infoValue = (
+        await wires.nth(i).locator('[data-testid="wire-info-token"]').textContent().catch(() => null)
+      )?.trim();
+      if (infoValue) opponentHiddenValues.add(infoValue);
+    }
+  }
+
+  for (const [value, btns] of candidates) {
+    if (!opponentHiddenValues.has(value)) return { value, wires: [btns[0], btns[1]] };
   }
   return null;
 }

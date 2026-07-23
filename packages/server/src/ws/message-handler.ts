@@ -160,6 +160,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Must reveal a wire with the same number', 'Must reveal a yellow wire',
       'Wire does not belong to you',
       'Must hold a matching wire to propose this guess', 'Must hold a yellow wire to propose this guess',
+      'You must hold all remaining uncut wires of that number to solo cut it',
     ];
     sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
   } finally {

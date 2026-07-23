@@ -289,37 +289,35 @@ export async function executeSoloCut(
   playerId: string,
   wireValue: string,
 ): Promise<{ turn: Turn; game: Game; updatedWires: Wire[] }> {
-  const game = await validateTurn(gameId, playerId);
+  await validateTurn(gameId, playerId);
 
-  // Find all of the player's hidden wires with the guessed value
-  const playerWires = await wiresDb.getWiresByPlayerId(playerId);
-  const matchingWires = playerWires.filter(w => w.status === 'hidden' && w.value === wireValue);
+  // Rules-correction (#150): solo cut is legal ONLY when the player holds
+  // ALL remaining uncut wires of that number — every currently-hidden wire
+  // with this value across the whole game must be owned by this player.
+  // Hard-rejected up front, before any turn record or detonator change, the
+  // same way #133's must-hold-value dual-cut guard rejects at propose time.
+  const wiresOfValue = await wiresDb.getWiresByValueAndGame(gameId, wireValue);
+  const hiddenOfValue = wiresOfValue.filter(w => w.status === 'hidden');
+  const holdsAllRemaining = hiddenOfValue.length > 0 && hiddenOfValue.every(w => w.playerId === playerId);
+  if (!holdsAllRemaining) {
+    throw new Error('You must hold all remaining uncut wires of that number to solo cut it');
+  }
 
   const turn = await turnsDb.createTurn(gameId, playerId, 'solo_cut', null, wireValue);
 
+  // Legality guarantees every hidden wire of this value belongs to the
+  // player — cut them all. Solo cut can no longer fail (that path lived on
+  // wrong-guess penalties, which now belong to dual cuts only), so this is
+  // always a success.
   const updatedWires: Wire[] = [];
-
-  if (matchingWires.length > 0) {
-    // Cut all matching wires
-    for (const w of matchingWires) {
-      const updated = await wiresDb.updateWireStatus(w.id, 'cut');
-      updatedWires.push(updated);
-    }
-    await turnsDb.updateTurnResult(turn.id, 'success');
-  } else {
-    // Fail — advance detonator
-    await turnsDb.updateTurnResult(turn.id, 'fail');
-    const newPosition = game.detonatorPosition + 1;
-    await gamesDb.updateDetonator(gameId, newPosition);
-
-    if (newPosition >= game.detonatorMax) {
-      const lostGame = await gamesDb.updateGameStatus(gameId, 'lost');
-      return { turn: { ...turn, result: 'fail' }, game: lostGame, updatedWires };
-    }
+  for (const w of hiddenOfValue) {
+    const updated = await wiresDb.updateWireStatus(w.id, 'cut');
+    updatedWires.push(updated);
   }
+  await turnsDb.updateTurnResult(turn.id, 'success');
 
   // Check validation per color for any cut wires
-  const cutColors = new Set(matchingWires.map(w => w.color));
+  const cutColors = new Set(hiddenOfValue.map(w => w.color));
   for (const color of cutColors) {
     await checkValidation(gameId, wireValue, color);
   }
@@ -328,11 +326,11 @@ export async function executeSoloCut(
   const winResult = await checkWinCondition(gameId);
   if (winResult) {
     const wonGame = await gamesDb.updateGameStatus(gameId, 'won');
-    return { turn: { ...turn, result: matchingWires.length > 0 ? 'success' : 'fail' }, game: wonGame, updatedWires };
+    return { turn: { ...turn, result: 'success' }, game: wonGame, updatedWires };
   }
 
   const advancedGame = await advanceTurn(gameId);
-  return { turn: { ...turn, result: matchingWires.length > 0 ? 'success' : 'fail' }, game: advancedGame, updatedWires };
+  return { turn: { ...turn, result: 'success' }, game: advancedGame, updatedWires };
 }
 
 export async function executeDoubleDetector(
@@ -434,7 +432,26 @@ export async function advanceTurn(gameId: string): Promise<Game> {
   if (!game) throw new Error('Game not found');
 
   const players = await playersDb.getPlayersByGameId(gameId);
+  const wires = await wiresDb.getWiresByGameId(gameId);
+  const hiddenCountByPlayer = new Map<string, number>();
+  for (const w of wires) {
+    if (w.status === 'hidden') {
+      hiddenCountByPlayer.set(w.playerId, (hiddenCountByPlayer.get(w.playerId) ?? 0) + 1);
+    }
+  }
+
+  // Rules-correction (#152): a player with no uncut wires left is skipped
+  // when rotating clockwise — no dead turns. Bounded to one full lap; if
+  // every player is fully cut (should be unreachable, the win condition
+  // fires first) this falls through to the plain next seat instead of
+  // looping forever.
   const currentIndex = players.findIndex(p => p.id === game.currentTurnPlayerId);
-  const nextIndex = (currentIndex + 1) % players.length;
+  let nextIndex = currentIndex;
+  for (let i = 0; i < players.length; i++) {
+    nextIndex = (nextIndex + 1) % players.length;
+    if ((hiddenCountByPlayer.get(players[nextIndex].id) ?? 0) > 0) {
+      return await gamesDb.updateCurrentTurn(gameId, players[nextIndex].id);
+    }
+  }
   return await gamesDb.updateCurrentTurn(gameId, players[nextIndex].id);
 }
