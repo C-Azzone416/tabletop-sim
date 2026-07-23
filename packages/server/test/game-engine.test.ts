@@ -10,6 +10,7 @@ vi.mock("../src/db/games.js", () => ({
   updateGameCaptain: vi.fn(),
   updateCurrentTurn: vi.fn(),
   updateDetonator: vi.fn(),
+  updateDetonatorMax: vi.fn(),
   updateMission: vi.fn(),
   setPendingInterrogation: vi.fn(),
   clearPendingInterrogation: vi.fn(),
@@ -145,6 +146,7 @@ describe("game-engine", () => {
       mockGamesDb.updateDetonator.mockResolvedValue({ ...game, detonatorPosition: 0 });
       mockGamesDb.updateGameStatus.mockResolvedValue(setupGame);
       mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1" });
+      mockGamesDb.updateDetonatorMax.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1", detonatorMax: 1 });
       mockWiresDb.createWire.mockImplementation(async (_gid, _pid, val, col, pos) =>
         makeWire({ gameId: "g1", value: val, color: col, rackPosition: pos })
       );
@@ -157,6 +159,37 @@ describe("game-engine", () => {
       expect(result.game.detonatorMax).toBe(1);
       expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", "p1");
       expect(result.game.currentTurnPlayerId).toBe("p1");
+    });
+
+    it("persists the computed detonatorMax to the DB, not just the returned object (issue #137)", async () => {
+      const game = makeGame({ id: "g1", status: "waiting", captainId: "p1" });
+      const players = [
+        makePlayer({ id: "p1", gameId: "g1", seatOrder: 0, ready: true }),
+        makePlayer({ id: "p2", gameId: "g1", seatOrder: 1, ready: true }),
+        makePlayer({ id: "p3", gameId: "g1", seatOrder: 2, ready: true }),
+        makePlayer({ id: "p4", gameId: "g1", seatOrder: 3, ready: true }),
+      ];
+      const setupGame = { ...game, status: "setup" as const };
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      mockGamesDb.updateMission.mockResolvedValue(game);
+      mockGamesDb.updateDetonator.mockResolvedValue({ ...game, detonatorPosition: 0 });
+      mockGamesDb.updateGameStatus.mockResolvedValue(setupGame);
+      mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1" });
+      mockGamesDb.updateDetonatorMax.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1", detonatorMax: 3 });
+      mockWiresDb.createWire.mockImplementation(async (_gid, _pid, val, col, pos) =>
+        makeWire({ gameId: "g1", value: val, color: col, rackPosition: pos })
+      );
+
+      const result = await engine.startGame("g1", "p1");
+
+      // The DB write itself is the assertion that matters here — result.game
+      // comes straight from updateDetonatorMax's return, not a JS-side spread,
+      // so this proves the value is actually persisted (issue #137), not just
+      // computed and handed back in the one-time response.
+      expect(mockGamesDb.updateDetonatorMax).toHaveBeenCalledWith("g1", 3);
+      expect(result.game.detonatorMax).toBe(3);
     });
 
     it.each([
@@ -175,12 +208,14 @@ describe("game-engine", () => {
       mockGamesDb.updateDetonator.mockResolvedValue({ ...game, detonatorPosition: 0 });
       mockGamesDb.updateGameStatus.mockResolvedValue(setupGame);
       mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1" });
+      mockGamesDb.updateDetonatorMax.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1", detonatorMax: expectedLives });
       mockWiresDb.createWire.mockImplementation(async (_gid, _pid, val, col, pos) =>
         makeWire({ gameId: "g1", value: val, color: col, rackPosition: pos })
       );
 
       const result = await engine.startGame("g1", "p1");
 
+      expect(mockGamesDb.updateDetonatorMax).toHaveBeenCalledWith("g1", expectedLives);
       expect(result.game.detonatorMax).toBe(expectedLives);
     });
 
@@ -220,6 +255,7 @@ describe("game-engine", () => {
       mockGamesDb.updateDetonator.mockResolvedValue({ ...game, detonatorPosition: 0 });
       mockGamesDb.updateGameStatus.mockResolvedValue(setupGame);
       mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1" });
+      mockGamesDb.updateDetonatorMax.mockResolvedValue({ ...setupGame, currentTurnPlayerId: "p1", detonatorMax: 1 });
       mockWiresDb.createWire.mockImplementation(async (_gid, _pid, val, col, pos) =>
         makeWire({ gameId: "g1", value: val, color: col, rackPosition: pos })
       );

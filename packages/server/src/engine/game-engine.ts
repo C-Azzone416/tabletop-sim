@@ -71,9 +71,10 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
   // captain (always seat 0) places first, then clockwise via advanceTurn.
   await gamesDb.updateDetonator(gameId, 0);
   await gamesDb.updateGameStatus(gameId, 'setup');
-  const updatedGame = await gamesDb.updateCurrentTurn(gameId, game.captainId!);
+  await gamesDb.updateCurrentTurn(gameId, game.captainId!);
+  const updatedGame = await gamesDb.updateDetonatorMax(gameId, detonatorMax);
 
-  return { game: { ...updatedGame, detonatorMax }, players, wires: createdWires };
+  return { game: updatedGame, players, wires: createdWires };
 }
 
 // Turn-ordered opening placement: captain places first (set as currentTurnPlayerId
