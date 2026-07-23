@@ -17,18 +17,41 @@ export interface SeedResult {
 }
 
 /**
- * Seeds a fully active 4-player game (Dev + Alice + Bob + Carol) via the
- * server's /dev/seed endpoint. startGame + completeSetup have already run,
- * and every player's wires already have info tokens (full knowledge).
+ * Seeds a 4-player game (Dev + Alice + Bob + Carol) via the server's
+ * /dev/seed endpoint. Since the dev-seed-realism change, /dev/seed's default
+ * lands the game at the START of the real opening flow — `setup` status,
+ * captain's turn, zero info tokens — not the old auto-active/all-knowledge
+ * state. Fast-forward defaults to `true` so every existing caller keeps the
+ * old assumption (active game, full token knowledge) without changes: this
+ * calls the new POST /dev/reveal-all-tokens right after seeding, which
+ * completes any remaining setup placement and backfills a token for every
+ * wire. Pass `{ fastForward: false }` to get the real, drivable opening
+ * flow instead (see setup-flow.spec.ts).
+ *
  * Since PR #107, the response's `players` array carries a real profileId for
  * every seeded player (not just Dev), so any of the 4 seats can be driven
  * via gameUrl() + a separate browser context — see multiplayer-sync.spec.ts.
  */
-export async function seedGame(mission = 1): Promise<SeedResult> {
+export async function seedGame(
+  mission = 1,
+  options: { fastForward?: boolean } = {},
+): Promise<SeedResult> {
+  const { fastForward = true } = options;
   const ctx = await request.newContext({ baseURL: API_URL });
   const res = await ctx.post("/dev/seed", { data: { mission } });
   if (!res.ok()) throw new Error(`Seed failed: ${res.status()}`);
-  return res.json();
+  const result: SeedResult = await res.json();
+
+  if (fastForward) {
+    const revealRes = await ctx.post("/dev/reveal-all-tokens", {
+      data: { joinCode: result.joinCode },
+    });
+    if (!revealRes.ok()) {
+      throw new Error(`Reveal-all-tokens failed: ${revealRes.status()}`);
+    }
+  }
+
+  return result;
 }
 
 /**
