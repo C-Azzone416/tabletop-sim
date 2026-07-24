@@ -320,8 +320,8 @@ export async function executeCompleteDualCut(
   await gamesDb.clearPendingDualCut(gameId);
 
   // Check validation for both wires
-  await checkValidation(gameId, targetWire.value!, targetWire.color);
-  await checkValidation(gameId, ownWire.value!, ownWire.color);
+  await checkValidation(gameId, targetWire.value!, targetWire.color!);
+  await checkValidation(gameId, ownWire.value!, ownWire.color!);
 
   // Check win condition
   let updatedGame: Game;
@@ -368,7 +368,7 @@ export async function executeSoloCut(
   await turnsDb.updateTurnResult(turn.id, 'success');
 
   // Check validation per color for any cut wires
-  const cutColors = new Set(hiddenOfValue.map(w => w.color));
+  const cutColors = new Set(hiddenOfValue.map(w => w.color!));
   for (const color of cutColors) {
     await checkValidation(gameId, wireValue, color);
   }

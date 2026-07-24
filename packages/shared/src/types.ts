@@ -41,7 +41,12 @@ export interface Wire {
   gameId: string;
   playerId: string;
   value: string | null;
-  color: WireColor;
+  /**
+   * Null in client-bound views of OTHER players' hidden wires (#187):
+   * color is mission-deciding information on red-wire missions, so it is
+   * redacted exactly like value. Always present on server-side DB rows.
+   */
+  color: WireColor | null;
   /**
    * 1-based position in the player's rack (wire-dealer.ts assigns
    * index + 1, never 0). This is already the player-facing "Wire #N"

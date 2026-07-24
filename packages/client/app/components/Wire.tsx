@@ -14,7 +14,10 @@ interface WireProps {
 function colorBgClass(color: WireType["color"]): string {
   if (color === "blue") return "bg-blue-100 dark:bg-blue-900/30";
   if (color === "yellow") return "bg-yellow-100 dark:bg-yellow-900/30";
-  return "bg-red-100 dark:bg-red-900/30";
+  if (color === "red") return "bg-red-100 dark:bg-red-900/30";
+  // null — another player's hidden wire, color redacted server-side (#187);
+  // neutral facedown treatment (visual refinement tracked as #188).
+  return "bg-zinc-100 dark:bg-zinc-800";
 }
 
 export function Wire({

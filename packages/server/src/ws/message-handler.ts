@@ -300,7 +300,7 @@ async function handleRespondDualCut(socket: WebSocket, accepted: boolean): Promi
       type: 'dual_cut_correct',
       targetWireId: pendingWire.id,
       targetWireRackPosition: pendingWire.rackPosition,
-      targetWireColor: pendingWire.color,
+      targetWireColor: pendingWire.color!,
     };
     connManager.broadcastToGame(info.gameId, correctMsg);
     return 'success';

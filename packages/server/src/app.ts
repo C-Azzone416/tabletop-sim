@@ -300,7 +300,7 @@ export async function buildApp() {
 
       await gamesDb.updateCurrentTurn(gameId, devPlayerId);
 
-      return { value: wireA.value!, color: wireA.color };
+      return { value: wireA.value!, color: wireA.color! };
     };
 
     app.post('/dev/seed-near-win', async (request, reply) => {

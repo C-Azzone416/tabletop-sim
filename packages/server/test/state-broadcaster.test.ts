@@ -39,6 +39,37 @@ describe("state-broadcaster", () => {
       expect(view[1].value).toBeNull(); // other's wire — redacted
     });
 
+    // #187 negative-path test (per the #decisions 2026-07-24 policy): another
+    // player's hidden wire must arrive with BOTH value and color null —
+    // color alone is mission-deciding information on red-wire missions.
+    it("redacts BOTH value and color on other players' hidden wires", () => {
+      const wires = [
+        makeWire({ id: "w1", playerId: "p1", value: "3", color: "red", status: "hidden" }),
+        makeWire({ id: "w2", playerId: "p2", value: "5", color: "red", status: "hidden" }),
+        makeWire({ id: "w3", playerId: "p2", value: "2", color: "yellow", status: "hidden" }),
+      ];
+
+      const view = buildPlayerView(wires, "p1");
+      expect(view[0].color).toBe("red"); // own wire — color visible
+      expect(view[1].value).toBeNull();
+      expect(view[1].color).toBeNull(); // other's hidden red — fully redacted
+      expect(view[2].value).toBeNull();
+      expect(view[2].color).toBeNull(); // other's hidden yellow — fully redacted
+    });
+
+    it("keeps color on other players' cut and revealed wires (public once resolved)", () => {
+      const wires = [
+        makeWire({ id: "w1", playerId: "p2", value: "3", color: "blue", status: "cut" }),
+        makeWire({ id: "w2", playerId: "p2", value: "1", color: "red", status: "revealed" }),
+      ];
+
+      const view = buildPlayerView(wires, "p1");
+      expect(view[0].color).toBe("blue");
+      expect(view[0].value).toBe("3");
+      expect(view[1].color).toBe("red");
+      expect(view[1].value).toBe("1");
+    });
+
     it("does not redact own cut wires", () => {
       const wires = [
         makeWire({ id: "w1", playerId: "p1", value: "3", status: "cut" }),
