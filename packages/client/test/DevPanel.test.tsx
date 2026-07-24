@@ -147,6 +147,27 @@ describe("DevPanel", () => {
     expect(screen.queryByText("Reveal All Tokens")).not.toBeInTheDocument();
   });
 
+  // #171: DevPanel sat at z-40 under GameOverOverlay's z-50 backdrop, making
+  // the seat switcher unclickable during game-over. Pin both render states to
+  // the overlay-topping layer so a styling pass can't silently sink it again.
+  it("stacks above overlay backdrops (z-50) in both collapsed and open states", async () => {
+    const user = userEvent.setup();
+    render(
+      <DevPanel
+        seatOptions={seats}
+        activeProfileId="p1"
+        onSwitchSeat={vi.fn()}
+        onRevealAllTokens={vi.fn()}
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: "Open dev tools" });
+    expect(toggle.className).toContain("z-[60]");
+    await user.click(toggle);
+    const panel = screen.getByText(/\[DEV\] Tools/).closest("div.fixed");
+    expect(panel).not.toBeNull();
+    expect((panel as HTMLElement).className).toContain("z-[60]");
+  });
+
   it("does not render the seat section when seatOptions is empty", async () => {
     const user = userEvent.setup();
     render(
