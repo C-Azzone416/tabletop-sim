@@ -1,0 +1,20 @@
+name: Gitleaks
+
+# #185 — secret scanning, independent of the main CI job (no Node/Postgres
+# setup needed, so it stays fast and runs even if the main job is broken).
+on:
+  pull_request:
+    branches:
+      - develop
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
