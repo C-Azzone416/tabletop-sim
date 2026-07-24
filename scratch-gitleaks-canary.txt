@@ -1,0 +1,3 @@
+Scratch file for #185's Gitleaks acceptance test — NOT a real credential.
+AKIAABCDEFGHIJKLMNOP
+This branch is deleted immediately after the trip is verified.
