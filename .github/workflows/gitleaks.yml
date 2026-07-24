@@ -10,6 +10,14 @@ on:
 jobs:
   gitleaks:
     runs-on: ubuntu-latest
+    # gitleaks-action's PR mode calls GET /pulls/:number/commits to scan just
+    # the PR's diff — the default GITHUB_TOKEN in this repo is read-only on
+    # contents only, so that call 403s ("Resource not accessible by
+    # integration") before any scanning happens. pull-requests: read is the
+    # documented minimum gitleaks-action needs for this mode.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
