@@ -77,6 +77,11 @@ vi.mock("../src/db/migrations.js", () => ({
   getMigrationsStatus: vi.fn(),
 }));
 
+vi.mock("../src/db/outcomes.js", () => ({
+  upsertMissionOutcome: vi.fn(),
+  getMissionOutcomesByProfileId: vi.fn(),
+}));
+
 vi.mock("../src/engine/game-engine.js", () => ({
   createGame: vi.fn(),
   startGame: vi.fn(),
@@ -100,6 +105,7 @@ import * as tokensDb from "../src/db/tokens.js";
 import * as engine from "../src/engine/game-engine.js";
 import * as stateBroadcaster from "../src/ws/state-broadcaster.js";
 import * as migrationsDb from "../src/db/migrations.js";
+import * as outcomesDb from "../src/db/outcomes.js";
 import { buildApp } from "../src/app.js";
 
 const mockProfilesDb = vi.mocked(profilesDb);
@@ -207,6 +213,55 @@ describe("routes", () => {
         url: "/profiles",
         payload: { name: "Alice" },
       });
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "Internal server error" });
+    });
+  });
+
+  describe("GET /profiles/:id/mission-outcomes", () => {
+    const mockOutcomesDb = vi.mocked(outcomesDb);
+
+    it("returns the profile's outcomes ordered by mission", async () => {
+      const profile = makeProfile({ id: "prof-1", name: "Alice" });
+      const outcomes = [
+        { profileId: "prof-1", mission: 1, outcome: "won" as const, updatedAt: "2026-07-24T00:00:00Z" },
+        { profileId: "prof-1", mission: 2, outcome: "lost" as const, updatedAt: "2026-07-24T00:00:00Z" },
+      ];
+      mockProfilesDb.getProfileById.mockResolvedValue(profile);
+      mockOutcomesDb.getMissionOutcomesByProfileId.mockResolvedValue(outcomes);
+
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1/mission-outcomes" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ outcomes });
+      expect(mockOutcomesDb.getMissionOutcomesByProfileId).toHaveBeenCalledWith("prof-1");
+    });
+
+    it("returns an empty array for a profile with no recorded outcomes", async () => {
+      mockProfilesDb.getProfileById.mockResolvedValue(makeProfile({ id: "prof-1" }));
+      mockOutcomesDb.getMissionOutcomesByProfileId.mockResolvedValue([]);
+
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1/mission-outcomes" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ outcomes: [] });
+    });
+
+    it("returns 404 for an unknown profile", async () => {
+      mockProfilesDb.getProfileById.mockResolvedValue(null);
+
+      const res = await app.inject({ method: "GET", url: "/profiles/nope/mission-outcomes" });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: "Profile not found" });
+    });
+
+    it("returns 500 on DB error", async () => {
+      mockProfilesDb.getProfileById.mockResolvedValue(makeProfile({ id: "prof-1" }));
+      mockOutcomesDb.getMissionOutcomesByProfileId.mockRejectedValue(new Error("DB down"));
+
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1/mission-outcomes" });
+
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Internal server error" });
     });

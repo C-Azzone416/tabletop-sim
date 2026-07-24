@@ -22,6 +22,7 @@ vi.mock("../src/db/players.js", () => ({
   createPlayer: vi.fn(),
   getPlayersByGameId: vi.fn(),
   getPlayerById: vi.fn(),
+  getPlayerProfileIdsByGameId: vi.fn(),
   markDoubleDetectorUsed: vi.fn(),
   markSetupDone: vi.fn(),
   resetDoubleDetectorForGame: vi.fn(),
@@ -54,11 +55,17 @@ vi.mock("../src/db/turns.js", () => ({
   deleteByGameId: vi.fn(),
 }));
 
+vi.mock("../src/db/outcomes.js", () => ({
+  upsertMissionOutcome: vi.fn(),
+  getMissionOutcomesByProfileId: vi.fn(),
+}));
+
 import * as gamesDb from "../src/db/games.js";
 import * as playersDb from "../src/db/players.js";
 import * as wiresDb from "../src/db/wires.js";
 import * as tokensDb from "../src/db/tokens.js";
 import * as turnsDb from "../src/db/turns.js";
+import * as outcomesDb from "../src/db/outcomes.js";
 import * as engine from "../src/engine/game-engine.js";
 
 const mockGamesDb = vi.mocked(gamesDb);
@@ -66,11 +73,15 @@ const mockPlayersDb = vi.mocked(playersDb);
 const mockWiresDb = vi.mocked(wiresDb);
 const mockTokensDb = vi.mocked(tokensDb);
 const mockTurnsDb = vi.mocked(turnsDb);
+const mockOutcomesDb = vi.mocked(outcomesDb);
 
 describe("game-engine", () => {
   beforeEach(() => {
     resetIds();
     vi.clearAllMocks();
+    // endGame (#170) fetches seated profile ids on every won/lost
+    // transition; default to none so existing win/loss tests run unchanged.
+    mockPlayersDb.getPlayerProfileIdsByGameId.mockResolvedValue([]);
   });
 
   describe("createGame", () => {
@@ -648,6 +659,105 @@ describe("game-engine", () => {
       expect(mockGamesDb.updateGameStatus).toHaveBeenCalledWith("g1", "won");
       expect(result.game.status).toBe("won");
       expect(mockGamesDb.updateCurrentTurn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("mission outcome recording (#170)", () => {
+    it("records 'won' for every seated profile when a solo cut wins the game", async () => {
+      const game = makeGame({ id: "g1", status: "active", currentTurnPlayerId: "p1", mission: 3, detonatorMax: 4 });
+      const wire1 = makeWire({ id: "w1", playerId: "p1", value: "3", color: "blue", status: "hidden" });
+      const turn = makeTurn({ id: "t1" });
+      const wonGame = { ...game, status: "won" as const };
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWiresByValueAndGame.mockResolvedValue([wire1]);
+      mockTurnsDb.createTurn.mockResolvedValue(turn);
+      mockWiresDb.updateWireStatus.mockResolvedValue({ ...wire1, status: "cut" });
+      mockTurnsDb.updateTurnResult.mockResolvedValue({ ...turn, result: "success" });
+      mockWiresDb.getWiresByValueColorAndGame.mockResolvedValue([makeWire({ status: "cut" })]);
+      mockWiresDb.getWiresByGameId.mockResolvedValue([makeWire({ status: "cut" })]);
+      mockGamesDb.updateGameStatus.mockResolvedValue(wonGame);
+      mockPlayersDb.getPlayerProfileIdsByGameId.mockResolvedValue(["prof-1", "prof-2", "prof-3"]);
+
+      await engine.executeSoloCut("g1", "p1", "3");
+
+      expect(mockPlayersDb.getPlayerProfileIdsByGameId).toHaveBeenCalledWith("g1");
+      expect(mockOutcomesDb.upsertMissionOutcome).toHaveBeenCalledTimes(3);
+      expect(mockOutcomesDb.upsertMissionOutcome).toHaveBeenCalledWith("prof-1", 3, "won");
+      expect(mockOutcomesDb.upsertMissionOutcome).toHaveBeenCalledWith("prof-2", 3, "won");
+      expect(mockOutcomesDb.upsertMissionOutcome).toHaveBeenCalledWith("prof-3", 3, "won");
+    });
+
+    it("records 'lost' for every seated profile on a red-wire game over", async () => {
+      const game = makeGame({
+        id: "g1", status: "active", currentTurnPlayerId: "p1", mission: 2,
+        pendingDualCutWireId: "w1", pendingDualCutProposerId: "p1", pendingDualCutGuessedValue: "1",
+      });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p2", color: "red", value: "1", status: "hidden" });
+      const turn = makeTurn({ id: "t1" });
+      const lostGame = { ...game, status: "lost" as const };
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWireById.mockResolvedValue(wire);
+      mockTurnsDb.createTurn.mockResolvedValue(turn);
+      mockTurnsDb.updateTurnResult.mockResolvedValue({ ...turn, result: "fail" });
+      mockGamesDb.clearPendingDualCut.mockResolvedValue(game);
+      mockGamesDb.updateGameStatus.mockResolvedValue(lostGame);
+      mockPlayersDb.getPlayerProfileIdsByGameId.mockResolvedValue(["prof-1", "prof-2"]);
+
+      await engine.executeRespondDualCut("g1", "p2", false);
+
+      expect(mockOutcomesDb.upsertMissionOutcome).toHaveBeenCalledTimes(2);
+      expect(mockOutcomesDb.upsertMissionOutcome).toHaveBeenCalledWith("prof-1", 2, "lost");
+      expect(mockOutcomesDb.upsertMissionOutcome).toHaveBeenCalledWith("prof-2", 2, "lost");
+    });
+
+    it("records nothing when no seated player has a profile", async () => {
+      const game = makeGame({
+        id: "g1", status: "active", currentTurnPlayerId: "p1", mission: 1,
+        pendingDualCutWireId: "w1", pendingDualCutProposerId: "p1", pendingDualCutGuessedValue: "1",
+      });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p2", color: "red", value: "1", status: "hidden" });
+      const turn = makeTurn({ id: "t1" });
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWireById.mockResolvedValue(wire);
+      mockTurnsDb.createTurn.mockResolvedValue(turn);
+      mockTurnsDb.updateTurnResult.mockResolvedValue({ ...turn, result: "fail" });
+      mockGamesDb.clearPendingDualCut.mockResolvedValue(game);
+      mockGamesDb.updateGameStatus.mockResolvedValue({ ...game, status: "lost" as const });
+      mockPlayersDb.getPlayerProfileIdsByGameId.mockResolvedValue([]);
+
+      await engine.executeRespondDualCut("g1", "p2", false);
+
+      expect(mockOutcomesDb.upsertMissionOutcome).not.toHaveBeenCalled();
+    });
+
+    it("records 'lost' when the detonator reaches max on a wrong guess", async () => {
+      const game = makeGame({
+        id: "g1", status: "active", currentTurnPlayerId: "p1", mission: 4,
+        detonatorPosition: 2, detonatorMax: 3,
+        pendingDualCutWireId: "w1", pendingDualCutProposerId: "p1", pendingDualCutGuessedValue: "5",
+      });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p2", color: "blue", value: "3", status: "hidden" });
+      const turn = makeTurn({ id: "t1" });
+      const detonatedGame = { ...game, detonatorPosition: 3 };
+      const lostGame = { ...detonatedGame, status: "lost" as const };
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWireById.mockResolvedValue(wire);
+      mockTokensDb.createInfoToken.mockResolvedValue({ id: "t-info", gameId: "g1", wireId: "w1", value: "3", placedAt: "2026-01-01T00:00:00Z" });
+      mockTurnsDb.createTurn.mockResolvedValue(turn);
+      mockTurnsDb.updateTurnResult.mockResolvedValue({ ...turn, result: "fail" });
+      mockGamesDb.clearPendingDualCut.mockResolvedValue(game);
+      mockGamesDb.updateDetonator.mockResolvedValue(detonatedGame);
+      mockGamesDb.updateGameStatus.mockResolvedValue(lostGame);
+      mockPlayersDb.getPlayerProfileIdsByGameId.mockResolvedValue(["prof-1"]);
+
+      const result = await engine.executeRespondDualCut("g1", "p2", false);
+
+      expect(result.phase).toBe("game_over");
+      expect(mockOutcomesDb.upsertMissionOutcome).toHaveBeenCalledWith("prof-1", 4, "lost");
     });
   });
 

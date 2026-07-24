@@ -6,7 +6,22 @@ import * as playersDb from '../db/players.js';
 import * as wiresDb from '../db/wires.js';
 import * as tokensDb from '../db/tokens.js';
 import * as turnsDb from '../db/turns.js';
+import * as outcomesDb from '../db/outcomes.js';
 import { dealWires } from './wire-dealer.js';
+
+// #170 — the single way a game reaches 'won'/'lost'. Besides the status
+// transition, records the mission outcome for every seated profile
+// (best-outcome-wins upsert), so the home-screen indicators and #179's
+// unlock derivation always have the record the moment the game ends —
+// including before a #157 next_mission resets the same game row.
+async function endGame(gameId: string, result: 'won' | 'lost'): Promise<Game> {
+  const endedGame = await gamesDb.updateGameStatus(gameId, result);
+  const profileIds = await playersDb.getPlayerProfileIdsByGameId(gameId);
+  for (const profileId of profileIds) {
+    await outcomesDb.upsertMissionOutcome(profileId, endedGame.mission, result);
+  }
+  return endedGame;
+}
 
 function generateJoinCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -257,7 +272,7 @@ export async function executeRespondDualCut(
     const turn = await turnsDb.createTurn(gameId, proposerId, 'dual_cut', wire.id, game.pendingDualCutGuessedValue);
     await turnsDb.updateTurnResult(turn.id, 'fail');
     await gamesDb.clearPendingDualCut(gameId);
-    const lostGame = await gamesDb.updateGameStatus(gameId, 'lost');
+    const lostGame = await endGame(gameId, 'lost');
     return { phase: 'game_over', turn: { ...turn, result: 'fail' }, game: lostGame, updatedWires: [] };
   }
 
@@ -273,7 +288,7 @@ export async function executeRespondDualCut(
   let updatedGame = await gamesDb.updateDetonator(gameId, newPosition);
 
   if (newPosition >= game.detonatorMax) {
-    updatedGame = await gamesDb.updateGameStatus(gameId, 'lost');
+    updatedGame = await endGame(gameId, 'lost');
     return { phase: 'game_over', turn: { ...turn, result: 'fail' }, game: updatedGame, updatedWires: [] };
   }
 
@@ -327,7 +342,7 @@ export async function executeCompleteDualCut(
   let updatedGame: Game;
   const winResult = await checkWinCondition(gameId);
   if (winResult) {
-    updatedGame = await gamesDb.updateGameStatus(gameId, 'won');
+    updatedGame = await endGame(gameId, 'won');
   } else {
     updatedGame = await advanceTurn(gameId);
   }
@@ -376,7 +391,7 @@ export async function executeSoloCut(
   // Check win
   const winResult = await checkWinCondition(gameId);
   if (winResult) {
-    const wonGame = await gamesDb.updateGameStatus(gameId, 'won');
+    const wonGame = await endGame(gameId, 'won');
     return { turn: { ...turn, result: 'success' }, game: wonGame, updatedWires };
   }
 

@@ -4,6 +4,7 @@ import websocket from '@fastify/websocket';
 import * as gamesDb from './db/games.js';
 import * as playersDb from './db/players.js';
 import * as profilesDb from './db/profiles.js';
+import * as outcomesDb from './db/outcomes.js';
 import * as tokensDb from './db/tokens.js';
 import * as wiresDb from './db/wires.js';
 import { getMigrationsStatus } from './db/migrations.js';
@@ -80,6 +81,22 @@ export async function buildApp() {
       return { profile };
     } catch (err) {
       app.log.error({ err }, '[GET /profiles/:id] DB error');
+      return reply.status(500).send({ error: 'Internal server error' });
+    }
+  });
+
+  // #170 — per-profile mission outcomes for the home-screen indicators.
+  // Missions absent from the array were never played.
+  app.get<{ Params: { id: string } }>('/profiles/:id/mission-outcomes', async (request, reply) => {
+    try {
+      const profile = await profilesDb.getProfileById(request.params.id);
+      if (!profile) {
+        return reply.status(404).send({ error: 'Profile not found' });
+      }
+      const outcomes = await outcomesDb.getMissionOutcomesByProfileId(profile.id);
+      return { outcomes };
+    } catch (err) {
+      app.log.error({ err }, '[GET /profiles/:id/mission-outcomes] DB error');
       return reply.status(500).send({ error: 'Internal server error' });
     }
   });

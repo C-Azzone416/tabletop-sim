@@ -33,6 +33,7 @@ const migrations = [
   '008_duo_cut_pending.sql',
   '009_dual_cut.sql',
   '010_info_token_dev_created.sql',
+  '011_mission_outcomes.sql',
 ];
 
 async function run() {
