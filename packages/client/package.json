@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "@tabletop/shared": "*",
-    "next": "16.1.7",
-    "next-auth": "^5.0.0-beta.30",
+    "next": "16.2.11",
+    "next-auth": "5.0.0-beta.32",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
@@ -31,7 +31,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9",
-    "eslint-config-next": "16.1.7",
+    "eslint-config-next": "16.2.11",
     "jsdom": "^29.0.1",
     "tailwindcss": "^4",
     "typescript": "^5",
