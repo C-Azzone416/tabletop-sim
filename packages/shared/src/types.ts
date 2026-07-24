@@ -57,6 +57,12 @@ export interface InfoToken {
   wireId: string;
   value: string;
   placedAt: string;
+  /**
+   * True for tokens created by dev tooling (/dev/reveal-all-tokens, the
+   * seed-near-win backfill) rather than real gameplay. Only these are
+   * removed by POST /dev/hide-dev-tokens (#172).
+   */
+  devCreated: boolean;
 }
 
 export interface ValidationToken {

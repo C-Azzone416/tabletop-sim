@@ -1,13 +1,23 @@
 import { sql } from './client.js';
 import type { InfoToken, ValidationToken, WireColor } from '@tabletop/shared';
 
-export async function createInfoToken(gameId: string, wireId: string, value: string): Promise<InfoToken> {
+export async function createInfoToken(gameId: string, wireId: string, value: string, devCreated = false): Promise<InfoToken> {
   const rows = await sql`
-    INSERT INTO info_tokens (game_id, wire_id, value)
-    VALUES (${gameId}, ${wireId}, ${value})
+    INSERT INTO info_tokens (game_id, wire_id, value, dev_created)
+    VALUES (${gameId}, ${wireId}, ${value}, ${devCreated})
     RETURNING *
   `;
   return mapInfoToken(rows[0]);
+}
+
+// #172 — removes only dev-tooling-created tokens (reveal-all undo); gameplay
+// tokens are never dev_created and survive. Returns the removed count.
+export async function deleteDevInfoTokensByGameId(gameId: string): Promise<number> {
+  const rows = await sql`
+    DELETE FROM info_tokens WHERE game_id = ${gameId} AND dev_created = TRUE
+    RETURNING id
+  `;
+  return rows.length;
 }
 
 export async function getInfoTokensByGameId(gameId: string): Promise<InfoToken[]> {
@@ -48,6 +58,7 @@ function mapInfoToken(row: Record<string, unknown>): InfoToken {
     wireId: row.wire_id as string,
     value: row.value as string,
     placedAt: row.placed_at as string,
+    devCreated: row.dev_created as boolean,
   };
 }
 

@@ -16,6 +16,7 @@ export const EXPECTED_MIGRATIONS = [
   '007_wire_interrogation.sql',
   '008_duo_cut_pending.sql',
   '009_dual_cut.sql',
+  '010_info_token_dev_created.sql',
 ];
 
 export async function getMigrationsStatus(): Promise<{

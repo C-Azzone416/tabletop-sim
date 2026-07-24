@@ -42,6 +42,7 @@ describe("getMigrationsStatus", () => {
       "006_setup_done.sql",
       "008_duo_cut_pending.sql",
       "009_dual_cut.sql",
+      "010_info_token_dev_created.sql",
     ]);
   });
 

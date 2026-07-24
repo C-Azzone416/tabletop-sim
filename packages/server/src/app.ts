@@ -221,7 +221,7 @@ export async function buildApp() {
           const wires = await wiresDb.getWiresByPlayerId(p.id);
           for (const wire of wires) {
             if (wire.value !== null) {
-              await tokensDb.createInfoToken(game.id, wire.id, wire.value);
+              await tokensDb.createInfoToken(game.id, wire.id, wire.value, true);
             }
           }
         }
@@ -372,7 +372,7 @@ export async function buildApp() {
         let created = 0;
         for (const wire of wires) {
           if (wire.value === null || wiresWithTokens.has(wire.id)) continue;
-          await tokensDb.createInfoToken(game.id, wire.id, wire.value);
+          await tokensDb.createInfoToken(game.id, wire.id, wire.value, true);
           created += 1;
         }
 
@@ -382,6 +382,33 @@ export async function buildApp() {
       } catch (err) {
         app.log.error({ err }, '[POST /dev/reveal-all-tokens] error');
         return reply.status(500).send({ error: 'Reveal failed' });
+      }
+    });
+
+    // #172 — the reveal-all undo: removes only dev-created info tokens
+    // (dev_created = TRUE), leaving gameplay-placed tokens untouched. Does
+    // NOT revert setup completion — if reveal-all completed setup, that
+    // transition is one-way and the game stays active.
+    app.post('/dev/hide-dev-tokens', async (request, reply) => {
+      try {
+        const { joinCode } = request.body as { joinCode?: string };
+        if (!joinCode) return reply.status(400).send({ error: 'joinCode is required' });
+
+        const game = await gamesDb.getGameByJoinCode(joinCode);
+        if (!game) return reply.status(404).send({ error: 'Game not found' });
+        if (game.status !== 'setup' && game.status !== 'active') {
+          return reply.status(400).send({ error: `Cannot hide tokens for a game in '${game.status}' status` });
+        }
+
+        const tokensRemoved = await tokensDb.deleteDevInfoTokensByGameId(game.id);
+
+        const players = await playersDb.getPlayersByGameId(game.id);
+        await broadcastGameState(game.id, game, players);
+
+        return { joinCode, tokensRemoved, game };
+      } catch (err) {
+        app.log.error({ err }, '[POST /dev/hide-dev-tokens] error');
+        return reply.status(500).send({ error: 'Hide failed' });
       }
     });
 
