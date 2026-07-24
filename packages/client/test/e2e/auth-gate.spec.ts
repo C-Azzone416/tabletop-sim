@@ -36,7 +36,10 @@ test("unauthenticated /game/:joinCode redirects to sign-in and never opens a Web
     // hit is exactly what an unauthenticated visitor's browser sends.
     await page.goto(`${BASE_URL}/game/${seed.joinCode}`);
 
-    await expect(page).toHaveURL(`${BASE_URL}/`);
+    // NextAuth's own redirect appends its standard ?callbackUrl=... param
+    // (so it can return here post-sign-in) — assert the path, not an exact
+    // URL match against a param this fix doesn't control.
+    await expect(page).toHaveURL(new RegExp(`^${BASE_URL}/(\\?.*)?$`));
     await expect(
       page.getByRole("heading", { name: "Tabletop Simulator" }),
     ).toBeVisible({ timeout: 10_000 });
