@@ -4,6 +4,7 @@ import {
   seedNearWinGame,
   cleanupGame,
   gameUrl,
+  gameUrlWithSeats,
   findOpponentHiddenWireByColor,
   findLocalDuplicateValuePair,
   type SeedResult,
@@ -121,7 +122,11 @@ test("mission win condition: all safe wires cleared shows Mission Complete overl
 }) => {
   const seed = await seedNearWinGame(1);
   try {
-    await page.goto(gameUrl(seed));
+    // gameUrlWithSeats (not gameUrl): the #171 regression below needs the
+    // DevPanel seat switcher populated, which only happens via the
+    // seatOptions query param. Safe here — the game loads already active,
+    // so the #149 setup→active auto-seat-follow never fires.
+    await page.goto(gameUrlWithSeats(seed));
     await expect(page.getByText("Your turn — choose an action")).toBeVisible({
       timeout: 10_000,
     });
@@ -142,6 +147,18 @@ test("mission win condition: all safe wires cleared shows Mission Complete overl
     await confirmBtn.click();
 
     await expect(page.getByText("Mission Complete!")).toBeVisible({ timeout: 10_000 });
+
+    // #171 regression: the dev panel must stay clickable while the game-over
+    // overlay's full-screen backdrop is up (it used to sit underneath at
+    // z-40 vs z-50, so these clicks would fail on pointer interception).
+    // Switching to a non-captain seat is the exact flow Caroline was blocked
+    // on — the reconnect-as-Alice round trip should land on the overlay's
+    // waiting state instead of the captain's mission controls.
+    await page.getByRole("button", { name: /Open dev tools/ }).click();
+    await page.getByRole("button", { name: "Alice", exact: true }).click();
+    await expect(
+      page.getByText("Waiting for the captain to choose the next mission..."),
+    ).toBeVisible({ timeout: 10_000 });
   } finally {
     await cleanupGame(seed.joinCode);
   }

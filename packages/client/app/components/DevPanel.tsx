@@ -24,6 +24,12 @@ interface DevPanelProps {
 // sitting directly on top of it once the player scrolls down to act —
 // confirmed by screenshot during review. Nothing else claims the top-right
 // corner (JoinCodeBadge is top-left, ErrorToast is top-center).
+//
+// #171: must stack ABOVE full-screen overlay backdrops (GameOverOverlay and
+// the GameBoard dialogs, all z-50) — dev tools have to stay usable in every
+// game state, e.g. switching to the captain seat during game-over to drive
+// next_mission. z-[60] shares ErrorToast's layer; they never overlap
+// geometrically (top-center vs top-right).
 export function DevPanel({
   seatOptions,
   activeProfileId,
@@ -43,7 +49,7 @@ export function DevPanel({
       <button
         onClick={() => setOpen(true)}
         aria-label="Open dev tools"
-        className="fixed top-24 right-4 z-40 rounded-lg border border-amber-400 bg-amber-100 px-3 py-1.5 font-mono text-xs font-medium text-amber-800 shadow-md hover:bg-amber-200 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+        className="fixed top-24 right-4 z-[60] rounded-lg border border-amber-400 bg-amber-100 px-3 py-1.5 font-mono text-xs font-medium text-amber-800 shadow-md hover:bg-amber-200 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
       >
         [DEV]{activeSeatName && ` Viewing: ${activeSeatName}`}
       </button>
@@ -51,7 +57,7 @@ export function DevPanel({
   }
 
   return (
-    <div className="fixed top-24 right-4 z-40 flex max-w-xs flex-col gap-3 rounded-lg border border-amber-400 bg-white p-3 font-mono text-xs shadow-lg dark:border-amber-600 dark:bg-zinc-900">
+    <div className="fixed top-24 right-4 z-[60] flex max-w-xs flex-col gap-3 rounded-lg border border-amber-400 bg-white p-3 font-mono text-xs shadow-lg dark:border-amber-600 dark:bg-zinc-900">
       <div className="flex items-center justify-between">
         <span className="font-semibold text-amber-800 dark:text-amber-400">
           [DEV] Tools{activeSeatName && ` — Viewing: ${activeSeatName}`}

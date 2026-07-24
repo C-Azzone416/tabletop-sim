@@ -78,6 +78,18 @@ export function gameUrl({ joinCode, profileId, playerName }: SeedResult): string
   return `${BASE_URL}/game/${joinCode}?profileId=${profileId}&playerName=${encodeURIComponent(playerName)}`;
 }
 
+/**
+ * gameUrl plus the dev-only seatOptions query param (see parseSeatOptions.ts),
+ * so the DevPanel seat switcher is populated with every seeded player. Kept
+ * separate from gameUrl because seatOptions also arms GameClient's #149
+ * setup→active auto-seat-follow, which specs driving the setup flow don't
+ * expect.
+ */
+export function gameUrlWithSeats(seed: SeedResult): string {
+  const seats = seed.players.map((p) => ({ name: p.name, profileId: p.profileId }));
+  return `${gameUrl(seed)}&seatOptions=${encodeURIComponent(JSON.stringify(seats))}`;
+}
+
 export async function advanceTurn(joinCode: string): Promise<{ currentTurnPlayerId: string; playerName: string }> {
   const ctx = await request.newContext({ baseURL: API_URL });
   const res = await ctx.post("/dev/advance-turn", { data: { joinCode } });
