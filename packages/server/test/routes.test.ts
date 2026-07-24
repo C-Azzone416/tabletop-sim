@@ -31,6 +31,7 @@ vi.mock("../src/db/players.js", () => ({
 
 vi.mock("../src/db/tokens.js", () => ({
   createInfoToken: vi.fn(),
+  deleteDevInfoTokensByGameId: vi.fn(),
   getInfoTokensByGameId: vi.fn(),
   createValidationToken: vi.fn(),
   getValidationTokensByGameId: vi.fn(),
@@ -440,7 +441,7 @@ describe("routes", () => {
       expect(res.json()).toEqual({ joinCode: "DEVGAME", tokensCreated: 1, game: activeGame });
       expect(mockEngine.completeSetup).toHaveBeenCalledWith("g1");
       expect(mockTokensDb.createInfoToken).toHaveBeenCalledTimes(1);
-      expect(mockTokensDb.createInfoToken).toHaveBeenCalledWith("g1", "w2", "5");
+      expect(mockTokensDb.createInfoToken).toHaveBeenCalledWith("g1", "w2", "5", true);
       expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", activeGame, players);
     });
 
@@ -502,6 +503,90 @@ describe("routes", () => {
       const res = await seedApp.inject({ method: "POST", url: "/dev/reveal-all-tokens", payload: { joinCode: "DEVGAME" } });
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Reveal failed" });
+    });
+  });
+
+  describe("POST /dev/hide-dev-tokens", () => {
+    let seedApp: FastifyInstance;
+
+    beforeEach(async () => {
+      process.env.ENABLE_DEV_SEED = "true";
+      seedApp = await buildApp();
+    });
+
+    afterEach(async () => {
+      await seedApp.close();
+      delete process.env.ENABLE_DEV_SEED;
+    });
+
+    it("removes only dev-created tokens and broadcasts the updated state", async () => {
+      const activeGame = makeGame({ id: "g1", joinCode: "DEVGAME", status: "active" });
+      const players = [makePlayer({ id: "p1", gameId: "g1" }), makePlayer({ id: "p2", gameId: "g1" })];
+
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(activeGame);
+      mockTokensDb.deleteDevInfoTokensByGameId.mockResolvedValue(3);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/hide-dev-tokens", payload: { joinCode: "DEVGAME" } });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ joinCode: "DEVGAME", tokensRemoved: 3, game: activeGame });
+      expect(mockTokensDb.deleteDevInfoTokensByGameId).toHaveBeenCalledWith("g1");
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", activeGame, players);
+    });
+
+    it("succeeds with tokensRemoved: 0 when no dev-created tokens exist (gameplay tokens survive)", async () => {
+      const activeGame = makeGame({ id: "g1", joinCode: "DEVGAME", status: "active" });
+
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(activeGame);
+      mockTokensDb.deleteDevInfoTokensByGameId.mockResolvedValue(0);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([]);
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/hide-dev-tokens", payload: { joinCode: "DEVGAME" } });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ tokensRemoved: 0 });
+    });
+
+    it("works on a 'setup' game without touching setup completion", async () => {
+      const setupGame = makeGame({ id: "g1", joinCode: "DEVGAME", status: "setup" });
+
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(setupGame);
+      mockTokensDb.deleteDevInfoTokensByGameId.mockResolvedValue(1);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([]);
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/hide-dev-tokens", payload: { joinCode: "DEVGAME" } });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ tokensRemoved: 1 });
+      expect(mockEngine.completeSetup).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when joinCode is missing", async () => {
+      const res = await seedApp.inject({ method: "POST", url: "/dev/hide-dev-tokens", payload: {} });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: "joinCode is required" });
+    });
+
+    it("returns 404 when the game does not exist", async () => {
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(null);
+      const res = await seedApp.inject({ method: "POST", url: "/dev/hide-dev-tokens", payload: { joinCode: "NOPE" } });
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: "Game not found" });
+    });
+
+    it.each(["waiting", "won", "lost"] as const)("returns 400 for a game in '%s' status", async (status) => {
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(makeGame({ id: "g1", joinCode: "DEVGAME", status }));
+      const res = await seedApp.inject({ method: "POST", url: "/dev/hide-dev-tokens", payload: { joinCode: "DEVGAME" } });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: `Cannot hide tokens for a game in '${status}' status` });
+    });
+
+    it("returns 500 on error", async () => {
+      mockGamesDb.getGameByJoinCode.mockRejectedValue(new Error("DB down"));
+      const res = await seedApp.inject({ method: "POST", url: "/dev/hide-dev-tokens", payload: { joinCode: "DEVGAME" } });
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "Hide failed" });
     });
   });
 
@@ -846,13 +931,14 @@ describe("routes", () => {
       delete process.env.ENABLE_DEV_SEED;
     });
 
-    it("does not register /dev/seed, /dev/reveal-all-tokens, /dev/seed-near-win, /dev/advance-turn, /dev/cleanup, or /dev/migrations-status when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
+    it("does not register /dev/seed, /dev/reveal-all-tokens, /dev/hide-dev-tokens, /dev/seed-near-win, /dev/advance-turn, /dev/cleanup, or /dev/migrations-status when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
       process.env.ENABLE_DEV_SEED = "true";
       process.env.NODE_ENV = "production";
       const prodApp = await buildApp();
 
       const seedRes = await prodApp.inject({ method: "POST", url: "/dev/seed" });
       const revealRes = await prodApp.inject({ method: "POST", url: "/dev/reveal-all-tokens", payload: { joinCode: "ABCD" } });
+      const hideRes = await prodApp.inject({ method: "POST", url: "/dev/hide-dev-tokens", payload: { joinCode: "ABCD" } });
       const seedNearWinRes = await prodApp.inject({ method: "POST", url: "/dev/seed-near-win" });
       const advanceRes = await prodApp.inject({ method: "POST", url: "/dev/advance-turn", payload: { joinCode: "ABCD" } });
       const cleanupRes = await prodApp.inject({ method: "POST", url: "/dev/cleanup", payload: { joinCode: "ABCD" } });
@@ -860,6 +946,7 @@ describe("routes", () => {
 
       expect(seedRes.statusCode).toBe(404);
       expect(revealRes.statusCode).toBe(404);
+      expect(hideRes.statusCode).toBe(404);
       expect(seedNearWinRes.statusCode).toBe(404);
       expect(advanceRes.statusCode).toBe(404);
       expect(cleanupRes.statusCode).toBe(404);

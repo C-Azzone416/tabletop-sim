@@ -72,6 +72,7 @@ export function makeInfoToken(overrides: Partial<InfoToken> = {}): InfoToken {
     wireId: "wire-1",
     value: "3",
     placedAt: "2026-01-01T00:00:00Z",
+    devCreated: false,
     ...overrides,
   };
 }
