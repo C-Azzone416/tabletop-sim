@@ -6,6 +6,7 @@ vi.mock("../src/db/games.js", () => ({
   createGame: vi.fn(),
   getGameById: vi.fn(),
   getGameByJoinCode: vi.fn(),
+  getGameCreatedVia: vi.fn(),
   updateGameStatus: vi.fn(),
   updateGameCaptain: vi.fn(),
   updateCurrentTurn: vi.fn(),
@@ -79,9 +80,11 @@ describe("game-engine", () => {
   beforeEach(() => {
     resetIds();
     vi.clearAllMocks();
-    // endGame (#170) fetches seated profile ids on every won/lost
-    // transition; default to none so existing win/loss tests run unchanged.
+    // endGame (#170) fetches seated profile ids and created_via on every
+    // won/lost transition; default to none / 'lobby' so existing win/loss
+    // tests run unchanged.
     mockPlayersDb.getPlayerProfileIdsByGameId.mockResolvedValue([]);
+    mockGamesDb.getGameCreatedVia.mockResolvedValue("lobby");
   });
 
   describe("createGame", () => {
@@ -663,6 +666,34 @@ describe("game-engine", () => {
   });
 
   describe("mission outcome recording (#170)", () => {
+    // Negative-path test per the #decisions 2026-07-24 policy and the #170
+    // amendment (dingo 03:23, heron 03:39): a dev-seeded win/loss must write
+    // ZERO outcome rows, even when seated profiles exist — dev-seeded games
+    // are not real play and would pollute the home-screen indicators.
+    it("records nothing on a dev-seeded win, even with seated profiles", async () => {
+      const game = makeGame({ id: "g1", status: "active", currentTurnPlayerId: "p1", mission: 3, detonatorMax: 4 });
+      const wire1 = makeWire({ id: "w1", playerId: "p1", value: "3", color: "blue", status: "hidden" });
+      const turn = makeTurn({ id: "t1" });
+      const wonGame = { ...game, status: "won" as const };
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWiresByValueAndGame.mockResolvedValue([wire1]);
+      mockTurnsDb.createTurn.mockResolvedValue(turn);
+      mockWiresDb.updateWireStatus.mockResolvedValue({ ...wire1, status: "cut" });
+      mockTurnsDb.updateTurnResult.mockResolvedValue({ ...turn, result: "success" });
+      mockWiresDb.getWiresByValueColorAndGame.mockResolvedValue([makeWire({ status: "cut" })]);
+      mockWiresDb.getWiresByGameId.mockResolvedValue([makeWire({ status: "cut" })]);
+      mockGamesDb.updateGameStatus.mockResolvedValue(wonGame);
+      mockGamesDb.getGameCreatedVia.mockResolvedValue("dev_seed");
+      mockPlayersDb.getPlayerProfileIdsByGameId.mockResolvedValue(["prof-1", "prof-2", "prof-3"]);
+
+      await engine.executeSoloCut("g1", "p1", "3");
+
+      expect(mockGamesDb.getGameCreatedVia).toHaveBeenCalledWith("g1");
+      expect(mockPlayersDb.getPlayerProfileIdsByGameId).not.toHaveBeenCalled();
+      expect(mockOutcomesDb.upsertMissionOutcome).not.toHaveBeenCalled();
+    });
+
     it("records 'won' for every seated profile when a solo cut wins the game", async () => {
       const game = makeGame({ id: "g1", status: "active", currentTurnPlayerId: "p1", mission: 3, detonatorMax: 4 });
       const wire1 = makeWire({ id: "w1", playerId: "p1", value: "3", color: "blue", status: "hidden" });

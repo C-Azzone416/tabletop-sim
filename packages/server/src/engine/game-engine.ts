@@ -16,6 +16,18 @@ import { dealWires } from './wire-dealer.js';
 // including before a #157 next_mission resets the same game row.
 async function endGame(gameId: string, result: 'won' | 'lost'): Promise<Game> {
   const endedGame = await gamesDb.updateGameStatus(gameId, result);
+
+  // #170 amendment (dingo 03:23, heron 03:39): dev-seeded games (via
+  // /dev/seed, /dev/seed-near-win) must record NO outcomes — they're not
+  // real play and would pollute the home-screen indicators / #179's
+  // unlocks. Checked on created_via, not ENABLE_DEV_SEED, so real staging
+  // playtests (lobby-created, ENABLE_DEV_SEED may still be true there) are
+  // unaffected.
+  const createdVia = await gamesDb.getGameCreatedVia(gameId);
+  if (createdVia === 'dev_seed') {
+    return endedGame;
+  }
+
   const profileIds = await playersDb.getPlayerProfileIdsByGameId(gameId);
   for (const profileId of profileIds) {
     await outcomesDb.upsertMissionOutcome(profileId, endedGame.mission, result);
@@ -32,9 +44,13 @@ function generateJoinCode(): string {
   return code;
 }
 
-export async function createGame(playerName: string, profileId?: string): Promise<{ game: Game; player: Player }> {
+export async function createGame(
+  playerName: string,
+  profileId?: string,
+  createdVia: gamesDb.GameCreatedVia = 'lobby',
+): Promise<{ game: Game; player: Player }> {
   const joinCode = generateJoinCode();
-  const game = await gamesDb.createGame(joinCode);
+  const game = await gamesDb.createGame(joinCode, 1, createdVia);
   const player = await playersDb.createPlayer(game.id, playerName, 0, profileId);
   const updatedGame = await gamesDb.updateGameCaptain(game.id, player.id);
   return { game: updatedGame, player };

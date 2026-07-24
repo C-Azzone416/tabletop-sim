@@ -214,7 +214,7 @@ export async function buildApp() {
 
     const seedDevGame = async (mission: number, options: { completeSetup: boolean }) => {
       const devProfile = await getOrCreateProfile('Dev');
-      const { game, player } = await engine.createGame('Dev', devProfile.id);
+      const { game, player } = await engine.createGame('Dev', devProfile.id, 'dev_seed');
 
       const aliceProfile = await getOrCreateProfile('Alice');
       const bobProfile = await getOrCreateProfile('Bob');

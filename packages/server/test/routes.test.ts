@@ -388,7 +388,7 @@ describe("routes", () => {
           { name: "Carol", profileId: "prof-carol" },
         ],
       });
-      expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "prof-dev");
+      expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "prof-dev", "dev_seed");
       expect(mockEngine.joinGame).toHaveBeenCalledTimes(3);
       expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Alice", "prof-alice");
       expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Bob", "prof-bob");
