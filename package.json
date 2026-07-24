@@ -14,5 +14,11 @@
     "test": "npm run test -w packages/client",
     "check:migrations": "npx tsx db/check-migrations.ts",
     "smoke:staging": "npx tsx scripts/staging-smoke-check.ts"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.22",
+      "sharp": "^0.35.3"
+    }
   }
 }
