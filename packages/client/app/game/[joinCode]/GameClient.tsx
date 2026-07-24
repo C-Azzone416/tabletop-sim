@@ -89,12 +89,28 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   const devToolsEnabled = process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS === "true";
   const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:3001";
 
-  const revealAllTokens = () => {
-    fetch(`${serverUrl}/dev/reveal-all-tokens`, {
+  // #172: Reveal All is a toggle — a successful reveal flips the panel
+  // button to "Hide Dev Tokens", which calls the matching dev-gated undo
+  // endpoint (removes the dev-created tokens server-side and broadcasts
+  // game_state, mirroring /dev/reveal-all-tokens' contract).
+  const [devTokensRevealed, setDevTokensRevealed] = useState(false);
+
+  const revealAllTokens = async () => {
+    const res = await fetch(`${serverUrl}/dev/reveal-all-tokens`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ joinCode }),
     });
+    if (res.ok) setDevTokensRevealed(true);
+  };
+
+  const hideDevTokens = async () => {
+    const res = await fetch(`${serverUrl}/dev/hide-dev-tokens`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ joinCode }),
+    });
+    if (res.ok) setDevTokensRevealed(false);
   };
 
   const skipTurn = () => {
@@ -113,6 +129,8 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
         activeProfileId={activeSeat.profileId}
         onSwitchSeat={handleSwitchSeat}
         onRevealAllTokens={options.canRevealTokens ? revealAllTokens : undefined}
+        onHideDevTokens={options.canRevealTokens ? hideDevTokens : undefined}
+        tokensRevealed={devTokensRevealed}
         onSkipTurn={options.canSkipTurn ? skipTurn : undefined}
       />
     );

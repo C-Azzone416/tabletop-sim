@@ -124,6 +124,62 @@ describe("DevPanel", () => {
     expect(onSkipTurn).toHaveBeenCalledOnce();
   });
 
+  // #172: Reveal All becomes a toggle once tokens have been revealed.
+  describe("reveal/hide toggle (#172)", () => {
+    it("shows Hide Dev Tokens instead of Reveal All Tokens when tokensRevealed", async () => {
+      const user = userEvent.setup();
+      render(
+        <DevPanel
+          seatOptions={seats}
+          activeProfileId="p1"
+          onSwitchSeat={vi.fn()}
+          onRevealAllTokens={vi.fn()}
+          onHideDevTokens={vi.fn()}
+          tokensRevealed
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: "Open dev tools" }));
+      expect(screen.getByText("Hide Dev Tokens")).toBeInTheDocument();
+      expect(screen.queryByText("Reveal All Tokens")).not.toBeInTheDocument();
+    });
+
+    it("calls onHideDevTokens (not onRevealAllTokens) when toggled to hide", async () => {
+      const user = userEvent.setup();
+      const onRevealAllTokens = vi.fn();
+      const onHideDevTokens = vi.fn();
+      render(
+        <DevPanel
+          seatOptions={seats}
+          activeProfileId="p1"
+          onSwitchSeat={vi.fn()}
+          onRevealAllTokens={onRevealAllTokens}
+          onHideDevTokens={onHideDevTokens}
+          tokensRevealed
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: "Open dev tools" }));
+      await user.click(screen.getByText("Hide Dev Tokens"));
+      expect(onHideDevTokens).toHaveBeenCalledOnce();
+      expect(onRevealAllTokens).not.toHaveBeenCalled();
+    });
+
+    it("keeps showing Reveal All Tokens when tokensRevealed but no hide handler exists", async () => {
+      const user = userEvent.setup();
+      render(
+        <DevPanel
+          seatOptions={seats}
+          activeProfileId="p1"
+          onSwitchSeat={vi.fn()}
+          onRevealAllTokens={vi.fn()}
+          tokensRevealed
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: "Open dev tools" }));
+      expect(screen.getByText("Reveal All Tokens")).toBeInTheDocument();
+      expect(screen.queryByText("Hide Dev Tokens")).not.toBeInTheDocument();
+    });
+  });
+
   it("does not render Skip Turn when onSkipTurn is not provided", async () => {
     const user = userEvent.setup();
     render(

@@ -359,6 +359,56 @@ describe("GameClient — full game flow integration", () => {
       vi.unstubAllGlobals();
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
     });
+
+    // #172: a successful reveal flips the button into the hide half of the
+    // toggle, and a successful hide flips it back.
+    it("toggles to Hide Dev Tokens after a successful reveal, POSTs the undo endpoint, then flips back", async () => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+      process.env.NEXT_PUBLIC_SERVER_URL = "http://localhost:3001";
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal("fetch", fetchMock);
+
+      renderSetupGame();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+
+      fireEvent.click(screen.getByText("Reveal All Tokens"));
+      await act(async () => {});
+      const hideBtn = screen.getByText("Hide Dev Tokens");
+      expect(screen.queryByText("Reveal All Tokens")).not.toBeInTheDocument();
+
+      fireEvent.click(hideBtn);
+      await act(async () => {});
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "http://localhost:3001/dev/hide-dev-tokens",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ joinCode: "ABC123" }),
+        })
+      );
+      expect(screen.getByText("Reveal All Tokens")).toBeInTheDocument();
+      expect(screen.queryByText("Hide Dev Tokens")).not.toBeInTheDocument();
+
+      vi.unstubAllGlobals();
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+
+    it("does not flip the toggle when the reveal request fails", async () => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+      process.env.NEXT_PUBLIC_SERVER_URL = "http://localhost:3001";
+      const fetchMock = vi.fn().mockResolvedValue({ ok: false });
+      vi.stubGlobal("fetch", fetchMock);
+
+      renderSetupGame();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+
+      fireEvent.click(screen.getByText("Reveal All Tokens"));
+      await act(async () => {});
+      expect(screen.getByText("Reveal All Tokens")).toBeInTheDocument();
+      expect(screen.queryByText("Hide Dev Tokens")).not.toBeInTheDocument();
+
+      vi.unstubAllGlobals();
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
   });
 
   it("shows loss overlay on game_over lost", () => {
