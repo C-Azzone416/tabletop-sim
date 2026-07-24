@@ -14,13 +14,16 @@ describe("Wire (#156)", () => {
     expect(screen.queryByText("✕")).not.toBeInTheDocument();
   });
 
-  it("styles a cut wire's value with strikethrough", () => {
+  // #173: cut-wire values are public info and must be easy to read —
+  // plain grey text, no strikethrough.
+  it("styles a cut wire's value plainly, without strikethrough (#173)", () => {
     resetIds();
     const wire = makeWire({ status: "cut", value: "4" });
-    render(
+    const { container } = render(
       <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />,
     );
-    expect(screen.getByText("4").className).toContain("line-through");
+    expect(screen.getByText("4").className).not.toContain("line-through");
+    expect(container.querySelector("button")!.className).not.toContain("opacity-40");
   });
 
   it("shows the value for a revealed (mid-dual-cut) wire, without strikethrough", () => {
@@ -74,7 +77,10 @@ describe("Wire (#156)", () => {
       expect(el.getAttribute("data-testid")).toBe("wire-info-token");
     });
 
-    it("fills solid blue once an info-known wire is cut", () => {
+    // #173 ruling (amends #159 item 4): the "solid blue when cut" half is
+    // retired — a cut wire gets the same dim-grey/plain-value treatment
+    // whether or not it carries an info token.
+    it("uses the single grey cut treatment for an info-known cut wire — no blue fill (#173)", () => {
       resetIds();
       const wire = makeWire({ id: "w1", status: "cut", value: "7" });
       const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
@@ -82,19 +88,35 @@ describe("Wire (#156)", () => {
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
       );
       const button = container.querySelector("button")!;
-      expect(button.className).toContain("bg-blue-600");
-      expect(screen.getByText("7").className).toContain("text-white");
+      expect(button.className).not.toContain("bg-blue-600");
+      expect(button.className).toContain("bg-zinc-100");
+      expect(screen.getByText("7").className).not.toContain("text-white");
+      expect(screen.getByText("7").className).not.toContain("line-through");
     });
 
-    it("does not apply the dimmed cut treatment to an info-known cut wire (blue fill instead)", () => {
+    it("renders cut wires identically with and without an info token (#173)", () => {
       resetIds();
-      const wire = makeWire({ id: "w1", status: "cut", value: "7" });
-      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
-      const { container } = render(
-        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      const bare = render(
+        <Wire
+          wire={makeWire({ id: "w1", status: "cut", value: "7" })}
+          isLocal={false}
+          isSelected={false}
+          infoTokens={[]}
+        />,
       );
-      const button = container.querySelector("button")!;
-      expect(button.className).not.toContain("opacity-40");
+      const bareClasses = bare.container.querySelector("button")!.className;
+      bare.unmount();
+
+      resetIds();
+      const withToken = render(
+        <Wire
+          wire={makeWire({ id: "w1", status: "cut", value: "7" })}
+          isLocal={false}
+          isSelected={false}
+          infoTokens={[makeInfoToken({ wireId: "w1", value: "7" })]}
+        />,
+      );
+      expect(withToken.container.querySelector("button")!.className).toBe(bareClasses);
     });
 
     it("prefers the wire's real value over the info token's once it's known (e.g. own hidden wire)", () => {
