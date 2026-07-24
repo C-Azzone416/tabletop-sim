@@ -47,6 +47,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # #185 — hard gate against advisory drift (#175's post-triage state was
+      # 0 advisories, so this starts green). audit-level=high fails on
+      # high/critical; low/moderate stay visible in the job log without
+      # blocking, matching the triage's own severity split.
+      - name: Security audit (npm)
+        run: npm audit --audit-level=high
+
       - name: Apply migrations
         run: npx tsx db/migrate.ts "$DATABASE_URL"
 

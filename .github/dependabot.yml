@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+    # #185 — grouped minor/patch bumps ride the normal QA→security chain as
+    # one PR, so advisory debt never accumulates 16 deep again (#175) without
+    # opening a flood of single-package PRs. Majors are deliberately left
+    # ungrouped/unrestricted below — framework major bumps (fastify, next,
+    # next-auth) need real regression attention per #175's process, not a
+    # silent grouped merge.
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 10
