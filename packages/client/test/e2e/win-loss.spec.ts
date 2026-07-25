@@ -51,7 +51,7 @@ test("mission loss condition: wrong dual cut guess on a red wire shows Mission F
     await expect(page.getByText("Your turn — choose an action")).toBeVisible({
       timeout: 10_000,
     });
-    redWire = await findOpponentHiddenWireByColor(page, ["Alice", "Bob", "Carol"], "red");
+    redWire = await findOpponentHiddenWireByColor(page, browser, seed, ["Alice", "Bob", "Carol"], "red");
   }
 
   if (!seed) throw new Error("Failed to seed game");

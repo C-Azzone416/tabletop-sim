@@ -1,5 +1,14 @@
 import { test, expect } from "@playwright/test";
+import { MISSION_CONFIGS } from "@tabletop/shared";
 import { seedGame, cleanupGame, gameUrl } from "./helpers";
+
+// #187: others' hidden wires arrive color-redacted, so pre-action red
+// counts only cover the viewer's own (randomly dealt) reds. The
+// deterministic cross-player number is the mission config's red total,
+// asserted after reveal (revealed wires ship color on every rack).
+const TOTAL_REDS = MISSION_CONFIGS[5].wireGroups
+  .filter((g) => g.color === "red")
+  .reduce((n, g) => n + g.values.length * g.copiesPerValue, 0);
 
 // ── Test: Multiplayer state sync across 2 players ──────────────────────────
 //
@@ -57,19 +66,19 @@ test("state changes from one player's action are visible to other connected play
     const hiddenRedsOnAlicePage = alicePage.locator(
       'button[data-wire-color="red"][data-wire-status="hidden"]',
     );
-    const hiddenRedCountBefore = await hiddenRedsOnAlicePage.count();
-    expect(hiddenRedCountBefore).toBeGreaterThan(0);
+    const revealedRedsOnAlicePage = alicePage.locator(
+      'button[data-wire-color="red"][data-wire-status="revealed"]',
+    );
+    await expect(revealedRedsOnAlicePage).toHaveCount(0);
 
     // Dev takes the action on their own page.
     await page.getByRole("button", { name: "Reveal Reds" }).click();
 
     // Alice's page — untouched, never reloaded — reflects both the wire
-    // state change and the turn change purely via WS broadcast.
-    await expect(hiddenRedsOnAlicePage).toHaveCount(0, { timeout: 10_000 });
-    const revealedRedsOnAlicePage = alicePage.locator(
-      'button[data-wire-color="red"][data-wire-status="revealed"]',
-    );
-    await expect(revealedRedsOnAlicePage).toHaveCount(hiddenRedCountBefore);
+    // state change and the turn change purely via WS broadcast. All of the
+    // mission's reds are now revealed (color visible on every rack).
+    await expect(revealedRedsOnAlicePage).toHaveCount(TOTAL_REDS, { timeout: 10_000 });
+    await expect(hiddenRedsOnAlicePage).toHaveCount(0);
     await expect(alicePage.getByText("Your turn — choose an action")).toBeVisible({
       timeout: 10_000,
     });

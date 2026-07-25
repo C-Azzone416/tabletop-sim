@@ -12,7 +12,9 @@ import { getGameSockets, sendToPlayer } from './connection-manager.js';
 export function buildPlayerView(wires: Wire[], requestingPlayerId: string): Wire[] {
   return wires.map(wire => {
     if (wire.playerId !== requestingPlayerId && wire.status === 'hidden') {
-      return { ...wire, value: null };
+      // #187: color is redacted alongside value — on red-wire missions the
+      // color map alone is mission-deciding information.
+      return { ...wire, value: null, color: null };
     }
     return wire;
   });

@@ -1,4 +1,4 @@
-import { request, type Page, type Locator } from "@playwright/test";
+import { request, type Browser, type Page, type Locator } from "@playwright/test";
 
 export const API_URL = process.env.E2E_API_URL ?? "http://localhost:3001";
 export const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
@@ -283,7 +283,11 @@ export async function findDualCutWrongGuessOpportunity(
 
   for (const name of opponentNames) {
     const rack = playerContainer(page, name).locator('[data-testid="player-rack"]');
-    const wireButtons = rack.locator('button[data-wire-color="blue"][data-wire-status="hidden"]');
+    // No color filter: opponents' hidden-wire colors are redacted (#187).
+    // This helper only runs on mission 1, where every wire is blue, so any
+    // hidden wire qualifies; the true value still comes from the public
+    // info token that /dev/seed's fast-forward places on every wire.
+    const wireButtons = rack.locator('button[data-wire-position][data-wire-status="hidden"]');
     const count = await wireButtons.count();
     for (let i = 0; i < count; i++) {
       const wire = wireButtons.nth(i);
@@ -304,18 +308,55 @@ export async function findDualCutWrongGuessOpportunity(
  * Finds the first hidden wire of the given color owned by one of the named
  * opponents (dual cut cannot target your own wire — see
  * executeProposeDualCut in packages/server/src/engine/game-engine.ts).
+ *
+ * #187 made opponents' hidden-wire colors invisible on the acting player's
+ * page (redacted server-side), so this reads each opponent's OWN view —
+ * where their colors are legitimately visible to themselves — in a
+ * throwaway browser context, notes the wire's public rack position, and
+ * targets that position back on the acting player's page.
  */
 export async function findOpponentHiddenWireByColor(
   page: Page,
+  browser: Browser,
+  seed: SeedResult,
   opponentNames: string[],
   color: "blue" | "yellow" | "red",
 ): Promise<{ wire: Locator; ownerName: string } | null> {
   for (const name of opponentNames) {
-    const rack = playerContainer(page, name).locator('[data-testid="player-rack"]');
-    const wire = rack.locator(
-      `button[data-wire-color="${color}"][data-wire-status="hidden"]`,
-    ).first();
-    if ((await wire.count()) > 0) return { wire, ownerName: name };
+    const profile = seed.players.find((p) => p.name === name);
+    if (!profile) continue;
+    const ctx = await browser.newContext();
+    let position: string | null = null;
+    try {
+      const ownPage = await ctx.newPage();
+      await ownPage.goto(gameUrl({ ...seed, profileId: profile.profileId, playerName: name }));
+      // NOT [data-testid="player-rack"].first() — that grabs the first
+      // player in SEAT order (always Dev/seat 0 in these dev-seeded games),
+      // not this viewer's own rack. GameBoard.tsx labels the local player
+      // "You"; that's the correct anchor for "this viewer's own rack".
+      const ownRack = ownPage
+        .getByText("You", { exact: true })
+        .locator('xpath=ancestor::div[.//*[@data-testid="player-rack"]][1]')
+        .locator('[data-testid="player-rack"]');
+      await ownRack.locator("button[data-wire-position]").first().waitFor({ timeout: 10_000 });
+      const candidates = ownRack.locator(
+        `button[data-wire-color="${color}"][data-wire-status="hidden"]`,
+      );
+      if ((await candidates.count()) > 0) {
+        position = await candidates.first().getAttribute("data-wire-position");
+      }
+    } finally {
+      // Close before the caller opens its own context as this player — two
+      // sockets for the same playerId overwrite each other in
+      // connection-manager.ts's gameConnections map.
+      await ctx.close();
+    }
+    if (position) {
+      const wire = playerContainer(page, name)
+        .locator('[data-testid="player-rack"]')
+        .locator(`button[data-wire-position="${position}"]`);
+      return { wire, ownerName: name };
+    }
   }
   return null;
 }
