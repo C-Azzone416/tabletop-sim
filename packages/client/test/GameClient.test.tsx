@@ -5,6 +5,7 @@ import {
   makeGame,
   makePlayer,
   makeWire,
+  makeInfoToken,
   resetIds,
 } from "./fixtures";
 import type { ServerMessage } from "@tabletop/shared";
@@ -360,9 +361,74 @@ describe("GameClient — full game flow integration", () => {
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
     });
 
-    // #172: a successful reveal flips the button into the hide half of the
-    // toggle, and a successful hide flips it back.
-    it("toggles to Hide Dev Tokens after a successful reveal, POSTs the undo endpoint, then flips back", async () => {
+    // #172: toggle state is derived from state.infoTokens (bobcat's #184
+    // server piece stamps every reveal-all-created token devCreated: true
+    // and broadcasts it in game_state) — not tracked as local component
+    // state. That means it updates correctly for every connected client,
+    // not just whoever clicked the button, and survives a reconnect.
+    it("shows Hide Dev Tokens once a devCreated info token appears via game_state", () => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+      renderSetupGame();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      expect(screen.getByText("Reveal All Tokens")).toBeInTheDocument();
+
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+          infoTokens: [makeInfoToken({ wireId: "w1", devCreated: true })],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+
+      expect(screen.getByText("Hide Dev Tokens")).toBeInTheDocument();
+      expect(screen.queryByText("Reveal All Tokens")).not.toBeInTheDocument();
+
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+
+    it("flips back to Reveal All Tokens once no devCreated tokens remain in state", () => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+      renderSetupGame();
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+          infoTokens: [makeInfoToken({ wireId: "w1", devCreated: true })],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+      expect(screen.getByText("Hide Dev Tokens")).toBeInTheDocument();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+
+      expect(screen.getByText("Reveal All Tokens")).toBeInTheDocument();
+      expect(screen.queryByText("Hide Dev Tokens")).not.toBeInTheDocument();
+
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+
+    it("calls POST /dev/hide-dev-tokens with joinCode when Hide Dev Tokens is clicked", () => {
       process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
       process.env.NEXT_PUBLIC_SERVER_URL = "http://localhost:3001";
       const fetchMock = vi.fn().mockResolvedValue({ ok: true });
@@ -371,40 +437,28 @@ describe("GameClient — full game flow integration", () => {
       renderSetupGame();
       fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
 
-      fireEvent.click(screen.getByText("Reveal All Tokens"));
-      await act(async () => {});
-      const hideBtn = screen.getByText("Hide Dev Tokens");
-      expect(screen.queryByText("Reveal All Tokens")).not.toBeInTheDocument();
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1" })],
+          infoTokens: [makeInfoToken({ wireId: "w1", devCreated: true })],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
 
-      fireEvent.click(hideBtn);
-      await act(async () => {});
-      expect(fetchMock).toHaveBeenLastCalledWith(
+      fireEvent.click(screen.getByText("Hide Dev Tokens"));
+
+      expect(fetchMock).toHaveBeenCalledWith(
         "http://localhost:3001/dev/hide-dev-tokens",
         expect.objectContaining({
           method: "POST",
           body: JSON.stringify({ joinCode: "ABC123" }),
         })
       );
-      expect(screen.getByText("Reveal All Tokens")).toBeInTheDocument();
-      expect(screen.queryByText("Hide Dev Tokens")).not.toBeInTheDocument();
-
-      vi.unstubAllGlobals();
-      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
-    });
-
-    it("does not flip the toggle when the reveal request fails", async () => {
-      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
-      process.env.NEXT_PUBLIC_SERVER_URL = "http://localhost:3001";
-      const fetchMock = vi.fn().mockResolvedValue({ ok: false });
-      vi.stubGlobal("fetch", fetchMock);
-
-      renderSetupGame();
-      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
-
-      fireEvent.click(screen.getByText("Reveal All Tokens"));
-      await act(async () => {});
-      expect(screen.getByText("Reveal All Tokens")).toBeInTheDocument();
-      expect(screen.queryByText("Hide Dev Tokens")).not.toBeInTheDocument();
 
       vi.unstubAllGlobals();
       delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;

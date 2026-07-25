@@ -89,28 +89,28 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   const devToolsEnabled = process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS === "true";
   const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:3001";
 
-  // #172: Reveal All is a toggle — a successful reveal flips the panel
-  // button to "Hide Dev Tokens", which calls the matching dev-gated undo
-  // endpoint (removes the dev-created tokens server-side and broadcasts
-  // game_state, mirroring /dev/reveal-all-tokens' contract).
-  const [devTokensRevealed, setDevTokensRevealed] = useState(false);
+  // #172: Reveal All is a toggle. Toggle state is derived straight from the
+  // broadcast rather than tracked locally — bobcat's #184 server piece
+  // stamps every reveal-all-created (and seed-near-win-backfilled) token
+  // `devCreated: true`, so any such token present in state.infoTokens IS
+  // the "revealed" state, kept in sync automatically by every other client
+  // too, not just the one that clicked the button.
+  const devTokensRevealed = state.infoTokens.some((t) => t.devCreated);
 
-  const revealAllTokens = async () => {
-    const res = await fetch(`${serverUrl}/dev/reveal-all-tokens`, {
+  const revealAllTokens = () => {
+    fetch(`${serverUrl}/dev/reveal-all-tokens`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ joinCode }),
     });
-    if (res.ok) setDevTokensRevealed(true);
   };
 
-  const hideDevTokens = async () => {
-    const res = await fetch(`${serverUrl}/dev/hide-dev-tokens`, {
+  const hideDevTokens = () => {
+    fetch(`${serverUrl}/dev/hide-dev-tokens`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ joinCode }),
     });
-    if (res.ok) setDevTokensRevealed(false);
   };
 
   const skipTurn = () => {
