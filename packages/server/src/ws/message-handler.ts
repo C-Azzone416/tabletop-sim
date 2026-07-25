@@ -161,7 +161,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Game is not active', 'Not authenticated', 'Player not found',
       'Reveal reds not available in this mission',
       'Game is not in setup phase', 'Can only place info token on your own wire', 'Info token already placed',
-      'Game is not in waiting phase',
+      'Game is not in waiting phase', 'Mission is locked',
       'Dual cut already pending', 'Cannot target your own wire with dual cut',
       'No pending dual cut', 'Not your wire to respond to',
       'Not your turn to complete dual cut', 'Target wire is not revealed',

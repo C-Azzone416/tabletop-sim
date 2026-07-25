@@ -267,6 +267,16 @@ describe("message-handler", () => {
 
       expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 5);
     });
+
+    it("surfaces the #179 mission-locked rejection reason to the client, not a generic Internal error", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.startGame.mockRejectedValue(new Error("Mission is locked"));
+
+      await handleMessage(ws, JSON.stringify({ type: "start_game", mission: 5 }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Mission is locked" });
+    });
   });
 
   describe("next_mission", () => {
@@ -300,6 +310,16 @@ describe("message-handler", () => {
       await handleMessage(ws, JSON.stringify({ type: "next_mission", mission: 2 }));
 
       expect(lastSent(ws)).toEqual({ type: "error", message: "Only the captain can start the next mission" });
+    });
+
+    it("surfaces the #179 mission-locked rejection reason to the client, not a generic Internal error", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executeNextMission.mockRejectedValue(new Error("Mission is locked"));
+
+      await handleMessage(ws, JSON.stringify({ type: "next_mission", mission: 5 }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Mission is locked" });
     });
   });
 
