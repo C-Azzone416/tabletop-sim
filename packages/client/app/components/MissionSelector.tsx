@@ -5,14 +5,39 @@ import { MISSION_DESCRIPTIONS } from "../lib/missions";
 interface MissionSelectorProps {
   selectedMission: number;
   onSelectMission: (mission: number) => void;
+  // #179: {1..highestUnlocked} are pickable; higher missions render locked.
+  highestUnlocked: number;
 }
 
-export function MissionSelector({ selectedMission, onSelectMission }: MissionSelectorProps) {
+export function MissionSelector({
+  selectedMission,
+  onSelectMission,
+  highestUnlocked,
+}: MissionSelectorProps) {
   return (
     <div className="grid grid-cols-2 gap-2">
       {Object.entries(MISSION_DESCRIPTIONS).map(([num, desc]) => {
         const mission = Number(num);
         const isSelected = selectedMission === mission;
+        const isLocked = mission > highestUnlocked;
+
+        if (isLocked) {
+          return (
+            <div
+              key={mission}
+              data-testid={`mission-locked-${mission}`}
+              className="cursor-not-allowed rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-left opacity-60 dark:border-zinc-700 dark:bg-zinc-900"
+            >
+              <span className="flex items-center gap-1 text-sm font-semibold text-zinc-400 dark:text-zinc-500">
+                <span aria-hidden="true">🔒</span> Mission {mission}
+              </span>
+              <p className="mt-0.5 text-xs text-zinc-400 dark:text-zinc-500">
+                Beat mission {mission - 1} to unlock
+              </p>
+            </div>
+          );
+        }
+
         return (
           <button
             key={mission}

@@ -11,6 +11,8 @@ interface GameOverOverlayProps {
   isCaptain: boolean;
   currentMission: number;
   onNextMission: (mission: number) => void;
+  // #179: {1..highestUnlocked} are pickable for the captain.
+  highestUnlocked: number;
 }
 
 export function GameOverOverlay({
@@ -19,6 +21,7 @@ export function GameOverOverlay({
   isCaptain,
   currentMission,
   onNextMission,
+  highestUnlocked,
 }: GameOverOverlayProps) {
   const router = useRouter();
   const nextMissionUp = Math.min(currentMission + 1, LAST_MISSION);
@@ -61,6 +64,7 @@ export function GameOverOverlay({
                 <MissionSelector
                   selectedMission={selectedMission}
                   onSelectMission={setSelectedMission}
+                  highestUnlocked={highestUnlocked}
                 />
                 <button
                   onClick={() => handleStartMission(selectedMission)}

@@ -15,6 +15,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 
+let mockMissionOutcomes: Record<number, "won" | "lost"> = {};
+vi.mock("../app/hooks/useMissionOutcomes", () => ({
+  useMissionOutcomes: () => mockMissionOutcomes,
+}));
+
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
   static OPEN = 1;
@@ -51,6 +56,7 @@ describe("GameClient — full game flow integration", () => {
   beforeEach(() => {
     resetIds();
     MockWebSocket.instances = [];
+    mockMissionOutcomes = {};
     vi.useFakeTimers();
     vi.stubGlobal("WebSocket", MockWebSocket);
   });
@@ -58,6 +64,7 @@ describe("GameClient — full game flow integration", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
   });
 
   it("shows lobby state when no game exists yet", () => {
@@ -172,6 +179,43 @@ describe("GameClient — full game flow integration", () => {
     });
 
     expect(screen.getByText("Game is full")).toBeInTheDocument();
+  });
+
+  describe("mission unlock gating (#179)", () => {
+    function renderCaptainInLobby() {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      return ws;
+    }
+
+    it("locks missions past highest_beaten+1 for a fresh profile", () => {
+      renderCaptainInLobby();
+      expect(screen.getByRole("button", { name: /Mission 1/ })).toBeInTheDocument();
+      expect(screen.getByTestId("mission-locked-2")).toBeInTheDocument();
+    });
+
+    it("unlocks the next mission once the profile's outcomes show the previous one won", () => {
+      mockMissionOutcomes = { 1: "won", 2: "won" };
+      renderCaptainInLobby();
+      expect(screen.getByRole("button", { name: /Mission 3/ })).toBeInTheDocument();
+      expect(screen.getByTestId("mission-locked-4")).toBeInTheDocument();
+    });
+
+    it("unlocks every mission when dev tools are on, ignoring outcomes (dev bypass)", () => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+      mockMissionOutcomes = {};
+      renderCaptainInLobby();
+      expect(screen.getByRole("button", { name: /Mission 8/ })).toBeInTheDocument();
+      expect(screen.queryByTestId(/mission-locked-/)).not.toBeInTheDocument();
+    });
   });
 
   describe("dev panel: Skip Turn", () => {

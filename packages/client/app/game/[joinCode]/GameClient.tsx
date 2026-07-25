@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import { useGameState } from "../../hooks/useGameState";
+import { useMissionOutcomes } from "../../hooks/useMissionOutcomes";
 import { Lobby } from "../../components/Lobby";
 import { SetupPhase } from "../../components/SetupPhase";
 import { GameBoard } from "../../components/GameBoard";
@@ -10,6 +11,8 @@ import { GameOverOverlay } from "../../components/GameOverOverlay";
 import { DevPanel } from "../../components/DevPanel";
 import { ErrorToast } from "../../components/ErrorToast";
 import { JoinCodeBadge } from "../../components/JoinCodeBadge";
+import { LAST_MISSION } from "../../lib/missions";
+import { highestUnlockedMission } from "../../lib/missionUnlocks";
 
 export interface DevSeatOption {
   name: string;
@@ -91,6 +94,17 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   const devToolsEnabled = process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS === "true";
   const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:3001";
 
+  // #179: gates both mission pickers (Lobby's start_game, GameOverOverlay's
+  // next_mission) on the captain's own beat-to-unlock progress — the local
+  // player is always the one viewing the picker, since it only renders for
+  // isCaptain. Refetches on every gameStatus change so a just-recorded
+  // win/loss isn't served stale. Dev tools show every mission unlocked
+  // client-side, per the issue's explicit dev-bypass requirement.
+  const missionOutcomes = useMissionOutcomes(activeSeat.profileId, gameStatus);
+  const highestUnlocked = devToolsEnabled
+    ? LAST_MISSION
+    : highestUnlockedMission(missionOutcomes);
+
   // #172: Reveal All is a toggle. Toggle state is derived straight from the
   // broadcast rather than tracked locally — bobcat's #184 server piece
   // stamps every reveal-all-created (and seed-near-win-backfilled) token
@@ -149,6 +163,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
           captainId={state.game?.captainId ?? null}
           onReady={() => send({ type: "player_ready" })}
           onStartGame={(mission) => send({ type: "start_game", mission })}
+          highestUnlocked={highestUnlocked}
         />
         {devPanel()}
         <ErrorToast message={state.error} onDismiss={clearError} />
@@ -245,6 +260,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
           isCaptain={state.localPlayer?.id === state.game.captainId}
           currentMission={state.game.mission}
           onNextMission={(mission) => send({ type: "next_mission", mission })}
+          highestUnlocked={highestUnlocked}
         />
         {devPanel()}
       </div>

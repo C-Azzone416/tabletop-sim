@@ -11,6 +11,8 @@ interface LobbyProps {
   captainId: string | null;
   onReady: () => void;
   onStartGame: (mission: number) => void;
+  // #179: {1..highestUnlocked} are pickable for the captain.
+  highestUnlocked: number;
 }
 
 export function Lobby({
@@ -20,6 +22,7 @@ export function Lobby({
   captainId,
   onReady,
   onStartGame,
+  highestUnlocked,
 }: LobbyProps) {
   const isCaptain = localPlayerId === captainId;
   const localPlayer = players.find((p) => p.id === localPlayerId);
@@ -97,6 +100,7 @@ export function Lobby({
           <MissionSelector
             selectedMission={selectedMission}
             onSelectMission={setSelectedMission}
+            highestUnlocked={highestUnlocked}
           />
         </div>
       )}

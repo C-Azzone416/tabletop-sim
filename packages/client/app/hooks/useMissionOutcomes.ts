@@ -8,8 +8,12 @@ const SERVER_URL =
 
 // #170: missions absent from the server response were never played — the
 // returned map only ever has entries for missions with a recorded outcome.
+// `refreshKey` re-triggers the fetch without changing profileId — GameClient
+// passes gameStatus so a win/loss transition picks up the outcome the
+// server just wrote (#179's unlock gate needs this to not be stale).
 export function useMissionOutcomes(
   profileId: string,
+  refreshKey?: unknown,
 ): Record<number, MissionOutcomeResult> {
   const [outcomes, setOutcomes] = useState<
     Record<number, MissionOutcomeResult>
@@ -34,7 +38,7 @@ export function useMissionOutcomes(
     return () => {
       cancelled = true;
     };
-  }, [profileId]);
+  }, [profileId, refreshKey]);
 
   return outcomes;
 }
