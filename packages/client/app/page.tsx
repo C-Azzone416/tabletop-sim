@@ -25,7 +25,7 @@ export default function Home() {
   const playerName = session?.user?.name ?? "";
   const profileId = session?.user?.id ?? "";
 
-  const missionOutcomes = useMissionOutcomes(profileId);
+  const missionOutcomes = useMissionOutcomes(profileId, playerName);
   const { state, handleMessage, clearError } = useGameState();
   const { status, connect, send } = useWebSocket(
     (message) => {

@@ -100,7 +100,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   // isCaptain. Refetches on every gameStatus change so a just-recorded
   // win/loss isn't served stale. Dev tools show every mission unlocked
   // client-side, per the issue's explicit dev-bypass requirement.
-  const missionOutcomes = useMissionOutcomes(activeSeat.profileId, gameStatus);
+  const missionOutcomes = useMissionOutcomes(activeSeat.profileId, activeSeat.name, gameStatus);
   const highestUnlocked = devToolsEnabled
     ? LAST_MISSION
     : highestUnlockedMission(missionOutcomes);
