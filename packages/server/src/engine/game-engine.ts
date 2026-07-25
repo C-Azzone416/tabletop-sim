@@ -214,6 +214,12 @@ export async function executePlaceInfoToken(
   if (wire.gameId !== gameId) throw new Error('Wire does not belong to this game');
   if (wire.playerId !== playerId) throw new Error('Can only place info token on your own wire');
   if (wire.status !== 'hidden') throw new Error('Wire already cut or revealed');
+  // #191 — SetupPhase.tsx filters selectable wires to blue client-side only;
+  // this is the server-side guard for any path around that single filter
+  // (dev seat-switch view, direct message). Setup/opening placement ONLY —
+  // the dual-cut deny-path token placement targets whatever wire was asked
+  // about and must NOT be constrained here.
+  if (wire.color !== 'blue') throw new Error('Opening info token must be placed on a blue wire');
 
   const [allWires, existingTokens, players] = await Promise.all([
     wiresDb.getWiresByGameId(gameId),

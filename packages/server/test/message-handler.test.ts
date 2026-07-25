@@ -467,6 +467,16 @@ describe("message-handler", () => {
       expect(mockEngine.executePlaceInfoToken).toHaveBeenCalledWith("g1", "p1", "w1");
       expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game, players);
     });
+
+    it("surfaces the #191 non-blue-wire rejection reason to the client, not a generic Internal error", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.executePlaceInfoToken.mockRejectedValue(new Error("Opening info token must be placed on a blue wire"));
+
+      await handleMessage(ws, JSON.stringify({ type: "place_info_token", wireId: "w1" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Opening info token must be placed on a blue wire" });
+    });
   });
 
   describe("double_detector", () => {
