@@ -28,6 +28,17 @@ export async function getActivePlayerByProfileId(profileId: string): Promise<Pla
   return rows[0] ? mapPlayer(rows[0]) : null;
 }
 
+// #170 — profile ids of every seated player, for mission-outcome recording
+// at game over. Kept out of the Player type / game_state broadcasts on
+// purpose: profileId is the WS auth handle, so exposing other players' ids
+// to clients would be an impersonation vector.
+export async function getPlayerProfileIdsByGameId(gameId: string): Promise<string[]> {
+  const rows = await sql`
+    SELECT profile_id FROM players WHERE game_id = ${gameId} AND profile_id IS NOT NULL
+  `;
+  return rows.map(row => row.profile_id as string);
+}
+
 export async function getPlayersByGameId(gameId: string): Promise<Player[]> {
   const rows = await sql`
     SELECT * FROM players WHERE game_id = ${gameId} ORDER BY seat_order

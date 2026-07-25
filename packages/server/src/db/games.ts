@@ -1,13 +1,25 @@
 import { sql } from './client.js';
 import type { Game, GameStatus } from '@tabletop/shared';
 
-export async function createGame(joinCode: string, mission: number = 1): Promise<Game> {
+// #170 amendment — provenance marker, deliberately NOT on the shared Game
+// type / game_state broadcasts: it exists only to let endGame() skip
+// mission-outcome recording for dev-seeded games, nothing client-facing
+// needs it today.
+export type GameCreatedVia = 'lobby' | 'dev_seed';
+
+export async function createGame(joinCode: string, mission: number = 1, createdVia: GameCreatedVia = 'lobby'): Promise<Game> {
   const rows = await sql`
-    INSERT INTO games (join_code, mission)
-    VALUES (${joinCode}, ${mission})
+    INSERT INTO games (join_code, mission, created_via)
+    VALUES (${joinCode}, ${mission}, ${createdVia})
     RETURNING *
   `;
   return mapGame(rows[0]);
+}
+
+export async function getGameCreatedVia(id: string): Promise<GameCreatedVia> {
+  const rows = await sql`SELECT created_via FROM games WHERE id = ${id}`;
+  if (!rows[0]) throw new Error('Game not found');
+  return rows[0].created_via as GameCreatedVia;
 }
 
 export async function getGameById(id: string): Promise<Game | null> {

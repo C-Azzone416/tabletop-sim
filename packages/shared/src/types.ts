@@ -70,6 +70,20 @@ export interface InfoToken {
   devCreated: boolean;
 }
 
+export type MissionOutcomeResult = 'won' | 'lost';
+
+/**
+ * Per-profile best outcome for a mission (#170): 'won' once beaten (never
+ * downgraded by a later loss), 'lost' if only tried and failed, no row at
+ * all if never played. Feeds the home-screen indicators and #179's unlocks.
+ */
+export interface MissionOutcome {
+  profileId: string;
+  mission: number;
+  outcome: MissionOutcomeResult;
+  updatedAt: string;
+}
+
 export interface ValidationToken {
   id: string;
   gameId: string;
