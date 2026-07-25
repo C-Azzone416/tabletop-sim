@@ -16,6 +16,11 @@ export interface SeedResult {
   players: SeedPlayer[];
 }
 
+export interface SoloCutLegalSeedResult extends SeedResult {
+  soloCutValue: string;
+  soloCutColor: string;
+}
+
 /**
  * Seeds a 4-player game (Dev + Alice + Bob + Carol) via the server's
  * /dev/seed endpoint. Since the dev-seed-realism change, /dev/seed's default
@@ -65,6 +70,21 @@ export async function seedNearWinGame(mission = 1): Promise<SeedResult> {
   const ctx = await request.newContext({ baseURL: API_URL });
   const res = await ctx.post("/dev/seed-near-win", { data: { mission } });
   if (!res.ok()) throw new Error(`Seed-near-win failed: ${res.status()}`);
+  return res.json();
+}
+
+/**
+ * Seeds an active game where Dev deterministically holds all 4 copies of
+ * one value (server PR /dev/seed-solo-cut-legal, #165) — the only way a
+ * solo cut is legal per #150's hold-all-remaining rule. Mission 1 splits
+ * each value's 4 copies across 4 players, so a random /dev/seed deal gives
+ * this by chance with <1% probability; this replaces the old 5-attempt
+ * retry+skip loop that mostly skipped instead of exercising the scenario.
+ */
+export async function seedSoloCutLegalGame(mission = 1): Promise<SoloCutLegalSeedResult> {
+  const ctx = await request.newContext({ baseURL: API_URL });
+  const res = await ctx.post("/dev/seed-solo-cut-legal", { data: { mission } });
+  if (!res.ok()) throw new Error(`Seed-solo-cut-legal failed: ${res.status()}`);
   return res.json();
 }
 

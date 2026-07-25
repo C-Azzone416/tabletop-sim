@@ -1,52 +1,52 @@
 import { test, expect } from "@playwright/test";
 import {
-  seedGame,
+  seedSoloCutLegalGame,
   cleanupGame,
   gameUrl,
-  findLocalDuplicateValuePair,
-  type SeedResult,
 } from "./helpers";
 
 // ── Test: Solo cut — safe outcome ──────────────────────────────────────────
 //
 // Solo Cut requires selecting 2 wires from the LOCAL player's own rack that
 // share the same value (GameBoard.soloCutMatchStatus / ActionPanel gate
-// "Confirm Solo Cut" behind status === "valid"). /dev/seed deals wires
-// randomly per call (wire-dealer.ts shuffles the full deck), so this test
-// retries a handful of seeds until Dev's own rack happens to contain a
-// duplicate-value pair rather than assuming one exists.
+// "Confirm Solo Cut" behind status === "valid"). #165: /dev/seed-solo-cut-legal
+// deterministically reassigns all 4 copies of one value to Dev server-side
+// (mission 1 splits each value's 4 copies across 4 players, so a random
+// /dev/seed deal gives this by chance with <1% probability), replacing the
+// old 5-attempt retry+skip loop that mostly skipped instead of exercising
+// the scenario.
 
 test("solo cut on two matching-value wires succeeds and cuts both wires", async ({
   page,
 }) => {
-  let seed: SeedResult | null = null;
-  let dup: Awaited<ReturnType<typeof findLocalDuplicateValuePair>> = null;
-
-  for (let attempt = 0; attempt < 5 && !dup; attempt++) {
-    if (seed) await cleanupGame(seed.joinCode);
-    seed = await seedGame(1);
-    await page.goto(gameUrl(seed));
-    await expect(page.getByText("Your turn — choose an action")).toBeVisible({
-      timeout: 10_000,
-    });
-    dup = await findLocalDuplicateValuePair(page);
-  }
-
-  if (!seed) throw new Error("Failed to seed game");
-
-  if (!dup) {
-    await cleanupGame(seed.joinCode);
-    test.skip(
-      true,
-      "Could not find a duplicate-value wire pair in Dev's own rack across 5 random /dev/seed deals — rare but possible given mission 1's 6-values-in-6-wires distribution",
-    );
-    return;
-  }
+  const seed = await seedSoloCutLegalGame(1);
+  await page.goto(gameUrl(seed));
+  await expect(page.getByText("Your turn — choose an action")).toBeVisible({
+    timeout: 10_000,
+  });
 
   try {
+    // No [data-wire-status="hidden"] in the selector itself: Playwright
+    // locators re-evaluate their selector on every action, so a status
+    // baked into the query would stop matching wireA/wireB the instant the
+    // solo cut flips them to "cut" below, breaking the toBeDisabled/
+    // data-wire-status assertions after that point (status here is only a
+    // startup sanity check, done via a fresh query, not embedded in the
+    // Locator we keep using).
+    const rack = page.locator('[data-testid="player-rack"]').first();
+    const matchingWires = rack
+      .locator('button[data-wire-position]')
+      .filter({ hasText: new RegExp(`^${seed.soloCutValue}$`) });
+    await expect(matchingWires).toHaveCount(4, { timeout: 10_000 });
+    await expect(
+      rack.locator('button[data-wire-position][data-wire-status="hidden"]').filter({ hasText: new RegExp(`^${seed.soloCutValue}$`) }),
+    ).toHaveCount(4);
+    const wireA = matchingWires.nth(0);
+    const wireB = matchingWires.nth(1);
+
     await page.getByRole("button", { name: "Solo Cut" }).click();
-    await dup.wires[0].click();
-    await dup.wires[1].click();
+    await wireA.click();
+    await wireB.click();
 
     const confirmBtn = page.getByRole("button", { name: "Confirm Solo Cut" });
     await expect(confirmBtn).toBeEnabled({ timeout: 5_000 });
@@ -58,10 +58,10 @@ test("solo cut on two matching-value wires succeeds and cuts both wires", async 
 
     // Cut wires render disabled (Wire.tsx: disabled={!onSelect || isCut})
     // and expose data-wire-status="cut".
-    await expect(dup.wires[0]).toBeDisabled({ timeout: 5_000 });
-    await expect(dup.wires[1]).toBeDisabled();
-    await expect(dup.wires[0]).toHaveAttribute("data-wire-status", "cut");
-    await expect(dup.wires[1]).toHaveAttribute("data-wire-status", "cut");
+    await expect(wireA).toBeDisabled({ timeout: 5_000 });
+    await expect(wireB).toBeDisabled();
+    await expect(wireA).toHaveAttribute("data-wire-status", "cut");
+    await expect(wireB).toHaveAttribute("data-wire-status", "cut");
   } finally {
     await cleanupGame(seed.joinCode);
   }
