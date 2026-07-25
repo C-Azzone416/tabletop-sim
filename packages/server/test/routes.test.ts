@@ -225,16 +225,20 @@ describe("routes", () => {
   describe("GET /profiles/:id/mission-outcomes", () => {
     const mockOutcomesDb = vi.mocked(outcomesDb);
 
-    it("returns the profile's outcomes ordered by mission", async () => {
+    // #222 — own-profile only, same #194 pattern as GET /profiles/:id below:
+    // this route composed with a known profileId into a full mission-history
+    // leak with no auth check at all.
+    it("returns the profile's outcomes ordered by mission when the caller authenticates as that profile", async () => {
       const profile = makeProfile({ id: "prof-1", name: "Alice" });
       const outcomes = [
         { profileId: "prof-1", mission: 1, outcome: "won" as const, updatedAt: "2026-07-24T00:00:00Z" },
         { profileId: "prof-1", mission: 2, outcome: "lost" as const, updatedAt: "2026-07-24T00:00:00Z" },
       ];
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "prof-1", name: "Alice" });
       mockProfilesDb.getProfileById.mockResolvedValue(profile);
       mockOutcomesDb.getMissionOutcomesByProfileId.mockResolvedValue(outcomes);
 
-      const res = await app.inject({ method: "GET", url: "/profiles/prof-1/mission-outcomes" });
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1/mission-outcomes?profileId=prof-1&name=Alice" });
 
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ outcomes });
@@ -242,29 +246,54 @@ describe("routes", () => {
     });
 
     it("returns an empty array for a profile with no recorded outcomes", async () => {
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "prof-1", name: "Alice" });
       mockProfilesDb.getProfileById.mockResolvedValue(makeProfile({ id: "prof-1" }));
       mockOutcomesDb.getMissionOutcomesByProfileId.mockResolvedValue([]);
 
-      const res = await app.inject({ method: "GET", url: "/profiles/prof-1/mission-outcomes" });
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1/mission-outcomes?profileId=prof-1&name=Alice" });
 
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ outcomes: [] });
     });
 
+    it("returns 401 when no auth credential is presented", async () => {
+      mockWsAuth.authenticateProfile.mockResolvedValue(null);
+
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1/mission-outcomes" });
+
+      expect(res.statusCode).toBe(401);
+      expect(res.json()).toEqual({ error: "Authentication required" });
+      expect(mockProfilesDb.getProfileById).not.toHaveBeenCalled();
+      expect(mockOutcomesDb.getMissionOutcomesByProfileId).not.toHaveBeenCalled();
+    });
+
+    it("returns 403 when the caller authenticates as a different profile", async () => {
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "prof-2", name: "Bob" });
+
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1/mission-outcomes?profileId=prof-2&name=Bob" });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: "Forbidden" });
+      expect(mockProfilesDb.getProfileById).not.toHaveBeenCalled();
+      expect(mockOutcomesDb.getMissionOutcomesByProfileId).not.toHaveBeenCalled();
+    });
+
     it("returns 404 for an unknown profile", async () => {
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "nope", name: "Ghost" });
       mockProfilesDb.getProfileById.mockResolvedValue(null);
 
-      const res = await app.inject({ method: "GET", url: "/profiles/nope/mission-outcomes" });
+      const res = await app.inject({ method: "GET", url: "/profiles/nope/mission-outcomes?profileId=nope&name=Ghost" });
 
       expect(res.statusCode).toBe(404);
       expect(res.json()).toEqual({ error: "Profile not found" });
     });
 
     it("returns 500 on DB error", async () => {
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "prof-1", name: "Alice" });
       mockProfilesDb.getProfileById.mockResolvedValue(makeProfile({ id: "prof-1" }));
       mockOutcomesDb.getMissionOutcomesByProfileId.mockRejectedValue(new Error("DB down"));
 
-      const res = await app.inject({ method: "GET", url: "/profiles/prof-1/mission-outcomes" });
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1/mission-outcomes?profileId=prof-1&name=Alice" });
 
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Internal server error" });

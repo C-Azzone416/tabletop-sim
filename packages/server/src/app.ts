@@ -97,7 +97,20 @@ export async function buildApp() {
 
   // #170 — per-profile mission outcomes for the home-screen indicators.
   // Missions absent from the array were never played.
-  app.get<{ Params: { id: string } }>('/profiles/:id/mission-outcomes', async (request, reply) => {
+  // #222 — own-profile only, same #194 pattern: this route was the exact
+  // history-leak the #194 comment on /profiles/:id above warned would
+  // compose with an un-gated mission-outcomes endpoint — it just hadn't
+  // been closed yet. IMPORTANT: the client's useMissionOutcomes call must
+  // ship credentialed (profileId/name query params) in the same window as
+  // this gate, or the mission-unlock picker breaks for everyone — see #222.
+  app.get<{ Params: { id: string }; Querystring: { profileId?: string; name?: string } }>('/profiles/:id/mission-outcomes', async (request, reply) => {
+    const user = await authenticateProfile(request.query.profileId, request.query.name);
+    if (!user) {
+      return reply.status(401).send({ error: 'Authentication required' });
+    }
+    if (user.profileId !== request.params.id) {
+      return reply.status(403).send({ error: 'Forbidden' });
+    }
     try {
       const profile = await profilesDb.getProfileById(request.params.id);
       if (!profile) {
