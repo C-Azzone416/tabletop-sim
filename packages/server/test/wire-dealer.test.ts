@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { dealWires, drawColorGroup } from "../src/engine/wire-dealer.js";
+import { dealWires, drawColorGroup, buildDeck } from "../src/engine/wire-dealer.js";
+import type { MissionConfig } from "@tabletop/shared";
 
 describe("wire-dealer", () => {
   describe("dealWires — Mission 1 (default)", () => {
@@ -214,6 +215,97 @@ describe("wire-dealer", () => {
     it("throws if candidatePoolSize exceeds the 11-singleton master set", () => {
       expect(() => drawColorGroup("red", { count: 1, candidatePoolSize: 12 })).toThrow(
         /exceeds the master set/
+      );
+    });
+  });
+
+  // #220 — the dealer-contract fix: a mission's yellow/red counts are a
+  // guarantee, not a maximum draw from a larger blue-sized pool. A SINGLE
+  // green run doesn't prove this (that's exactly how #220 reached develop
+  // in the first place, per heron) — repeated deals across many iterations
+  // are the actual acceptance criterion.
+  describe("dealWires — #220 guaranteed non-blue colors across repeated deals", () => {
+    const ITERATIONS = 200;
+
+    it("mission 5 (yellow + red guaranteed) always deals both colors, every iteration, 2 players", () => {
+      for (let i = 0; i < ITERATIONS; i++) {
+        const wires = dealWires(["p1", "p2"], "p1", 5);
+        const yellowCount = wires.filter((w) => w.color === "yellow").length;
+        const redCount = wires.filter((w) => w.color === "red").length;
+        expect(yellowCount, `iteration ${i}: yellow`).toBe(1);
+        expect(redCount, `iteration ${i}: red`).toBe(1);
+      }
+    });
+
+    it("mission 5 always deals both colors, every iteration, 3 and 4 players", () => {
+      for (let i = 0; i < ITERATIONS; i++) {
+        const wires3 = dealWires(["p1", "p2", "p3"], "p1", 5);
+        expect(wires3.filter((w) => w.color === "yellow"), `3p iteration ${i}`).toHaveLength(1);
+        expect(wires3.filter((w) => w.color === "red"), `3p iteration ${i}`).toHaveLength(1);
+
+        const wires4 = dealWires(["p1", "p2", "p3", "p4"], "p1", 5);
+        expect(wires4.filter((w) => w.color === "yellow"), `4p iteration ${i}`).toHaveLength(1);
+        expect(wires4.filter((w) => w.color === "red"), `4p iteration ${i}`).toHaveLength(1);
+      }
+    });
+
+    it("mission 3 (yellow only) always deals the guaranteed yellow, every iteration", () => {
+      for (let i = 0; i < ITERATIONS; i++) {
+        const wires = dealWires(["p1", "p2"], "p1", 3);
+        expect(wires.filter((w) => w.color === "yellow"), `iteration ${i}`).toHaveLength(1);
+      }
+    });
+
+    it("mission 8 (yellow + red) always deals both colors, every iteration", () => {
+      for (let i = 0; i < ITERATIONS; i++) {
+        const wires = dealWires(["p1", "p2"], "p1", 8);
+        expect(wires.filter((w) => w.color === "yellow"), `iteration ${i}`).toHaveLength(1);
+        expect(wires.filter((w) => w.color === "red"), `iteration ${i}`).toHaveLength(1);
+      }
+    });
+
+    it("the total dealt always exactly matches wiresPerPlayer capacity — no leftover, nothing undealt", () => {
+      for (let i = 0; i < ITERATIONS; i++) {
+        const wires = dealWires(["p1", "p2"], "p1", 5);
+        expect(wires, `iteration ${i}`).toHaveLength(32);
+      }
+    });
+  });
+
+  describe("buildDeck — #220 capacity guarantee", () => {
+    const baseConfig: MissionConfig = {
+      wireGroups: [
+        { color: "blue", values: [1, 2, 3, 4], copiesPerValue: 4 },
+        { color: "yellow", count: 2 },
+      ],
+      totalWires: 18,
+      detonator: { 2: 4, 3: 5, 4: 6 },
+      wiresPerPlayer: { 2: 9, 3: { captain: 6, others: 6 }, 4: 5 },
+    };
+
+    it("deals every guaranteed non-blue tile and fills the rest with blue, sized to exactly capacity", () => {
+      const deck = buildDeck(baseConfig, 10);
+      expect(deck).toHaveLength(10);
+      expect(deck.filter((w) => w.color === "yellow")).toHaveLength(2);
+      expect(deck.filter((w) => w.color === "blue")).toHaveLength(8);
+    });
+
+    it("throws if the guaranteed non-blue count alone exceeds capacity, rather than silently dropping tiles", () => {
+      expect(() => buildDeck(baseConfig, 1)).toThrow(
+        /guarantee 2 non-blue wires but only 1 stand slots/
+      );
+    });
+
+    it("throws if capacity demands more blue than the configured blue pool provides", () => {
+      const tinyBluePool: MissionConfig = {
+        ...baseConfig,
+        wireGroups: [
+          { color: "blue", values: [1], copiesPerValue: 2 }, // pool of 2
+          { color: "yellow", count: 1 },
+        ],
+      };
+      expect(() => buildDeck(tinyBluePool, 10)).toThrow(
+        /needs 9 blue wires to fill remaining capacity but the blue pool only has 2/
       );
     });
   });

@@ -65,27 +65,55 @@ export function drawColorGroup(color: 'yellow' | 'red', group: ColorWireGroupInp
 }
 
 /**
- * Build the full wire deck for a mission from its wire groups. Blue expands
- * values × copies as before; yellow/red draw distinct singleton values at
- * random per drawColorGroup (only `dealt` values enter the deck — the wider
- * candidate pool from a partial-knowledge group is not dealt to any player).
+ * Build the full wire deck for a mission, sized to EXACTLY `capacity`
+ * (total stand slots across all players this deal).
+ *
+ * #220 — the dealer contract: a mission's yellow/red counts are a
+ * guarantee, not a maximum draw from a larger pool. Every configured
+ * yellow/red tile enters play; blue is the pool that fills whatever
+ * capacity is left over. This is NOT symmetric with blue on purpose —
+ * blue's `values`/`copiesPerValue` describe a draw POOL (sampled down to
+ * fit), while a color group's `count` describes a DEAL GUARANTEE (dealt in
+ * full, always). Building the deck at exactly `capacity` means the
+ * existing per-player dealing loop deals the whole deck with nothing left
+ * over — the previous bug was a shuffled deck sized larger than capacity
+ * (the full 48-tile blue pool), so leftover cards — including, by chance,
+ * the single yellow/red tile — never got dealt at all.
  */
-function buildDeck(config: MissionConfig): { value: string; color: WireColor }[] {
+export function buildDeck(config: MissionConfig, capacity: number): { value: string; color: WireColor }[] {
   const deck: { value: string; color: WireColor }[] = [];
+
+  let guaranteedCount = 0;
   for (const group of config.wireGroups) {
-    if (group.color === 'blue') {
-      for (const v of group.values) {
-        for (let i = 0; i < group.copiesPerValue; i++) {
-          deck.push({ value: String(v), color: 'blue' });
-        }
-      }
-    } else {
-      const { dealt } = drawColorGroup(group.color, group);
-      for (const value of dealt) {
-        deck.push({ value, color: group.color });
+    if (group.color === 'blue') continue;
+    const { dealt } = drawColorGroup(group.color, group);
+    for (const value of dealt) deck.push({ value, color: group.color });
+    guaranteedCount += dealt.length;
+  }
+
+  const blueNeeded = capacity - guaranteedCount;
+  if (blueNeeded < 0) {
+    throw new Error(
+      `Mission wireGroups guarantee ${guaranteedCount} non-blue wires but only ${capacity} stand slots are configured`
+    );
+  }
+
+  const bluePool: { value: string; color: WireColor }[] = [];
+  for (const group of config.wireGroups) {
+    if (group.color !== 'blue') continue;
+    for (const v of group.values) {
+      for (let i = 0; i < group.copiesPerValue; i++) {
+        bluePool.push({ value: String(v), color: 'blue' });
       }
     }
   }
+  if (blueNeeded > bluePool.length) {
+    throw new Error(
+      `Mission needs ${blueNeeded} blue wires to fill remaining capacity but the blue pool only has ${bluePool.length}`
+    );
+  }
+
+  deck.push(...shuffle(bluePool).slice(0, blueNeeded));
   return deck;
 }
 
@@ -125,14 +153,8 @@ export function dealWires(playerIds: string[], captainId: string, missionNumber:
     throw new Error(`Unknown mission: ${missionNumber}. Must be 1-8.`);
   }
 
-  const deck = shuffle(buildDeck(config));
-  const playerWires: Map<string, { value: string; color: WireColor }[]> = new Map();
-
-  for (const pid of playerIds) {
-    playerWires.set(pid, []);
-  }
-
-  // Determine wire counts per player from mission config
+  // Determine wire counts per player from mission config (computed before
+  // the deck so #220's guarantee can size the deck to exactly this total).
   const wireCounts = new Map<string, number>();
   const wpp = config.wiresPerPlayer;
   if (playerCount === 2) {
@@ -146,7 +168,16 @@ export function dealWires(playerIds: string[], captainId: string, missionNumber:
     for (const pid of playerIds) wireCounts.set(pid, wpp[4]);
   }
 
-  // Deal from the shuffled deck
+  const capacity = [...wireCounts.values()].reduce((sum, n) => sum + n, 0);
+  const deck = shuffle(buildDeck(config, capacity));
+  const playerWires: Map<string, { value: string; color: WireColor }[]> = new Map();
+
+  for (const pid of playerIds) {
+    playerWires.set(pid, []);
+  }
+
+  // Deal from the shuffled deck — sized to exactly `capacity` (#220), so
+  // this exhausts the whole deck with nothing left undealt.
   let deckIndex = 0;
   for (const pid of playerIds) {
     const count = wireCounts.get(pid)!;
