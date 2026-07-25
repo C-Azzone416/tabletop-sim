@@ -168,6 +168,27 @@ describe("DevPanel", () => {
     expect((panel as HTMLElement).className).toContain("z-[60]");
   });
 
+  // #183: the collapsed toggle at the old top-24 offset sat directly over
+  // GameBoard's LIVES value in the status bar, hiding the number a dev
+  // watches most during manual playtesting.
+  it("sits below the game-board status bar (top-40, not top-24)", async () => {
+    const user = userEvent.setup();
+    render(
+      <DevPanel
+        seatOptions={seats}
+        activeProfileId="p1"
+        onSwitchSeat={vi.fn()}
+        onRevealAllTokens={vi.fn()}
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: "Open dev tools" });
+    expect(toggle.className).toContain("top-40");
+    expect(toggle.className).not.toContain("top-24");
+    await user.click(toggle);
+    const panel = screen.getByText(/\[DEV\] Tools/).closest("div.fixed");
+    expect((panel as HTMLElement).className).toContain("top-40");
+  });
+
   it("does not render the seat section when seatOptions is empty", async () => {
     const user = userEvent.setup();
     render(
