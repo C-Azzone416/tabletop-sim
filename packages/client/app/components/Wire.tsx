@@ -11,13 +11,19 @@ interface WireProps {
   infoTokens: InfoToken[];
 }
 
-function colorBgClass(color: WireType["color"]): string {
-  if (color === "blue") return "bg-blue-100 dark:bg-blue-900/30";
-  if (color === "yellow") return "bg-yellow-100 dark:bg-yellow-900/30";
-  if (color === "red") return "bg-red-100 dark:bg-red-900/30";
-  // null — another player's hidden wire, color redacted server-side (#187);
-  // neutral facedown treatment (visual refinement tracked as #188).
-  return "bg-zinc-100 dark:bg-zinc-800";
+// #188 (Caroline's ruling, supersedes per-color backgrounds): every hidden
+// tile back is one uniform neutral — no color leak via background even for
+// your own rack, since the redacted broadcast (#187) means the client can no
+// longer assume it always has real color data to paint with. The color
+// signal moves entirely to the numeral instead.
+function valueColorClass(color: WireType["color"]): string {
+  if (color === "blue") return "text-blue-700 dark:text-blue-300";
+  if (color === "yellow") return "text-yellow-700 dark:text-yellow-400";
+  if (color === "red") return "text-red-700 dark:text-red-400";
+  // null — shouldn't be reachable when a value is actually being displayed,
+  // since color and value are redacted together (#187); kept as a safe
+  // fallback rather than asserting.
+  return "text-zinc-900 dark:text-zinc-100";
 }
 
 export function Wire({
@@ -47,26 +53,27 @@ export function Wire({
   const displayValue = wire.value ?? infoToken?.value ?? null;
 
   let borderClass: string;
-  let bgClass: string;
   if (isCut) {
     borderClass = "border-zinc-300 dark:border-zinc-700";
-    bgClass = "bg-zinc-100 dark:bg-zinc-800";
   } else if (isSelected) {
     borderClass = "border-blue-500 ring-2 ring-blue-300 dark:ring-blue-700";
-    bgClass = colorBgClass(wire.color);
   } else if (hasPendingInfoToken) {
     borderClass = "border-blue-500 dark:border-blue-400";
-    bgClass = colorBgClass(wire.color);
   } else {
     borderClass = "border-zinc-300 dark:border-zinc-600";
-    bgClass = colorBgClass(wire.color);
   }
+  // #173's dim-grey cut treatment stays as the one bg exception to #188's
+  // uniform neutral — it signals "resolved," not color.
+  const bgClass = isCut
+    ? "bg-zinc-100 dark:bg-zinc-800"
+    : "bg-white dark:bg-zinc-900";
 
-  const valueTextClass = isCut
-    ? "text-zinc-500 dark:text-zinc-400"
-    : hasPendingInfoToken
-      ? "text-blue-700 dark:text-blue-300"
-      : "text-zinc-900 dark:text-zinc-100";
+  // #188: cut and own-rack wires now carry color on the numeral instead of
+  // the background. Pending-info-token blue is a distinct UI signal (the
+  // token itself, not the wire's real color) and keeps its own treatment.
+  const valueTextClass = hasPendingInfoToken
+    ? "text-blue-700 dark:text-blue-300"
+    : valueColorClass(wire.color);
 
   return (
     <button
