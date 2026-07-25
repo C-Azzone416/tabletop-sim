@@ -253,6 +253,62 @@ describe("Wire (#156)", () => {
     });
   });
 
+  // #190 Phase B: a wrong-guess against yellow places an InfoToken with the
+  // 'YELLOW' sentinel value (game-engine.ts), reusing the existing token
+  // mechanism rather than a new shape. Yellow has no numeric identity
+  // during play, so the indicator is outline-only, no number.
+  describe("yellow wrong-guess indicator (#190)", () => {
+    it("renders a yellow-outlined chip with no number for a 'YELLOW' sentinel token", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null, color: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "YELLOW" })];
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).toContain("border-yellow-500");
+      expect(button.className).toContain("rounded-full");
+      expect(screen.queryByText("YELLOW")).not.toBeInTheDocument();
+      expect(button.textContent).toBe("");
+    });
+
+    it("still carries the circular chip shape and stays clickable, same as the numbered blue token", async () => {
+      resetIds();
+      const onSelect = vi.fn();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null, color: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "YELLOW" })];
+      render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} onSelect={onSelect} />,
+      );
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId("wire-info-token"));
+      expect(onSelect).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not use the yellow treatment for a normal numbered info token", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).not.toContain("border-yellow-500");
+      expect(button.className).toContain("border-blue-500");
+      expect(screen.getByText("7")).toBeInTheDocument();
+    });
+
+    it("exposes the sentinel via data-wire-value for E2E/logic reads", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null, color: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "YELLOW" })];
+      render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      expect(screen.getByTestId("wire-info-token")).toHaveAttribute("data-wire-value", "YELLOW");
+    });
+  });
+
   // #190: "revealed" (reveal_reds, or the interim half of a dual-cut) is
   // distinct from both untouched-hidden and cut — it must not fall through
   // to plain hidden styling.
