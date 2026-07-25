@@ -26,15 +26,12 @@ function valueColorClass(color: WireType["color"]): string {
   return "text-zinc-900 dark:text-zinc-100";
 }
 
-// #190: the rulebook confirms yellow/red decimals are a sort key only — the
-// wires have no numeric identity during play (every yellow/red action is
-// color-scoped, never value-scoped). Showing "4.1"/"3.5" as a numeral would
-// assert a game-fact that doesn't exist, so only blue ever renders its
-// value as text; yellow/red render as a bare color-tinted tile in every
-// status (hidden, revealed, cut) — decided on #wire-semantics 2026-07-25.
-function showsNumeral(color: WireType["color"]): boolean {
-  return color === "blue";
-}
+// #190: whether yellow/red should ever show their decimal as a numeral (vs.
+// a bare color tile, decimal driving sort position only) is pending
+// Caroline's confirm — the physical tiles have the decimal printed on them,
+// which cuts against suppressing it even though the rulebook says it has no
+// value during play. Holding at "always show" (pre-#190 behavior) until
+// that ruling lands.
 
 export function Wire({
   wire,
@@ -135,7 +132,7 @@ export function Wire({
         ${!isCut && onSelect ? "cursor-pointer hover:border-blue-400 hover:ring-2 hover:ring-blue-300 dark:hover:ring-blue-700" : "cursor-default"}
       `}
     >
-      {showValue && displayValue !== null && showsNumeral(wire.color) && (
+      {showValue && displayValue !== null && (
         <span className={`text-lg font-bold ${valueTextClass}`}>
           {displayValue}
         </span>
