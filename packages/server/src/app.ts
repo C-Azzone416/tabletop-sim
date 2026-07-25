@@ -11,7 +11,7 @@ import { getMigrationsStatus } from './db/migrations.js';
 import * as engine from './engine/game-engine.js';
 import { handleMessage } from './ws/message-handler.js';
 import { removeConnection, setAuthenticatedUser, registerConnection } from './ws/connection-manager.js';
-import { authenticateUpgrade } from './ws/auth.js';
+import { authenticateUpgrade, authenticateProfile } from './ws/auth.js';
 import { broadcastGameState } from './ws/state-broadcaster.js';
 
 export async function buildApp() {
@@ -72,7 +72,17 @@ export async function buildApp() {
     }
   });
 
-  app.get<{ Params: { id: string } }>('/profiles/:id', async (request, reply) => {
+  // #194 — own-profile only: a profile's {id, name} composes with #189's
+  // un-gated mission-outcomes route into a profile-enumeration + history-leak
+  // path once a profileId is known by any means, so this can't stay open.
+  app.get<{ Params: { id: string }; Querystring: { profileId?: string; name?: string } }>('/profiles/:id', async (request, reply) => {
+    const user = await authenticateProfile(request.query.profileId, request.query.name);
+    if (!user) {
+      return reply.status(401).send({ error: 'Authentication required' });
+    }
+    if (user.profileId !== request.params.id) {
+      return reply.status(403).send({ error: 'Forbidden' });
+    }
     try {
       const profile = await profilesDb.getProfileById(request.params.id);
       if (!profile) {
@@ -101,12 +111,23 @@ export async function buildApp() {
     }
   });
 
-  app.get<{ Params: { joinCode: string } }>('/games/:joinCode', async (request, reply) => {
+  // #194 — seated-player-in-that-game only: returns mission/detonator state
+  // and every seated player's id/name/seatOrder, which was a full identity +
+  // live-progress leak to anyone with a join code, no session required.
+  app.get<{ Params: { joinCode: string }; Querystring: { profileId?: string; name?: string } }>('/games/:joinCode', async (request, reply) => {
+    const user = await authenticateProfile(request.query.profileId, request.query.name);
+    if (!user) {
+      return reply.status(401).send({ error: 'Authentication required' });
+    }
     const { joinCode } = request.params;
     try {
       const game = await gamesDb.getGameByJoinCode(joinCode);
       if (!game) {
         return reply.status(404).send({ error: 'Game not found' });
+      }
+      const seatedProfileIds = await playersDb.getPlayerProfileIdsByGameId(game.id);
+      if (!seatedProfileIds.includes(user.profileId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
       }
       const players = await playersDb.getPlayersByGameId(game.id);
       return { game, players };
