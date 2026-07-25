@@ -150,9 +150,7 @@ export async function findLocalDuplicateValuePair(
     const wires = rack.locator('button[data-wire-position][data-wire-status="hidden"]');
     const wireCount = await wires.count();
     for (let i = 0; i < wireCount; i++) {
-      const infoValue = (
-        await wires.nth(i).locator('[data-testid="wire-info-token"]').textContent().catch(() => null)
-      )?.trim();
+      const infoValue = await wires.nth(i).getAttribute("data-wire-value");
       if (infoValue) opponentHiddenValues.add(infoValue);
     }
   }
@@ -180,11 +178,12 @@ export function playerContainer(page: Page, name: string): Locator {
 /**
  * Finds a wire value present in BOTH the local player's own rack (values
  * always visible to their owner — see findLocalDuplicateValuePair) and one
- * of the named opponents' racks (via that wire's info token badge — since
+ * of the named opponents' racks (via that wire's info token — since
  * /dev/seed pre-places an info token on every wire for every player, an
- * opponent's true hidden value is readable from data-testid="wire-info-token"
- * even though the wire itself renders as data-wire-status="hidden"; see
- * Wire.tsx and seedDevGame in packages/server/src/app.ts).
+ * opponent's true hidden value is readable off the wire's own
+ * data-wire-value attribute even though the wire itself renders as
+ * data-wire-status="hidden"; see Wire.tsx and seedDevGame in
+ * packages/server/src/app.ts).
  *
  * A shared value is exactly what's needed to drive a full Dual Cut: the
  * local player can guess the opponent's wire correctly (propose), and — once
@@ -222,9 +221,7 @@ export async function findDualCutOpportunity(
       const btn = wireButtons.nth(i);
       const status = await btn.getAttribute("data-wire-status");
       if (status !== "hidden") continue;
-      const infoValue = (
-        await btn.locator('[data-testid="wire-info-token"]').textContent().catch(() => null)
-      )?.trim();
+      const infoValue = await btn.getAttribute("data-wire-value");
       if (infoValue && localByValue.has(infoValue)) {
         const ownWire = localByValue.get(infoValue)!;
         const posAttr = await ownWire.getAttribute("data-wire-position");
@@ -284,9 +281,7 @@ export async function findDualCutWrongGuessOpportunity(
     const count = await wireButtons.count();
     for (let i = 0; i < count; i++) {
       const wire = wireButtons.nth(i);
-      const realValue = (
-        await wire.locator('[data-testid="wire-info-token"]').textContent().catch(() => null)
-      )?.trim();
+      const realValue = await wire.getAttribute("data-wire-value");
       if (!realValue) continue;
       const wrongValue = [...localValues].find((v) => v !== realValue);
       if (wrongValue) {
