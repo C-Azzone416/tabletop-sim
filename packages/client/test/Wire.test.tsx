@@ -130,4 +130,56 @@ describe("Wire (#156)", () => {
       expect(screen.queryByText("7")).not.toBeInTheDocument();
     });
   });
+
+  // #188 (Caroline's ruling): color moves off the tile back and onto the
+  // numeral; hidden tile backs are one uniform neutral regardless of color.
+  describe("uniform neutral backs, color on the numeral (#188)", () => {
+    it("gives an own-rack wire's numeral the wire's color, not the background", () => {
+      resetIds();
+      const wire = makeWire({ status: "hidden", value: "6", color: "yellow" });
+      const { container } = render(
+        <Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />,
+      );
+      expect(screen.getByText("6").className).toContain("text-yellow-700");
+      const button = container.querySelector("button")!;
+      expect(button.className).not.toContain("bg-yellow-100");
+      expect(button.className).not.toContain("bg-blue-100");
+    });
+
+    it("gives a cut wire's numeral the wire's color while keeping the dim-grey background (#173)", () => {
+      resetIds();
+      const wire = makeWire({ status: "cut", value: "9", color: "red" });
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />,
+      );
+      expect(screen.getByText("9").className).toContain("text-red-700");
+      const button = container.querySelector("button")!;
+      expect(button.className).toContain("bg-zinc-100");
+      expect(button.className).not.toContain("bg-red-100");
+    });
+
+    it("never tints the background by color, for any color, on a non-cut wire", () => {
+      for (const color of ["blue", "yellow", "red"] as const) {
+        resetIds();
+        const wire = makeWire({ status: "hidden", value: "3", color });
+        const { container, unmount } = render(
+          <Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />,
+        );
+        const button = container.querySelector("button")!;
+        expect(button.className).toContain("bg-white");
+        expect(button.className).not.toMatch(/bg-(blue|yellow|red)-100/);
+        unmount();
+      }
+    });
+
+    it("keeps the pending-info-token blue text on a hidden opponent wire regardless of the (redacted) wire color", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null, color: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
+      render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      expect(screen.getByText("7").className).toContain("text-blue-700");
+    });
+  });
 });
