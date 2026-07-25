@@ -17,8 +17,22 @@ function runMigrationsOrExit(): void {
   if (!process.env.DATABASE_URL) return; // buildApp's own DB client surfaces this error
   const migrateScript = join(__dirname, '../../../db/migrate.ts');
   const result = spawnSync('npx', ['tsx', migrateScript], { stdio: 'inherit', env: process.env });
+
+  // #212 — result.error (spawn itself failed, e.g. `npx` not found on
+  // PATH) and result.signal (killed/OOM) previously collapsed into the
+  // same opaque "Migration failed" line as an ordinary SQL failure — none
+  // of which have anything to do with each other. A `tsx` resolution
+  // failure at boot would otherwise present as a "migration failure" too.
+  if (result.error) {
+    console.error('[server] Failed to spawn the migration runner:', result.error);
+    process.exit(1);
+  }
+  if (result.signal) {
+    console.error(`[server] Migration runner was killed by signal ${result.signal} — refusing to start`);
+    process.exit(1);
+  }
   if (result.status !== 0) {
-    console.error('[server] Migration failed — refusing to start');
+    console.error(`[server] Migration failed (exit code ${result.status}) — refusing to start`);
     process.exit(1);
   }
 }
