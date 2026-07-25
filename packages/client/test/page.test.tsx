@@ -40,6 +40,10 @@ vi.mock("../app/hooks/useGameState", () => ({
   }),
 }));
 
+vi.mock("../app/hooks/useMissionOutcomes", () => ({
+  useMissionOutcomes: () => ({}),
+}));
+
 function setSession(user: { id: string; name: string } | null, status: string) {
   mockUseSession.mockReturnValue({
     data: user ? { user } : null,
@@ -149,6 +153,12 @@ describe("Home (app/page.tsx)", () => {
       expect(screen.getByText("Playing as")).toBeInTheDocument();
       expect(screen.getByText("Alice")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Create New Game" })).toBeInTheDocument();
+    });
+
+    it("renders the mission progress indicators (#170)", () => {
+      render(<Home />);
+      expect(screen.getByLabelText("Mission progress")).toBeInTheDocument();
+      expect(screen.getByTestId("mission-progress-1")).toBeInTheDocument();
     });
 
     it("signs out when Change name is clicked", () => {

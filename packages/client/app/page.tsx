@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useGameState } from "./hooks/useGameState";
+import { useMissionOutcomes } from "./hooks/useMissionOutcomes";
 import { GameRoomScene } from "./components/GameRoomScene";
 import { ErrorToast } from "./components/ErrorToast";
+import { MissionProgress } from "./components/MissionProgress";
 
 export default function Home() {
   const router = useRouter();
@@ -23,6 +25,7 @@ export default function Home() {
   const playerName = session?.user?.name ?? "";
   const profileId = session?.user?.id ?? "";
 
+  const missionOutcomes = useMissionOutcomes(profileId);
   const { state, handleMessage, clearError } = useGameState();
   const { status, connect, send } = useWebSocket(
     (message) => {
@@ -183,6 +186,10 @@ export default function Home() {
           >
             Change name
           </button>
+        </div>
+
+        <div className="mb-6">
+          <MissionProgress outcomes={missionOutcomes} />
         </div>
 
         <div className="space-y-6">
