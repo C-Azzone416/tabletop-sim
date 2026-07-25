@@ -26,11 +26,21 @@ test("solo cut on two matching-value wires succeeds and cuts both wires", async 
   });
 
   try {
+    // No [data-wire-status="hidden"] in the selector itself: Playwright
+    // locators re-evaluate their selector on every action, so a status
+    // baked into the query would stop matching wireA/wireB the instant the
+    // solo cut flips them to "cut" below, breaking the toBeDisabled/
+    // data-wire-status assertions after that point (status here is only a
+    // startup sanity check, done via a fresh query, not embedded in the
+    // Locator we keep using).
     const rack = page.locator('[data-testid="player-rack"]').first();
     const matchingWires = rack
-      .locator('button[data-wire-position][data-wire-status="hidden"]')
+      .locator('button[data-wire-position]')
       .filter({ hasText: new RegExp(`^${seed.soloCutValue}$`) });
     await expect(matchingWires).toHaveCount(4, { timeout: 10_000 });
+    await expect(
+      rack.locator('button[data-wire-position][data-wire-status="hidden"]').filter({ hasText: new RegExp(`^${seed.soloCutValue}$`) }),
+    ).toHaveCount(4);
     const wireA = matchingWires.nth(0);
     const wireB = matchingWires.nth(1);
 
