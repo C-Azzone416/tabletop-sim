@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { MISSION_CONFIGS } from "@tabletop/shared";
+import type { ColorWireGroup } from "@tabletop/shared";
 import { seedGame, cleanupGame, gameUrl } from "./helpers";
 
 // #187: hidden wires on OTHER players' racks arrive with color redacted
@@ -7,8 +8,10 @@ import { seedGame, cleanupGame, gameUrl } from "./helpers";
 // see the viewer's own reds — and the deal is random, so that count isn't
 // deterministic. The deterministic cross-player assertion is post-reveal:
 // every red in the mission config is status=revealed with color visible.
+// `.filter((g) => g.color === "red")` alone doesn't narrow WireGroup's
+// union for TS — needs an explicit type predicate to see `.count`.
 const TOTAL_REDS = MISSION_CONFIGS[5].wireGroups
-  .filter((g) => g.color === "red")
+  .filter((g): g is ColorWireGroup => g.color === "red")
   .reduce((n, g) => n + g.count, 0);
 
 // ── Test: Reveal reds action ───────────────────────────────────────────────

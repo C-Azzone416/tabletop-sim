@@ -1,13 +1,16 @@
 import { test, expect } from "@playwright/test";
 import { MISSION_CONFIGS } from "@tabletop/shared";
+import type { ColorWireGroup } from "@tabletop/shared";
 import { seedGame, cleanupGame, gameUrl } from "./helpers";
 
 // #187: others' hidden wires arrive color-redacted, so pre-action red
 // counts only cover the viewer's own (randomly dealt) reds. The
 // deterministic cross-player number is the mission config's red total,
 // asserted after reveal (revealed wires ship color on every rack).
+// `.filter((g) => g.color === "red")` alone doesn't narrow WireGroup's
+// union for TS — needs an explicit type predicate to see `.count`.
 const TOTAL_REDS = MISSION_CONFIGS[5].wireGroups
-  .filter((g) => g.color === "red")
+  .filter((g): g is ColorWireGroup => g.color === "red")
   .reduce((n, g) => n + g.count, 0);
 
 // ── Test: Multiplayer state sync across 2 players ──────────────────────────
