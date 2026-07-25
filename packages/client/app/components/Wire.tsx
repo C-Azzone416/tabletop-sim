@@ -66,6 +66,7 @@ export function Wire({
         data-wire-color={wire.color}
         data-wire-position={wire.rackPosition}
         data-wire-status={wire.status}
+        data-wire-value={displayValue ?? undefined}
         className={`
           flex h-16 w-16 shrink-0 items-center justify-center
           rounded-full border-2 border-blue-500 bg-blue-50 text-lg font-bold
@@ -105,6 +106,7 @@ export function Wire({
       data-wire-color={wire.color}
       data-wire-position={wire.rackPosition}
       data-wire-status={wire.status}
+      data-wire-value={showValue && displayValue !== null ? displayValue : undefined}
       className={`
         relative flex flex-col items-center justify-center
         h-16 w-12 rounded-lg border-2 transition-all

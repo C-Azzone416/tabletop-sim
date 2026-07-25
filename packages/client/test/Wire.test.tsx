@@ -252,4 +252,47 @@ describe("Wire (#156)", () => {
       expect(screen.getByTestId("wire-info-token")).toBeDisabled();
     });
   });
+
+  // #210: E2E helpers read wire values off a stable data-wire-value
+  // attribute rather than the tile's inner markup, since #200's shape
+  // rework broke a class-selector-based read (span.text-lg.font-bold no
+  // longer exists on the circular pending-info-token chip).
+  describe("data-wire-value attribute (#210)", () => {
+    it("carries the displayed value on a pending info-token wire", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
+      render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      expect(screen.getByTestId("wire-info-token")).toHaveAttribute("data-wire-value", "7");
+    });
+
+    it("carries the displayed value on an own hidden wire with no token", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: "6" });
+      const { container } = render(
+        <Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />,
+      );
+      expect(container.querySelector("button")).toHaveAttribute("data-wire-value", "6");
+    });
+
+    it("carries the value on a cut wire", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "cut", value: "4" });
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />,
+      );
+      expect(container.querySelector("button")).toHaveAttribute("data-wire-value", "4");
+    });
+
+    it("omits the attribute for a hidden wire with no known value and no token", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null });
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />,
+      );
+      expect(container.querySelector("button")).not.toHaveAttribute("data-wire-value");
+    });
+  });
 });
