@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { MISSION_CONFIGS } from "@tabletop/shared";
+import type { ColorWireGroup } from "@tabletop/shared";
 import { seedGame, cleanupGame, gameUrl } from "./helpers";
 
 // #187: hidden wires on OTHER players' racks arrive with color redacted
@@ -7,9 +8,11 @@ import { seedGame, cleanupGame, gameUrl } from "./helpers";
 // see the viewer's own reds — and the deal is random, so that count isn't
 // deterministic. The deterministic cross-player assertion is post-reveal:
 // every red in the mission config is status=revealed with color visible.
+// `.filter((g) => g.color === "red")` alone doesn't narrow WireGroup's
+// union for TS — needs an explicit type predicate to see `.count`.
 const TOTAL_REDS = MISSION_CONFIGS[5].wireGroups
-  .filter((g) => g.color === "red")
-  .reduce((n, g) => n + g.values.length * g.copiesPerValue, 0);
+  .filter((g): g is ColorWireGroup => g.color === "red")
+  .reduce((n, g) => n + g.count, 0);
 
 // ── Test: Reveal reds action ───────────────────────────────────────────────
 //
@@ -17,8 +20,9 @@ const TOTAL_REDS = MISSION_CONFIGS[5].wireGroups
 // (GameBoard.tsx: hasRedWires={game.mission >= 5}; server-side confirmed in
 // executeRevealReds via MISSION_CONFIGS[mission].wireGroups.some(color ===
 // 'red')). Mission 5 is the first mission with red wires
-// (MISSION_5_CONFIG — 4 red wires of value 1, x4 copies = 16 total across a
-// 4-player game). The action reveals every hidden red wire across ALL
+// (MISSION_5_CONFIG — red count is a #190 Phase A TODO(#216) placeholder,
+// see TOTAL_REDS above rather than a hardcoded number). The action reveals
+// every hidden red wire across ALL
 // players (wiresDb.revealRedWires), transitioning them from "hidden" to
 // "revealed" — it does not cut anything or change the detonator.
 

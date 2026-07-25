@@ -99,6 +99,46 @@ question round-trips back to Caroline.
   every mission, not a one-time lobby step (see above).
 - Each seated player's once-per-mission double-detector usage resets.
 
+## Wire semantics (#190 Phase A — master set, decimals, rack sort)
+
+Verified against the source game's official rulebook (2026-07-25 research,
+see #190 comments). This is the data-model layer; yellow/red *gameplay*
+resolution (cut-by-color, red instant-loss, auto-reveal) is Phase B.
+
+- **Master tile set, defined once** (`WIRE_MASTER_SET` in `@tabletop/shared`):
+  - Blue: values 1–12, **4 copies each** (48 tiles) — the only duplicated
+    color. Missions select a subset of values/copies.
+  - Yellow: **singletons** 1.1–11.1 (11 tiles).
+  - Red: **singletons** 1.5–11.5 (11 tiles).
+  - Missions may not invent tiles outside this set.
+- **Decimals are sort position only.** Yellow's `.1` and red's `.5` suffix
+  exists solely to place the tile in the rack sort. During play, yellow/red
+  wires carry **no numeric value** — they are simply "yellow" or "red".
+  Nothing in the engine may read a yellow/red decimal as a gameplay quantity;
+  only color may ever be compared for a yellow/red resolution.
+- **Single interleaved rack sort.** A player's rack is ONE ascending numeric
+  sequence across all colors, not grouped by color. Example: `3.5, 4.1, 2, 3,
+  4, 6` racks as `2, 3, 3.5, 4, 4.1, 6`.
+- **Exact-value matching.** `Wire.value` is a string end-to-end; a guess of
+  `4` never matches a `4.1` wire, and solo-cut's all-remaining grouping never
+  merges them — there is no integer coercion anywhere in the dealer or
+  engine that would collapse a decimal wire onto its blue neighbor.
+- **Yellow/red are drawn at random.** A mission's `WireGroup` for yellow/red
+  specifies a `count` (how many are dealt), not a fixed list of values —
+  which specific tiles land in a game is a random draw at setup.
+- **Partial-knowledge "N out of M" draws.** Some missions reveal `M`
+  candidate tiles publicly (marked *possible* on the board) but secretly
+  deal only `N` of them into play, setting the rest aside unseen —
+  deliberate deduction uncertainty. Modeled via `WireGroup.candidatePoolSize`
+  (optional; omitted/equal-to-count means full knowledge). No mission config
+  currently uses this — the draw mechanic (`drawColorGroup` in
+  `wire-dealer.ts`) is built and tested ahead of Phase D's per-mission data.
+- **Mission compositions are TODO(#216).** Missions 4–8 are confirmed to use
+  the full 48-tile blue set; missions 1–3's blue set and every mission's
+  yellow/red counts are pending Caroline's physical Mission cards. Current
+  values for anything not confirmed are placeholders, clearly marked in
+  `constants.ts` — not real mission balance.
+
 ## Legacy mechanic (removed)
 
 An earlier design had a separate interrogation exchange
