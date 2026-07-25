@@ -17,6 +17,7 @@ describe("Lobby", () => {
       captainId: "p1",
       onReady: vi.fn(),
       onStartGame: vi.fn(),
+      highestUnlocked: 8,
     };
   };
 

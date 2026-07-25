@@ -21,6 +21,7 @@ describe("GameOverOverlay", () => {
         isCaptain={false}
         currentMission={1}
         onNextMission={() => {}}
+        highestUnlocked={8}
       />,
     );
     expect(screen.getByText("Mission Complete!")).toBeInTheDocument();
@@ -35,6 +36,7 @@ describe("GameOverOverlay", () => {
         isCaptain={false}
         currentMission={1}
         onNextMission={() => {}}
+        highestUnlocked={8}
       />,
     );
     expect(screen.getByText("Mission Failed")).toBeInTheDocument();
@@ -50,6 +52,7 @@ describe("GameOverOverlay", () => {
         isCaptain={false}
         currentMission={1}
         onNextMission={() => {}}
+        highestUnlocked={8}
       />,
     );
     await user.click(screen.getByRole("button", { name: "Back to Home" }));
@@ -64,6 +67,7 @@ describe("GameOverOverlay", () => {
         isCaptain={false}
         currentMission={2}
         onNextMission={() => {}}
+        highestUnlocked={8}
       />,
     );
     expect(
@@ -82,6 +86,7 @@ describe("GameOverOverlay", () => {
         isCaptain
         currentMission={2}
         onNextMission={onNextMission}
+        highestUnlocked={8}
       />,
     );
     await user.click(screen.getByRole("button", { name: "Next Mission (3)" }));
@@ -98,6 +103,7 @@ describe("GameOverOverlay", () => {
         isCaptain
         currentMission={2}
         onNextMission={onNextMission}
+        highestUnlocked={8}
       />,
     );
     await user.click(screen.getByRole("button", { name: "Pick a Different Mission" }));
@@ -116,6 +122,7 @@ describe("GameOverOverlay", () => {
         isCaptain
         currentMission={4}
         onNextMission={onNextMission}
+        highestUnlocked={8}
       />,
     );
     await user.click(screen.getByRole("button", { name: "Retry Mission 4" }));
@@ -130,6 +137,7 @@ describe("GameOverOverlay", () => {
         isCaptain
         currentMission={8}
         onNextMission={() => {}}
+        highestUnlocked={8}
       />,
     );
     expect(screen.getByRole("button", { name: "Next Mission (8)" })).toBeInTheDocument();
