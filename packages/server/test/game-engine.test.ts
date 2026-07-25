@@ -659,6 +659,18 @@ describe("game-engine", () => {
 
       await expect(engine.executePlaceInfoToken("g1", "p1", "w1")).rejects.toThrow("Wire already cut or revealed");
     });
+
+    it("rejects placing an opening info token on a non-blue wire (#191)", async () => {
+      const game = makeGame({ id: "g1", status: "setup", currentTurnPlayerId: "p1" });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p1", value: "3", color: "red", status: "hidden" });
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWireById.mockResolvedValue(wire);
+
+      await expect(engine.executePlaceInfoToken("g1", "p1", "w1")).rejects.toThrow(
+        "Opening info token must be placed on a blue wire"
+      );
+      expect(mockTokensDb.createInfoToken).not.toHaveBeenCalled();
+    });
   });
 
   describe("executeSoloCut", () => {
