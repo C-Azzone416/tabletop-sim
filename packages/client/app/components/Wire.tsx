@@ -52,13 +52,42 @@ export function Wire({
   const hasPendingInfoToken = hasInfoToken && !isCut;
   const displayValue = wire.value ?? infoToken?.value ?? null;
 
+  // #200 (Caroline's ruling): a pending info token needs to read as a
+  // placed token, not a revealed wire — a circular "back-of-tile" chip
+  // instead of the rectangular wire card, so it can't be mistaken for
+  // cut/revealed styling at a glance. Once cut, #173's ruling already
+  // retires this treatment in favor of the one shared cut look.
+  if (hasPendingInfoToken) {
+    return (
+      <button
+        onClick={onSelect}
+        disabled={!onSelect}
+        data-testid="wire-info-token"
+        data-wire-color={wire.color}
+        data-wire-position={wire.rackPosition}
+        data-wire-status={wire.status}
+        className={`
+          flex h-16 w-16 shrink-0 items-center justify-center
+          rounded-full border-2 border-blue-500 bg-blue-50 text-lg font-bold
+          text-blue-700 shadow-sm transition-all
+          dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300
+          ${isSelected ? "ring-2 ring-blue-300 dark:ring-blue-700" : ""}
+          ${isSelectable && !isSelected ? "ring-1 ring-blue-200 dark:ring-blue-800" : ""}
+          ${onSelect ? "cursor-pointer hover:border-blue-600 hover:ring-2 hover:ring-blue-300 dark:hover:border-blue-300 dark:hover:ring-blue-700" : "cursor-default"}
+        `}
+      >
+        {displayValue}
+      </button>
+    );
+  }
+
+  // Reachable here only for wires with no pending info token: normal
+  // hidden/revealed/cut treatment, colored per #188.
   let borderClass: string;
   if (isCut) {
     borderClass = "border-zinc-300 dark:border-zinc-700";
   } else if (isSelected) {
     borderClass = "border-blue-500 ring-2 ring-blue-300 dark:ring-blue-700";
-  } else if (hasPendingInfoToken) {
-    borderClass = "border-blue-500 dark:border-blue-400";
   } else {
     borderClass = "border-zinc-300 dark:border-zinc-600";
   }
@@ -67,13 +96,7 @@ export function Wire({
   const bgClass = isCut
     ? "bg-zinc-100 dark:bg-zinc-800"
     : "bg-white dark:bg-zinc-900";
-
-  // #188: cut and own-rack wires now carry color on the numeral instead of
-  // the background. Pending-info-token blue is a distinct UI signal (the
-  // token itself, not the wire's real color) and keeps its own treatment.
-  const valueTextClass = hasPendingInfoToken
-    ? "text-blue-700 dark:text-blue-300"
-    : valueColorClass(wire.color);
+  const valueTextClass = valueColorClass(wire.color);
 
   return (
     <button
@@ -90,11 +113,8 @@ export function Wire({
         ${!isCut && onSelect ? "cursor-pointer hover:border-blue-400 hover:ring-2 hover:ring-blue-300 dark:hover:ring-blue-700" : "cursor-default"}
       `}
     >
-      {(showValue || hasInfoToken) && displayValue !== null && (
-        <span
-          data-testid={hasInfoToken ? "wire-info-token" : undefined}
-          className={`text-lg font-bold ${valueTextClass}`}
-        >
+      {showValue && displayValue !== null && (
+        <span className={`text-lg font-bold ${valueTextClass}`}>
           {displayValue}
         </span>
       )}
