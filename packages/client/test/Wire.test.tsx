@@ -253,6 +253,49 @@ describe("Wire (#156)", () => {
     });
   });
 
+  // #190: "revealed" (reveal_reds, or the interim half of a dual-cut) is
+  // distinct from both untouched-hidden and cut — it must not fall through
+  // to plain hidden styling.
+  describe("revealed-not-cut treatment (#190)", () => {
+    it("gives a revealed wire a distinct border/background from both hidden and cut", () => {
+      resetIds();
+      const hidden = render(
+        <Wire wire={makeWire({ status: "hidden", value: "5" })} isLocal isSelected={false} infoTokens={[]} />,
+      );
+      const hiddenClasses = hidden.container.querySelector("button")!.className;
+      hidden.unmount();
+
+      resetIds();
+      const cut = render(
+        <Wire wire={makeWire({ status: "cut", value: "5" })} isLocal={false} isSelected={false} infoTokens={[]} />,
+      );
+      const cutClasses = cut.container.querySelector("button")!.className;
+      cut.unmount();
+
+      resetIds();
+      const revealed = render(
+        <Wire wire={makeWire({ status: "revealed", value: "5" })} isLocal={false} isSelected={false} infoTokens={[]} />,
+      );
+      const revealedClasses = revealed.container.querySelector("button")!.className;
+
+      expect(revealedClasses).not.toBe(hiddenClasses);
+      expect(revealedClasses).not.toBe(cutClasses);
+      expect(revealedClasses).toContain("bg-amber-50");
+      expect(revealedClasses).toContain("border-amber-400");
+    });
+
+    it("is not disabled or grey like a cut wire", () => {
+      resetIds();
+      const wire = makeWire({ status: "revealed", value: "5" });
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} onSelect={() => {}} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).not.toContain("bg-zinc-100");
+      expect(button).not.toBeDisabled();
+    });
+  });
+
   // #210: E2E helpers read wire values off a stable data-wire-value
   // attribute rather than the tile's inner markup, since #200's shape
   // rework broke a class-selector-based read (span.text-lg.font-bold no
@@ -293,6 +336,17 @@ describe("Wire (#156)", () => {
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />,
       );
       expect(container.querySelector("button")).not.toHaveAttribute("data-wire-value");
+    });
+
+    // #190: yellow/red decimal values (e.g. a yellow "4.1") must round-trip
+    // through data-wire-value exactly as the string they arrive as.
+    it("carries a decimal yellow/red value unchanged", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "cut", value: "4.1", color: "yellow" });
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />,
+      );
+      expect(container.querySelector("button")).toHaveAttribute("data-wire-value", "4.1");
     });
   });
 });
