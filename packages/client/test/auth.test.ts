@@ -5,6 +5,7 @@ const captured = vi.hoisted(() => ({
   authorize: null as null | ((credentials: Record<string, unknown>) => Promise<unknown>),
   jwt: null as null | ((args: { token: Record<string, unknown>; user?: Record<string, unknown> }) => Record<string, unknown>),
   session: null as null | ((args: { session: Record<string, unknown>; token: Record<string, unknown> }) => Record<string, unknown>),
+  authorized: null as null | ((args: { auth: Record<string, unknown> | null; request: { nextUrl: URL } }) => boolean),
 }));
 
 vi.mock("next-auth", () => ({
@@ -14,6 +15,7 @@ vi.mock("next-auth", () => ({
     const callbacks = config.callbacks as Record<string, unknown> | undefined;
     captured.jwt = (callbacks?.jwt ?? null) as typeof captured.jwt;
     captured.session = (callbacks?.session ?? null) as typeof captured.session;
+    captured.authorized = (callbacks?.authorized ?? null) as typeof captured.authorized;
     return { handlers: {}, signIn: vi.fn(), signOut: vi.fn(), auth: vi.fn() };
   }),
 }));
@@ -133,6 +135,54 @@ describe("auth.ts", () => {
       const token = { sub: "user-id-1" };
       const result = captured.session!({ session, token });
       expect(result.user).toBeUndefined();
+    });
+  });
+
+  // #182: without this callback, `auth` as middleware only populates
+  // req.auth — it never actually redirects. This is what makes the
+  // /game/:path* matcher in middleware.ts real.
+  describe("authorized callback (#182)", () => {
+    function req(url: string) {
+      return { nextUrl: new URL(url) };
+    }
+
+    beforeEach(() => {
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+
+    it("returns false when there is no session and no dev profileId param", () => {
+      expect(captured.authorized!({ auth: null, request: req("http://localhost/game/ABC") })).toBe(false);
+    });
+
+    it("returns false when the session has no user", () => {
+      expect(captured.authorized!({ auth: {}, request: req("http://localhost/game/ABC") })).toBe(false);
+    });
+
+    it("returns true when the session has a user", () => {
+      expect(
+        captured.authorized!({
+          auth: { user: { id: "abc123", name: "Alice" } },
+          request: req("http://localhost/game/ABC"),
+        }),
+      ).toBe(true);
+    });
+
+    it("returns false for a dev profileId param when dev tools are off (prod posture)", () => {
+      expect(
+        captured.authorized!({ auth: null, request: req("http://localhost/game/ABC?profileId=p1") }),
+      ).toBe(false);
+    });
+
+    it("returns false when dev tools are on but no profileId param is present (closes the real gap)", () => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+      expect(captured.authorized!({ auth: null, request: req("http://localhost/game/ABC") })).toBe(false);
+    });
+
+    it("returns true when dev tools are on and a profileId param is present (existing E2E harness)", () => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+      expect(
+        captured.authorized!({ auth: null, request: req("http://localhost/game/ABC?profileId=p1") }),
+      ).toBe(true);
     });
   });
 });
