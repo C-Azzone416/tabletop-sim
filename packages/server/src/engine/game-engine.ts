@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { MISSION_CONFIGS } from '@tabletop/shared';
+import { MISSION_CONFIGS, WIRE_MASTER_SET } from '@tabletop/shared';
 import type { Game, Player, Wire, Turn, WireColor, MissionOutcome } from '@tabletop/shared';
 import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
@@ -511,10 +511,15 @@ async function validateTurn(gameId: string, playerId: string): Promise<Game> {
   return game;
 }
 
+// #190 Phase A: blue is the only duplicated color (4 copies/value); yellow
+// and red are singletons (1 copy/value in the master set), so "validated"
+// for them means that single tile is cut — not a hardcoded 4-copy check,
+// which would never fire for yellow/red under the corrected master set.
 async function checkValidation(gameId: string, wireValue: string, wireColor: WireColor): Promise<boolean> {
+  const expectedCopies = wireColor === 'blue' ? WIRE_MASTER_SET.blue.copiesPerValue : 1;
   const wiresOfValueColor = await wiresDb.getWiresByValueColorAndGame(gameId, wireValue, wireColor);
   const allCut = wiresOfValueColor.every(w => w.status === 'cut');
-  if (allCut && wiresOfValueColor.length === 4) {
+  if (allCut && wiresOfValueColor.length === expectedCopies) {
     await tokensDb.createValidationToken(gameId, wireValue, wireColor);
     return true;
   }

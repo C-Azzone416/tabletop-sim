@@ -9,7 +9,7 @@ import { seedGame, cleanupGame, gameUrl } from "./helpers";
 // every red in the mission config is status=revealed with color visible.
 const TOTAL_REDS = MISSION_CONFIGS[5].wireGroups
   .filter((g) => g.color === "red")
-  .reduce((n, g) => n + g.values.length * g.copiesPerValue, 0);
+  .reduce((n, g) => n + g.count, 0);
 
 // ── Test: Reveal reds action ───────────────────────────────────────────────
 //
@@ -17,8 +17,9 @@ const TOTAL_REDS = MISSION_CONFIGS[5].wireGroups
 // (GameBoard.tsx: hasRedWires={game.mission >= 5}; server-side confirmed in
 // executeRevealReds via MISSION_CONFIGS[mission].wireGroups.some(color ===
 // 'red')). Mission 5 is the first mission with red wires
-// (MISSION_5_CONFIG — 4 red wires of value 1, x4 copies = 16 total across a
-// 4-player game). The action reveals every hidden red wire across ALL
+// (MISSION_5_CONFIG — red count is a #190 Phase A TODO(#216) placeholder,
+// see TOTAL_REDS above rather than a hardcoded number). The action reveals
+// every hidden red wire across ALL
 // players (wiresDb.revealRedWires), transitioning them from "hidden" to
 // "revealed" — it does not cut anything or change the detonator.
 

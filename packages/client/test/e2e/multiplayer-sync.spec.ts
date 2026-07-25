@@ -8,7 +8,7 @@ import { seedGame, cleanupGame, gameUrl } from "./helpers";
 // asserted after reveal (revealed wires ship color on every rack).
 const TOTAL_REDS = MISSION_CONFIGS[5].wireGroups
   .filter((g) => g.color === "red")
-  .reduce((n, g) => n + g.values.length * g.copiesPerValue, 0);
+  .reduce((n, g) => n + g.count, 0);
 
 // ── Test: Multiplayer state sync across 2 players ──────────────────────────
 //

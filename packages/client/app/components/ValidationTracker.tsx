@@ -27,25 +27,33 @@ export function ValidationTracker({
         Validated
       </h3>
       <div className="flex flex-wrap gap-x-3 gap-y-2">
-        {config.wireGroups.map((group) =>
-          group.values.map((value) => {
-            const key = `${group.color}-${value}`;
-            const validated = validatedKeys.has(key);
-            return (
-              <div
-                key={key}
-                title={`${group.color} ${value}`}
-                className={`flex h-10 w-10 items-center justify-center rounded-lg border-2 font-bold transition-all ${
-                  validated
-                    ? "border-green-600 bg-green-600 text-white dark:border-green-500 dark:bg-green-500"
-                    : "border-green-500 bg-white text-green-600 dark:border-green-600 dark:bg-zinc-800 dark:text-green-400"
-                }`}
-              >
-                {value}
-              </div>
-            );
-          })
-        )}
+        {config.wireGroups
+          // #190 Phase A: yellow/red groups no longer carry a fixed `values`
+          // list (drawn at random per-game from the master set — see
+          // WireGroup in @tabletop/shared), so this tracker can't pre-render
+          // their slots from mission config alone anymore. Blue-only for
+          // now; TODO(#190 Phase C) — needs the actual per-game wire list
+          // (not just missionNumber) to know which yellow/red values exist.
+          .filter((group) => group.color === "blue")
+          .map((group) =>
+            group.values.map((value) => {
+              const key = `${group.color}-${value}`;
+              const validated = validatedKeys.has(key);
+              return (
+                <div
+                  key={key}
+                  title={`${group.color} ${value}`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg border-2 font-bold transition-all ${
+                    validated
+                      ? "border-green-600 bg-green-600 text-white dark:border-green-500 dark:bg-green-500"
+                      : "border-green-500 bg-white text-green-600 dark:border-green-600 dark:bg-zinc-800 dark:text-green-400"
+                  }`}
+                >
+                  {value}
+                </div>
+              );
+            })
+          )}
       </div>
     </div>
   );

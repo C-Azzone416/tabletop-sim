@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dealWires } from "../src/engine/wire-dealer.js";
+import { dealWires, drawColorGroup } from "../src/engine/wire-dealer.js";
 
 describe("wire-dealer", () => {
   describe("dealWires — Mission 1 (default)", () => {
@@ -85,83 +85,136 @@ describe("wire-dealer", () => {
     });
   });
 
-  describe("dealWires — Mission 3 (blue + yellow)", () => {
-    it("deals 28 wires total for 2 players (14 each)", () => {
+  // #190 Phase A: missions 2-8's yellow/red groups are TODO(#216) placeholders
+  // (real per-mission counts come from Caroline's physical Mission cards).
+  // These tests exercise the new data-model mechanics — single interleaved
+  // sort, decimal singleton draws, exact-value matching — not the specific
+  // (placeholder) numbers, which are expected to change wholesale in #216.
+  describe("dealWires — Mission 3 (blue + yellow placeholder)", () => {
+    it("deals the configured total across 2 players", () => {
       const wires = dealWires(["p1", "p2"], "p1", 3);
-      expect(wires).toHaveLength(28);
-      expect(wires.filter((w) => w.playerId === "p1")).toHaveLength(14);
-      expect(wires.filter((w) => w.playerId === "p2")).toHaveLength(14);
+      expect(wires).toHaveLength(16); // 8 + 8, per MISSION_3_CONFIG.wiresPerPlayer
     });
 
-    it("deals 28 wires for 3 players (captain 14, others 7)", () => {
-      const wires = dealWires(["p1", "p2", "p3"], "p1", 3);
-      expect(wires).toHaveLength(28);
-      expect(wires.filter((w) => w.playerId === "p1")).toHaveLength(14);
-      expect(wires.filter((w) => w.playerId === "p2")).toHaveLength(7);
-      expect(wires.filter((w) => w.playerId === "p3")).toHaveLength(7);
-    });
-
-    it("includes 16 blue wires and 12 yellow wires", () => {
+    it("includes at most 11 yellow wires (singleton master set) and no duplicate yellow values", () => {
       const wires = dealWires(["p1", "p2"], "p1", 3);
-      expect(wires.filter((w) => w.color === "blue")).toHaveLength(16);
-      expect(wires.filter((w) => w.color === "yellow")).toHaveLength(12);
-      expect(wires.filter((w) => w.color === "red")).toHaveLength(0);
+      const yellowValues = wires.filter((w) => w.color === "yellow").map((w) => w.value);
+      expect(yellowValues.length).toBeLessThanOrEqual(11);
+      expect(new Set(yellowValues).size).toBe(yellowValues.length);
     });
 
-    it("sorts blue wires before yellow within each player rack", () => {
+    it("yellow wire values carry the .1 decimal sort suffix, not a bare integer", () => {
+      const wires = dealWires(["p1", "p2"], "p1", 3);
+      const yellowWires = wires.filter((w) => w.color === "yellow");
+      for (const w of yellowWires) {
+        expect(w.value).toMatch(/^\d+\.1$/);
+      }
+    });
+
+    it("racks a mixed-color hand as a single ascending numeric sequence (no color grouping)", () => {
       const wires = dealWires(["p1", "p2"], "p1", 3);
       const p1Wires = wires.filter((w) => w.playerId === "p1");
-      const lastBlue = p1Wires.map((w) => w.color).lastIndexOf("blue");
-      const firstYellow = p1Wires.map((w) => w.color).indexOf("yellow");
-      if (lastBlue !== -1 && firstYellow !== -1) {
-        expect(lastBlue).toBeLessThan(firstYellow);
-      }
+      const values = p1Wires.map((w) => Number(w.value));
+      const sorted = [...values].sort((a, b) => a - b);
+      expect(values).toEqual(sorted);
     });
   });
 
-  describe("dealWires — Mission 5 (blue + yellow + red)", () => {
-    it("deals 32 wires total for 2 players (16 each)", () => {
+  describe("dealWires — Mission 5 (blue + yellow + red placeholders)", () => {
+    it("deals the configured total for 2 players", () => {
       const wires = dealWires(["p1", "p2"], "p1", 5);
-      expect(wires).toHaveLength(32);
-      expect(wires.filter((w) => w.playerId === "p1")).toHaveLength(16);
-      expect(wires.filter((w) => w.playerId === "p2")).toHaveLength(16);
+      expect(wires).toHaveLength(32); // 16 + 16, per MISSION_5_CONFIG.wiresPerPlayer
     });
 
-    it("includes 16 blue, 12 yellow, 4 red wires", () => {
+    it("red wire values carry the .5 decimal sort suffix", () => {
       const wires = dealWires(["p1", "p2"], "p1", 5);
-      expect(wires.filter((w) => w.color === "blue")).toHaveLength(16);
-      expect(wires.filter((w) => w.color === "yellow")).toHaveLength(12);
-      expect(wires.filter((w) => w.color === "red")).toHaveLength(4);
+      const redWires = wires.filter((w) => w.color === "red");
+      for (const w of redWires) {
+        expect(w.value).toMatch(/^\d+\.5$/);
+      }
     });
 
-    it("deals 32 wires for 4 players (8 each)", () => {
-      const wires = dealWires(["p1", "p2", "p3", "p4"], "p1", 5);
-      expect(wires).toHaveLength(32);
-      for (const pid of ["p1", "p2", "p3", "p4"]) {
-        expect(wires.filter((w) => w.playerId === pid)).toHaveLength(8);
+    it("a guessed integer value never string-equals a decimal wire value (exact-match, no int coercion)", () => {
+      const wires = dealWires(["p1", "p2"], "p1", 5);
+      const decimalWires = wires.filter((w) => w.color !== "blue");
+      for (const w of decimalWires) {
+        const flooredGuess = String(Math.trunc(Number(w.value)));
+        expect(w.value).not.toBe(flooredGuess);
       }
     });
   });
 
   describe("dealWires — Mission 8 (36 wires, hardest)", () => {
-    it("deals 36 wires total for 2 players (18 each)", () => {
+    it("deals the configured total for 2 players", () => {
       const wires = dealWires(["p1", "p2"], "p1", 8);
-      expect(wires).toHaveLength(36);
-      expect(wires.filter((w) => w.playerId === "p1")).toHaveLength(18);
-      expect(wires.filter((w) => w.playerId === "p2")).toHaveLength(18);
+      expect(wires).toHaveLength(36); // 18 + 18, per MISSION_8_CONFIG.wiresPerPlayer
     });
 
-    it("includes 16 blue, 12 yellow, 8 red wires", () => {
+    it("uses the full confirmed 48-tile blue set (values 1-12, 4 copies each) as the draw pool", () => {
       const wires = dealWires(["p1", "p2"], "p1", 8);
-      expect(wires.filter((w) => w.color === "blue")).toHaveLength(16);
-      expect(wires.filter((w) => w.color === "yellow")).toHaveLength(12);
-      expect(wires.filter((w) => w.color === "red")).toHaveLength(8);
+      const blueValues = wires.filter((w) => w.color === "blue").map((w) => Number(w.value));
+      for (const v of blueValues) {
+        expect(v).toBeGreaterThanOrEqual(1);
+        expect(v).toBeLessThanOrEqual(12);
+      }
     });
   });
 
   describe("dealWires — invalid mission", () => {
     it("throws for unknown mission number", () => {
       expect(() => dealWires(["p1", "p2"], "p1", 9)).toThrow("Unknown mission");
+    });
+  });
+
+  describe("drawColorGroup — full-knowledge (no partial-knowledge draw)", () => {
+    it("deals exactly `count` distinct values with the color's decimal suffix", () => {
+      const { dealt, candidates } = drawColorGroup("yellow", { count: 3 });
+      expect(dealt).toHaveLength(3);
+      expect(new Set(dealt).size).toBe(3);
+      for (const v of dealt) expect(v).toMatch(/^\d+\.1$/);
+      // No partial-knowledge draw requested — candidates equals dealt exactly.
+      expect([...candidates].sort()).toEqual([...dealt].sort());
+    });
+
+    it("throws if count exceeds the 11-singleton master set", () => {
+      expect(() => drawColorGroup("red", { count: 12 })).toThrow(/exceeds the master set/);
+    });
+  });
+
+  describe('drawColorGroup — partial-knowledge "N out of M" draw', () => {
+    it("reveals candidatePoolSize (M) values but deals only count (N) of them", () => {
+      const { dealt, candidates } = drawColorGroup("yellow", { count: 2, candidatePoolSize: 3 });
+      expect(dealt).toHaveLength(2);
+      expect(candidates).toHaveLength(3);
+    });
+
+    it("every dealt value is drawn from the revealed candidate pool", () => {
+      const { dealt, candidates } = drawColorGroup("red", { count: 1, candidatePoolSize: 3 });
+      for (const v of dealt) {
+        expect(candidates).toContain(v);
+      }
+    });
+
+    it("candidates are distinct singleton values within the color's master range", () => {
+      const { candidates } = drawColorGroup("yellow", { count: 1, candidatePoolSize: 5 });
+      expect(new Set(candidates).size).toBe(5);
+      for (const v of candidates) {
+        const n = Number(v.replace(".1", ""));
+        expect(n).toBeGreaterThanOrEqual(1);
+        expect(n).toBeLessThanOrEqual(11);
+      }
+    });
+
+    it("throws if candidatePoolSize is smaller than count", () => {
+      expect(() => drawColorGroup("yellow", { count: 3, candidatePoolSize: 2 })).toThrow(
+        /must be >= count/
+      );
+    });
+
+    it("throws if candidatePoolSize exceeds the 11-singleton master set", () => {
+      expect(() => drawColorGroup("red", { count: 1, candidatePoolSize: 12 })).toThrow(
+        /exceeds the master set/
+      );
     });
   });
 });
