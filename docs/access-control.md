@@ -12,7 +12,7 @@ Re-derived from scratch for #186 after the original draft was lost to channel au
 | `POST /games` | None | Stubbed, always 501 — games are actually created over WS (`create_game`) |
 | `POST /profiles` | None (by design) | Find-or-create by name; this *is* the credential-issuance step — returns `{id, name}` used as the credential thereafter |
 | `GET /profiles/:id` | **Required** — `authenticateProfile(profileId, name)`, then 403 unless `user.profileId === params.id` | Own-profile-only (#194/#204) |
-| `GET /profiles/:id/mission-outcomes` | **None** | No auth check at all. Filed as #222 — composes with a leaked/guessed profile UUID into a full mission-history leak, the exact risk #194's neighboring fix called out but didn't itself close. |
+| `GET /profiles/:id/mission-outcomes` | **Required** — `authenticateProfile(profileId, name)`, then 403 unless `user.profileId === params.id` | Own-profile-only (#222/#224), same pattern as `/profiles/:id` — closes the mission-history-leak composition #194's neighboring fix called out but hadn't itself closed. |
 | `GET /games/:joinCode` | **Required** — `authenticateProfile`, then 403 unless requester's profileId is seated in that game | Returns game state + all seated players' id/name/seatOrder (#194/#204) |
 | `GET /ws` (upgrade) | **Required** — `authenticateUpgrade(request)`; closes 4001 if unauthenticated | Gates all further WS traffic on this connection |
 | `POST /dev/*` (advance-turn, seed, seed-near-win, seed-solo-cut-legal, cleanup, reveal-all-tokens, hide-dev-tokens) | **Config-gated, not authenticated** — routes only registered when `ENABLE_DEV_SEED==='true' && NODE_ENV!=='production'` | No per-request credential on top; structurally absent in a correctly configured prod deploy |
@@ -51,11 +51,10 @@ Every message resolves `playerId`/`gameId` from the server-tracked socket→conn
 | `/` (Home) | No route gate; renders signed-in/signed-out UI conditionally | Public landing page; actions (create/join) gated behind a session-derived identity, not the route itself |
 | `/signin` | None (intentional) | Public entry point |
 
-**Mission-unlock client gating (#209):** `highestUnlockedMission()` drives the mission picker UI in `Lobby.tsx`/`GameOverOverlay.tsx` — cosmetic only. The real backstop is server-side `assertMissionUnlocked()` (#206), enforced independently of what the client sends. Depends on `/profiles/:id/mission-outcomes`, currently unauthenticated (#222).
+**Mission-unlock client gating (#209):** `highestUnlockedMission()` drives the mission picker UI in `Lobby.tsx`/`GameOverOverlay.tsx` — cosmetic only. The real backstop is server-side `assertMissionUnlocked()` (#206), enforced independently of what the client sends. Depends on `/profiles/:id/mission-outcomes`, now own-profile-gated (#222/#224).
 
 ## Summary
 
-- Confirmed fixed and currently correct: #204 (`/profiles/:id`, `/games/:joinCode`), #193 (`/game/*` client gate), #206 (server-side mission-unlock), #192 (hidden-wire color+value redaction, still unbroken by today's #190 wire-semantics work).
+- Confirmed fixed and currently correct: #204 (`/profiles/:id`, `/games/:joinCode`), #222/#224 (`/profiles/:id/mission-outcomes`), #193 (`/game/*` client gate), #206 (server-side mission-unlock), #192 (hidden-wire color+value redaction, still unbroken by today's #190 wire-semantics work).
 - Confirmed present but intentionally cosmetic: #209 (client-side mission-unlock picker), backstopped by #206.
 - `/dev/*` (server + client): gated by build/deploy config only, not request-time authentication — acceptable given structural absence in production, stated explicitly rather than implying a request-level check exists.
-- **Open gap, filed as #222**: `GET /profiles/:id/mission-outcomes` has no auth check.
