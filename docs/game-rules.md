@@ -139,6 +139,44 @@ resolution (cut-by-color, red instant-loss, auto-reveal) is Phase B.
   values for anything not confirmed are placeholders, clearly marked in
   `constants.ts` — not real mission balance.
 
+## Yellow and red resolution rules (#190 Phase B)
+
+Builds on the master-set/decimal groundwork above. Blue's dual-cut/solo-cut
+behavior is unchanged by this phase.
+
+- **Yellow is cut by color, not number.** The propose/respond/complete
+  `dual_cut` flow is unchanged in shape — the asker still targets a wire and
+  sends a value — but when the true target wire is yellow, the server
+  applies color rules instead of number rules: the must-hold guard checks
+  for a hidden yellow (not a matching number), and a correct pairing cuts
+  the target plus one yellow from the asker's own tray. On a wrong guess,
+  the target gets a `'YELLOW'` indicator (no number revealed) rather than
+  its true value — this already worked correctly pre-#190 and needed no
+  change.
+- **Yellow solo-cut is color-scoped.** Legal only when the player holds
+  **all** remaining hidden yellow wires in the game (any values — yellow
+  has no in-play numeric identity to group by). Mirrors blue's
+  all-remaining-copies solo-cut rule exactly, generalized from a
+  value-group to a color-group. Triggered with the `'YELLOW'` sentinel
+  (the same one already used for the wrong-guess indicator) as `solo_cut`'s
+  value — no wire-protocol shape change.
+- **Red is never cut — any cut attempt that resolves to red is an instant
+  loss**, unless a saving equipment has been used. This applies to BOTH an
+  accepted and a rejected dual-cut response — a hidden red wire must never
+  reach `'cut'` status, full stop. The mission is won when every blue and
+  yellow is resolved with the reds still standing.
+- **Equipment seam.** `checkRedSave(gameId, playerId)` is the single choke
+  point every red-hit resolution path calls through. It always returns
+  `false` today — no equipment system exists yet (a separate, not-yet-
+  designed topic) — but a future save item has exactly one place to plug
+  into.
+- **All-red-hand auto-reveal at turn-start.** If a player's entire
+  remaining hidden hand is red (any numbers) when rotation lands on them,
+  the reds reveal all at once — marked `revealed`, not `cut`, no life lost,
+  not a player action — and rotation continues past them (same turn-start
+  evaluation point as #152's auto-skip, which now naturally applies since
+  they have zero hidden wires left after the reveal).
+
 ## Legacy mechanic (removed)
 
 An earlier design had a separate interrogation exchange
