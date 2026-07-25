@@ -12,6 +12,10 @@ interface DevPanelProps {
   activeProfileId: string;
   onSwitchSeat: (seat: DevPanelSeat) => void;
   onRevealAllTokens?: () => void;
+  // #172: when provided together with tokensRevealed, the reveal button
+  // becomes a toggle — "Hide Dev Tokens" undoes a prior Reveal All.
+  onHideDevTokens?: () => void;
+  tokensRevealed?: boolean;
   onSkipTurn?: () => void;
 }
 
@@ -35,9 +39,12 @@ export function DevPanel({
   activeProfileId,
   onSwitchSeat,
   onRevealAllTokens,
+  onHideDevTokens,
+  tokensRevealed,
   onSkipTurn,
 }: DevPanelProps) {
   const [open, setOpen] = useState(false);
+  const showHideToggle = !!tokensRevealed && !!onHideDevTokens;
 
   // #149: which seat you're viewing must be obvious without opening the
   // panel — Caroline got stranded viewing as a non-turn-holder seat with no
@@ -96,10 +103,10 @@ export function DevPanel({
       <div className="flex flex-col gap-1">
         {onRevealAllTokens && (
           <button
-            onClick={onRevealAllTokens}
+            onClick={showHideToggle ? onHideDevTokens : onRevealAllTokens}
             className="rounded border border-amber-300 px-2 py-1 text-left text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950"
           >
-            Reveal All Tokens
+            {showHideToggle ? "Hide Dev Tokens" : "Reveal All Tokens"}
           </button>
         )}
         {onSkipTurn && (

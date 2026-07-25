@@ -40,3 +40,40 @@ test("Reveal All Tokens (dev panel) fast-forwards a fresh setup-phase game to fu
     await cleanupGame(seed.joinCode);
   }
 });
+
+// #172: Reveal All Tokens becomes "Hide Dev Tokens" once dev-created tokens
+// are present (state-derived — see GameClient.tsx's devTokensRevealed —
+// not tracked as local click state), and clicking it undoes the reveal via
+// bobcat's #184 server piece (POST /dev/hide-dev-tokens).
+test("Hide Dev Tokens undoes a Reveal All, and the button toggles back", async ({
+  page,
+}) => {
+  const seed = await seedRaw(1);
+  try {
+    await page.goto(gameUrl(seed));
+    await expect(
+      page.getByRole("heading", { name: "Place Your Opening Info Token" }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole("button", { name: "Open dev tools" }).click();
+    await page.getByText("Reveal All Tokens").click();
+
+    const wireCount = await page.locator('button[data-wire-position]').count();
+    await expect(page.locator('[data-testid="wire-info-token"]')).toHaveCount(
+      wireCount,
+      { timeout: 10_000 },
+    );
+
+    const hideBtn = page.getByText("Hide Dev Tokens");
+    await expect(hideBtn).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Reveal All Tokens")).not.toBeVisible();
+    await hideBtn.click();
+
+    await expect(page.locator('[data-testid="wire-info-token"]')).toHaveCount(0, {
+      timeout: 10_000,
+    });
+    await expect(page.getByText("Reveal All Tokens")).toBeVisible({ timeout: 10_000 });
+  } finally {
+    await cleanupGame(seed.joinCode);
+  }
+});
