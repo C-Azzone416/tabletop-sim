@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Wire } from "../app/components/Wire";
 import { makeWire, makeInfoToken, resetIds } from "./fixtures";
 
@@ -180,6 +181,118 @@ describe("Wire (#156)", () => {
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
       );
       expect(screen.getByText("7").className).toContain("text-blue-700");
+    });
+  });
+
+  // #200 (Caroline's ruling): a pending info token reads as a placed token —
+  // a circular chip, distinct in shape from the rectangular wire tile — not
+  // just a color variant of the same rectangle.
+  describe("circular token shape for a pending info token (#200)", () => {
+    it("renders a pending info token as a circular chip, not the rectangular wire tile", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).toContain("rounded-full");
+      expect(button.className).not.toContain("rounded-lg");
+    });
+
+    it("uses the plain rectangular tile shape once there is no info token", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: "6" });
+      const { container } = render(
+        <Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).toContain("rounded-lg");
+      expect(button.className).not.toContain("rounded-full");
+    });
+
+    it("reverts to the rectangular cut-tile shape once the token's wire is cut (#173)", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "cut", value: "7" });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).toContain("rounded-lg");
+      expect(button.className).not.toContain("rounded-full");
+    });
+
+    it("stays clickable and calls onSelect for a pending info-token wire", async () => {
+      resetIds();
+      const onSelect = vi.fn();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
+      render(
+        <Wire
+          wire={wire}
+          isLocal={false}
+          isSelected={false}
+          infoTokens={infoTokens}
+          onSelect={onSelect}
+        />,
+      );
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId("wire-info-token"));
+      expect(onSelect).toHaveBeenCalledTimes(1);
+    });
+
+    it("is disabled when no onSelect is provided, same as any other non-interactive tile", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
+      render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      expect(screen.getByTestId("wire-info-token")).toBeDisabled();
+    });
+  });
+
+  // #210: E2E helpers read wire values off a stable data-wire-value
+  // attribute rather than the tile's inner markup, since #200's shape
+  // rework broke a class-selector-based read (span.text-lg.font-bold no
+  // longer exists on the circular pending-info-token chip).
+  describe("data-wire-value attribute (#210)", () => {
+    it("carries the displayed value on a pending info-token wire", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "7" })];
+      render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      expect(screen.getByTestId("wire-info-token")).toHaveAttribute("data-wire-value", "7");
+    });
+
+    it("carries the displayed value on an own hidden wire with no token", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: "6" });
+      const { container } = render(
+        <Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />,
+      );
+      expect(container.querySelector("button")).toHaveAttribute("data-wire-value", "6");
+    });
+
+    it("carries the value on a cut wire", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "cut", value: "4" });
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />,
+      );
+      expect(container.querySelector("button")).toHaveAttribute("data-wire-value", "4");
+    });
+
+    it("omits the attribute for a hidden wire with no known value and no token", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null });
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />,
+      );
+      expect(container.querySelector("button")).not.toHaveAttribute("data-wire-value");
     });
   });
 });
