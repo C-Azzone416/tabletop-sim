@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { MISSION_CONFIGS } from '@tabletop/shared';
-import type { Game, Player, Wire, Turn, WireColor } from '@tabletop/shared';
+import type { Game, Player, Wire, Turn, WireColor, MissionOutcome } from '@tabletop/shared';
 import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
 import * as wiresDb from '../db/wires.js';
@@ -33,6 +33,38 @@ async function endGame(gameId: string, result: 'won' | 'lost'): Promise<Game> {
     await outcomesDb.upsertMissionOutcome(profileId, endedGame.mission, result);
   }
   return endedGame;
+}
+
+// #179 — beat-to-unlock: mission 1 is always unlocked; mission N+1 unlocks
+// only once N has been WON (losses unlock nothing). Pure derivation from
+// #170's outcome records, no new schema. Capped at the highest configured
+// mission so a captain who's beaten everything doesn't unlock a mission
+// number that doesn't exist.
+export function getHighestUnlockedMission(outcomes: MissionOutcome[]): number {
+  const highestBeaten = outcomes.reduce((max, o) => (o.outcome === 'won' && o.mission > max ? o.mission : max), 0);
+  const maxConfiguredMission = Math.max(...Object.keys(MISSION_CONFIGS).map(Number));
+  return Math.min(highestBeaten + 1, maxConfiguredMission);
+}
+
+// Explicit requirement (#179): ENABLE_DEV_SEED=true skips unlock validation
+// server-side. Same combined gate as every other /dev/* bypass in app.ts —
+// structurally impossible to activate in production regardless of
+// misconfiguration elsewhere. Re-read at call time (not cached at module
+// load) so tests can toggle it per-case.
+function devUnlockBypassActive(): boolean {
+  return process.env.ENABLE_DEV_SEED === 'true' && process.env.NODE_ENV !== 'production';
+}
+
+async function assertMissionUnlocked(captainPlayerId: string, mission: number): Promise<void> {
+  if (devUnlockBypassActive()) return;
+
+  const captainProfileId = await playersDb.getPlayerProfileId(captainPlayerId);
+  if (!captainProfileId) return;
+
+  const outcomes = await outcomesDb.getMissionOutcomesByProfileId(captainProfileId);
+  if (mission > getHighestUnlockedMission(outcomes)) {
+    throw new Error('Mission is locked');
+  }
 }
 
 function generateJoinCode(): string {
@@ -81,6 +113,7 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
 
   const missionConfig = MISSION_CONFIGS[mission];
   if (!missionConfig) throw new Error('Invalid mission');
+  await assertMissionUnlocked(requestingPlayerId, mission);
 
   // Lives = players − 1 (spec rule: 2p = 1 life, 3p = 2 lives, 4p = 3 lives)
   const detonatorMax = Math.max(1, players.length - 1);
@@ -126,6 +159,7 @@ export async function executeNextMission(
 
   const missionConfig = MISSION_CONFIGS[mission];
   if (!missionConfig) throw new Error('Invalid mission');
+  await assertMissionUnlocked(requestingPlayerId, mission);
 
   const players = await playersDb.getPlayersByGameId(gameId);
 

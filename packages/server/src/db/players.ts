@@ -39,6 +39,14 @@ export async function getPlayerProfileIdsByGameId(gameId: string): Promise<strin
   return rows.map(row => row.profile_id as string);
 }
 
+// #179 — the captain's profileId gates the mission-unlock check; kept as a
+// targeted lookup rather than exposing profileId on Player (see
+// getPlayerProfileIdsByGameId above — same impersonation-vector concern).
+export async function getPlayerProfileId(playerId: string): Promise<string | null> {
+  const rows = await sql`SELECT profile_id FROM players WHERE id = ${playerId}`;
+  return (rows[0]?.profile_id as string | null) ?? null;
+}
+
 export async function getPlayersByGameId(gameId: string): Promise<Player[]> {
   const rows = await sql`
     SELECT * FROM players WHERE game_id = ${gameId} ORDER BY seat_order

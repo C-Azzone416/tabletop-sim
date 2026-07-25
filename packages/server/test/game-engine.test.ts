@@ -23,6 +23,7 @@ vi.mock("../src/db/players.js", () => ({
   createPlayer: vi.fn(),
   getPlayersByGameId: vi.fn(),
   getPlayerById: vi.fn(),
+  getPlayerProfileId: vi.fn(),
   getPlayerProfileIdsByGameId: vi.fn(),
   markDoubleDetectorUsed: vi.fn(),
   markSetupDone: vi.fn(),
@@ -85,6 +86,11 @@ describe("game-engine", () => {
     // tests run unchanged.
     mockPlayersDb.getPlayerProfileIdsByGameId.mockResolvedValue([]);
     mockGamesDb.getGameCreatedVia.mockResolvedValue("lobby");
+    // #179 — unlock check no-ops when the captain has no profileId, so
+    // existing startGame/executeNextMission tests (mission 1, always
+    // unlocked) run unchanged unless a test opts in below.
+    mockPlayersDb.getPlayerProfileId.mockResolvedValue(null);
+    delete process.env.ENABLE_DEV_SEED;
   });
 
   describe("createGame", () => {
@@ -290,6 +296,84 @@ describe("game-engine", () => {
 
       await expect(engine.startGame("g1", "p1")).rejects.toThrow("Game already started");
     });
+
+    describe("#179 mission-unlock enforcement", () => {
+      function setUpReady() {
+        const game = makeGame({ id: "g1", status: "waiting", captainId: "p1" });
+        const players = [makePlayer({ id: "p1", gameId: "g1", seatOrder: 0, ready: true })];
+        mockGamesDb.getGameById.mockResolvedValue(game);
+        mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+        mockPlayersDb.getPlayerProfileId.mockResolvedValue("prof-1");
+      }
+
+      it("rejects a locked mission for a fresh profile with no outcomes", async () => {
+        setUpReady();
+        mockOutcomesDb.getMissionOutcomesByProfileId.mockResolvedValue([]);
+
+        await expect(engine.startGame("g1", "p1", 2)).rejects.toThrow("Mission is locked");
+        expect(mockGamesDb.updateMission).not.toHaveBeenCalled();
+      });
+
+      it("allows mission 2 once mission 1 has been won", async () => {
+        setUpReady();
+        mockOutcomesDb.getMissionOutcomesByProfileId.mockResolvedValue([
+          { profileId: "prof-1", mission: 1, outcome: "won", updatedAt: "2026-07-24T00:00:00Z" },
+        ]);
+        const setupGame = { id: "g1", status: "setup" as const, captainId: "p1", mission: 2 } as ReturnType<typeof makeGame>;
+        mockGamesDb.updateMission.mockResolvedValue(setupGame);
+        mockGamesDb.updateDetonator.mockResolvedValue(setupGame);
+        mockGamesDb.updateGameStatus.mockResolvedValue(setupGame);
+        mockGamesDb.updateCurrentTurn.mockResolvedValue(setupGame);
+        mockGamesDb.updateDetonatorMax.mockResolvedValue(setupGame);
+        mockWiresDb.createWire.mockImplementation(async (_gid, _pid, val, col, pos) =>
+          makeWire({ gameId: "g1", value: val, color: col, rackPosition: pos })
+        );
+
+        const result = await engine.startGame("g1", "p1", 2);
+
+        expect(result.game.mission).toBe(2);
+      });
+
+      it("does not unlock mission 2 from a loss", async () => {
+        setUpReady();
+        mockOutcomesDb.getMissionOutcomesByProfileId.mockResolvedValue([
+          { profileId: "prof-1", mission: 1, outcome: "lost", updatedAt: "2026-07-24T00:00:00Z" },
+        ]);
+
+        await expect(engine.startGame("g1", "p1", 2)).rejects.toThrow("Mission is locked");
+      });
+
+      it("skips the unlock check when ENABLE_DEV_SEED is true", async () => {
+        setUpReady();
+        process.env.ENABLE_DEV_SEED = "true";
+        const setupGame = { id: "g1", status: "setup" as const, captainId: "p1", mission: 8 } as ReturnType<typeof makeGame>;
+        mockGamesDb.updateMission.mockResolvedValue(setupGame);
+        mockGamesDb.updateDetonator.mockResolvedValue(setupGame);
+        mockGamesDb.updateGameStatus.mockResolvedValue(setupGame);
+        mockGamesDb.updateCurrentTurn.mockResolvedValue(setupGame);
+        mockGamesDb.updateDetonatorMax.mockResolvedValue(setupGame);
+        mockWiresDb.createWire.mockImplementation(async (_gid, _pid, val, col, pos) =>
+          makeWire({ gameId: "g1", value: val, color: col, rackPosition: pos })
+        );
+
+        const result = await engine.startGame("g1", "p1", 8);
+
+        expect(result.game.mission).toBe(8);
+        expect(mockOutcomesDb.getMissionOutcomesByProfileId).not.toHaveBeenCalled();
+      });
+
+      it("still enforces the unlock check when ENABLE_DEV_SEED is true but NODE_ENV is production", async () => {
+        setUpReady();
+        process.env.ENABLE_DEV_SEED = "true";
+        const originalNodeEnv = process.env.NODE_ENV;
+        process.env.NODE_ENV = "production";
+        mockOutcomesDb.getMissionOutcomesByProfileId.mockResolvedValue([]);
+
+        await expect(engine.startGame("g1", "p1", 2)).rejects.toThrow("Mission is locked");
+
+        process.env.NODE_ENV = originalNodeEnv;
+      });
+    });
   });
 
   describe("executeNextMission", () => {
@@ -382,6 +466,40 @@ describe("game-engine", () => {
 
       await expect(engine.executeNextMission("g1", "p1", 99)).rejects.toThrow("Invalid mission");
       expect(mockTurnsDb.deleteByGameId).not.toHaveBeenCalled();
+    });
+
+    describe("#179 mission-unlock enforcement", () => {
+      it("rejects picking a locked mission for the next mission", async () => {
+        setUp("won");
+        mockPlayersDb.getPlayerProfileId.mockResolvedValue("prof-1");
+        mockOutcomesDb.getMissionOutcomesByProfileId.mockResolvedValue([]);
+
+        await expect(engine.executeNextMission("g1", "p1", 3)).rejects.toThrow("Mission is locked");
+        expect(mockTurnsDb.deleteByGameId).not.toHaveBeenCalled();
+      });
+
+      it("allows an unlocked next mission", async () => {
+        setUp("won");
+        mockPlayersDb.getPlayerProfileId.mockResolvedValue("prof-1");
+        mockOutcomesDb.getMissionOutcomesByProfileId.mockResolvedValue([
+          { profileId: "prof-1", mission: 1, outcome: "won", updatedAt: "2026-07-24T00:00:00Z" },
+        ]);
+
+        const result = await engine.executeNextMission("g1", "p1", 2);
+
+        expect(result.game.mission).toBe(2);
+      });
+
+      it("skips the unlock check when ENABLE_DEV_SEED is true", async () => {
+        setUp("won");
+        process.env.ENABLE_DEV_SEED = "true";
+        mockPlayersDb.getPlayerProfileId.mockResolvedValue("prof-1");
+
+        const result = await engine.executeNextMission("g1", "p1", 8);
+
+        expect(result.game).toBeDefined();
+        expect(mockOutcomesDb.getMissionOutcomesByProfileId).not.toHaveBeenCalled();
+      });
     });
   });
 
