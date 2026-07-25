@@ -64,7 +64,14 @@ export function Wire({
   // instead of the rectangular wire card, so it can't be mistaken for
   // cut/revealed styling at a glance. Once cut, #173's ruling already
   // retires this treatment in favor of the one shared cut look.
+  //
+  // #190 Phase B: a wrong-guess against a yellow wire places an InfoToken
+  // with the 'YELLOW' sentinel value (game-engine.ts's tokenValue), reusing
+  // this exact mechanism rather than a new wire-protocol shape. Yellow has
+  // no numeric identity during play, so its indicator is outline-only —
+  // same circular chip language as the numbered blue token, no number shown.
   if (hasPendingInfoToken) {
+    const isYellowIndicator = infoToken.value === "YELLOW";
     return (
       <button
         onClick={onSelect}
@@ -74,7 +81,17 @@ export function Wire({
         data-wire-position={wire.rackPosition}
         data-wire-status={wire.status}
         data-wire-value={displayValue ?? undefined}
-        className={`
+        className={
+          isYellowIndicator
+            ? `
+          flex h-16 w-16 shrink-0 items-center justify-center
+          rounded-full border-2 border-yellow-500 bg-yellow-50 shadow-sm
+          transition-all dark:border-yellow-400 dark:bg-yellow-950
+          ${isSelected ? "ring-2 ring-yellow-300 dark:ring-yellow-700" : ""}
+          ${isSelectable && !isSelected ? "ring-1 ring-yellow-200 dark:ring-yellow-800" : ""}
+          ${onSelect ? "cursor-pointer hover:border-yellow-600 hover:ring-2 hover:ring-yellow-300 dark:hover:border-yellow-300 dark:hover:ring-yellow-700" : "cursor-default"}
+        `
+            : `
           flex h-16 w-16 shrink-0 items-center justify-center
           rounded-full border-2 border-blue-500 bg-blue-50 text-lg font-bold
           text-blue-700 shadow-sm transition-all
@@ -82,9 +99,10 @@ export function Wire({
           ${isSelected ? "ring-2 ring-blue-300 dark:ring-blue-700" : ""}
           ${isSelectable && !isSelected ? "ring-1 ring-blue-200 dark:ring-blue-800" : ""}
           ${onSelect ? "cursor-pointer hover:border-blue-600 hover:ring-2 hover:ring-blue-300 dark:hover:border-blue-300 dark:hover:ring-blue-700" : "cursor-default"}
-        `}
+        `
+        }
       >
-        {displayValue}
+        {isYellowIndicator ? null : displayValue}
       </button>
     );
   }
