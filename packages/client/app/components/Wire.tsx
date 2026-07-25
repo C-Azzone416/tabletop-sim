@@ -26,6 +26,16 @@ function valueColorClass(color: WireType["color"]): string {
   return "text-zinc-900 dark:text-zinc-100";
 }
 
+// #190: the rulebook confirms yellow/red decimals are a sort key only — the
+// wires have no numeric identity during play (every yellow/red action is
+// color-scoped, never value-scoped). Showing "4.1"/"3.5" as a numeral would
+// assert a game-fact that doesn't exist, so only blue ever renders its
+// value as text; yellow/red render as a bare color-tinted tile in every
+// status (hidden, revealed, cut) — decided on #wire-semantics 2026-07-25.
+function showsNumeral(color: WireType["color"]): boolean {
+  return color === "blue";
+}
+
 export function Wire({
   wire,
   isLocal,
@@ -84,19 +94,29 @@ export function Wire({
 
   // Reachable here only for wires with no pending info token: normal
   // hidden/revealed/cut treatment, colored per #188.
+  // #190: "revealed" (e.g. reveal_reds, or the interim half of a dual-cut)
+  // is a distinct resolved-but-not-cut state — it must not read as either
+  // an untouched hidden tile or a cut tile, so it gets its own treatment
+  // rather than falling through to the plain hidden styling.
+  const isRevealed = wire.status === "revealed";
   let borderClass: string;
   if (isCut) {
     borderClass = "border-zinc-300 dark:border-zinc-700";
+  } else if (isRevealed) {
+    borderClass = "border-amber-400 dark:border-amber-600";
   } else if (isSelected) {
     borderClass = "border-blue-500 ring-2 ring-blue-300 dark:ring-blue-700";
   } else {
     borderClass = "border-zinc-300 dark:border-zinc-600";
   }
   // #173's dim-grey cut treatment stays as the one bg exception to #188's
-  // uniform neutral — it signals "resolved," not color.
+  // uniform neutral — it signals "resolved," not color. Revealed gets its
+  // own light amber tint, between untouched-hidden and cut.
   const bgClass = isCut
     ? "bg-zinc-100 dark:bg-zinc-800"
-    : "bg-white dark:bg-zinc-900";
+    : isRevealed
+      ? "bg-amber-50 dark:bg-amber-950"
+      : "bg-white dark:bg-zinc-900";
   const valueTextClass = valueColorClass(wire.color);
 
   return (
@@ -115,7 +135,7 @@ export function Wire({
         ${!isCut && onSelect ? "cursor-pointer hover:border-blue-400 hover:ring-2 hover:ring-blue-300 dark:hover:ring-blue-700" : "cursor-default"}
       `}
     >
-      {showValue && displayValue !== null && (
+      {showValue && displayValue !== null && showsNumeral(wire.color) && (
         <span className={`text-lg font-bold ${valueTextClass}`}>
           {displayValue}
         </span>

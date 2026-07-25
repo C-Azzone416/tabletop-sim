@@ -134,14 +134,17 @@ describe("Wire (#156)", () => {
 
   // #188 (Caroline's ruling): color moves off the tile back and onto the
   // numeral; hidden tile backs are one uniform neutral regardless of color.
+  // Blue is the only color that ever shows a numeral post-#190 (see the
+  // "no numeral for yellow/red" describe block below) — these tests use
+  // blue accordingly.
   describe("uniform neutral backs, color on the numeral (#188)", () => {
     it("gives an own-rack wire's numeral the wire's color, not the background", () => {
       resetIds();
-      const wire = makeWire({ status: "hidden", value: "6", color: "yellow" });
+      const wire = makeWire({ status: "hidden", value: "6", color: "blue" });
       const { container } = render(
         <Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />,
       );
-      expect(screen.getByText("6").className).toContain("text-yellow-700");
+      expect(screen.getByText("6").className).toContain("text-blue-700");
       const button = container.querySelector("button")!;
       expect(button.className).not.toContain("bg-yellow-100");
       expect(button.className).not.toContain("bg-blue-100");
@@ -149,11 +152,11 @@ describe("Wire (#156)", () => {
 
     it("gives a cut wire's numeral the wire's color while keeping the dim-grey background (#173)", () => {
       resetIds();
-      const wire = makeWire({ status: "cut", value: "9", color: "red" });
+      const wire = makeWire({ status: "cut", value: "9", color: "blue" });
       const { container } = render(
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />,
       );
-      expect(screen.getByText("9").className).toContain("text-red-700");
+      expect(screen.getByText("9").className).toContain("text-blue-700");
       const button = container.querySelector("button")!;
       expect(button.className).toContain("bg-zinc-100");
       expect(button.className).not.toContain("bg-red-100");
@@ -257,6 +260,86 @@ describe("Wire (#156)", () => {
   // attribute rather than the tile's inner markup, since #200's shape
   // rework broke a class-selector-based read (span.text-lg.font-bold no
   // longer exists on the circular pending-info-token chip).
+  // #190 (decided on #wire-semantics 2026-07-25): the rulebook confirms
+  // yellow/red decimals are a sort key only, with no numeric identity
+  // during play — every yellow/red game action is color-scoped, never
+  // value-scoped. So only blue ever renders a numeral; yellow/red always
+  // show as a bare color-tinted tile, in every status.
+  describe("no numeral for yellow/red, decimals are sort-key only (#190)", () => {
+    it("does not render a numeral for an own hidden yellow wire, even though the value is known", () => {
+      resetIds();
+      const wire = makeWire({ status: "hidden", value: "4.1", color: "yellow" });
+      render(<Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />);
+      expect(screen.queryByText("4.1")).not.toBeInTheDocument();
+    });
+
+    it("does not render a numeral for a cut red wire (#173's 'value shown plainly' does not apply to yellow/red)", () => {
+      resetIds();
+      const wire = makeWire({ status: "cut", value: "3.5", color: "red" });
+      render(<Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />);
+      expect(screen.queryByText("3.5")).not.toBeInTheDocument();
+    });
+
+    it("does not render a numeral for a revealed yellow wire", () => {
+      resetIds();
+      const wire = makeWire({ status: "revealed", value: "2.1", color: "yellow" });
+      render(<Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />);
+      expect(screen.queryByText("2.1")).not.toBeInTheDocument();
+    });
+
+    it("still carries the real value on data-wire-value even though no numeral renders, for tests/logic", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "cut", value: "4.1", color: "yellow" });
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />,
+      );
+      expect(container.querySelector("button")).toHaveAttribute("data-wire-value", "4.1");
+    });
+  });
+
+  // #190: "revealed" (reveal_reds, or the interim half of a dual-cut) is
+  // distinct from both untouched-hidden and cut — it must not fall through
+  // to plain hidden styling.
+  describe("revealed-not-cut treatment (#190)", () => {
+    it("gives a revealed wire a distinct border/background from both hidden and cut", () => {
+      resetIds();
+      const hidden = render(
+        <Wire wire={makeWire({ status: "hidden", value: "5" })} isLocal isSelected={false} infoTokens={[]} />,
+      );
+      const hiddenClasses = hidden.container.querySelector("button")!.className;
+      hidden.unmount();
+
+      resetIds();
+      const cut = render(
+        <Wire wire={makeWire({ status: "cut", value: "5" })} isLocal={false} isSelected={false} infoTokens={[]} />,
+      );
+      const cutClasses = cut.container.querySelector("button")!.className;
+      cut.unmount();
+
+      resetIds();
+      const revealed = render(
+        <Wire wire={makeWire({ status: "revealed", value: "5" })} isLocal={false} isSelected={false} infoTokens={[]} />,
+      );
+      const revealedClasses = revealed.container.querySelector("button")!.className;
+
+      expect(revealedClasses).not.toBe(hiddenClasses);
+      expect(revealedClasses).not.toBe(cutClasses);
+      expect(revealedClasses).toContain("bg-amber-50");
+      expect(revealedClasses).toContain("border-amber-400");
+    });
+
+    it("is not disabled or grey like a cut wire", () => {
+      resetIds();
+      const wire = makeWire({ status: "revealed", value: "5" });
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} onSelect={() => {}} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).not.toContain("bg-zinc-100");
+      expect(button).not.toBeDisabled();
+    });
+  });
+
   describe("data-wire-value attribute (#210)", () => {
     it("carries the displayed value on a pending info-token wire", () => {
       resetIds();
