@@ -80,14 +80,29 @@ export function drawColorGroup(color: 'yellow' | 'red', group: ColorWireGroupInp
  * (the full 48-tile blue pool), so leftover cards — including, by chance,
  * the single yellow/red tile — never got dealt at all.
  */
-export function buildDeck(config: MissionConfig, capacity: number): { value: string; color: WireColor }[] {
+export interface BuildDeckResult {
+  deck: { value: string; color: WireColor }[];
+  /**
+   * #215 groundwork — the full M-value candidate pool for any group with a
+   * genuine partial-knowledge draw (candidatePoolSize > count). Empty for
+   * every group without one (the normal case today — candidates equal
+   * dealt by construction, nothing extra to advertise).
+   */
+  candidates: { value: string; color: WireColor }[];
+}
+
+export function buildDeck(config: MissionConfig, capacity: number): BuildDeckResult {
   const deck: { value: string; color: WireColor }[] = [];
+  const candidates: { value: string; color: WireColor }[] = [];
 
   let guaranteedCount = 0;
   for (const group of config.wireGroups) {
     if (group.color === 'blue') continue;
-    const { dealt } = drawColorGroup(group.color, group);
+    const { dealt, candidates: groupCandidates } = drawColorGroup(group.color, group);
     for (const value of dealt) deck.push({ value, color: group.color });
+    if (groupCandidates.length > dealt.length) {
+      for (const value of groupCandidates) candidates.push({ value, color: group.color });
+    }
     guaranteedCount += dealt.length;
   }
 
@@ -114,7 +129,7 @@ export function buildDeck(config: MissionConfig, capacity: number): { value: str
   }
 
   deck.push(...shuffle(bluePool).slice(0, blueNeeded));
-  return deck;
+  return { deck, candidates };
 }
 
 /**
@@ -142,7 +157,13 @@ function shuffle<T>(arr: T[]): T[] {
  * 6); comparing `Number(value)` is exact because every value in a rack is
  * distinct — no int coercion collapses "4" and "4.1" together.
  */
-export function dealWires(playerIds: string[], captainId: string, missionNumber: number = 1): DealedWire[] {
+export interface DealWiresResult {
+  wires: DealedWire[];
+  /** #215 groundwork — see BuildDeckResult. Empty for every mission today. */
+  candidates: { value: string; color: WireColor }[];
+}
+
+export function dealWires(playerIds: string[], captainId: string, missionNumber: number = 1): DealWiresResult {
   const playerCount = playerIds.length;
   if (playerCount < 1 || playerCount > 4) {
     throw new Error(`Invalid player count: ${playerCount}. Must be 1-4.`);
@@ -169,7 +190,8 @@ export function dealWires(playerIds: string[], captainId: string, missionNumber:
   }
 
   const capacity = [...wireCounts.values()].reduce((sum, n) => sum + n, 0);
-  const deck = shuffle(buildDeck(config, capacity));
+  const { deck: builtDeck, candidates } = buildDeck(config, capacity);
+  const deck = shuffle(builtDeck);
   const playerWires: Map<string, { value: string; color: WireColor }[]> = new Map();
 
   for (const pid of playerIds) {
@@ -202,5 +224,5 @@ export function dealWires(playerIds: string[], captainId: string, missionNumber:
     });
   }
 
-  return result;
+  return { wires: result, candidates };
 }

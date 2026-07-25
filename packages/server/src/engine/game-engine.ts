@@ -1,12 +1,13 @@
 import { randomInt } from 'node:crypto';
 import { MISSION_CONFIGS, WIRE_MASTER_SET } from '@tabletop/shared';
-import type { Game, Player, Wire, Turn, WireColor, MissionOutcome } from '@tabletop/shared';
+import type { Game, Player, Wire, Turn, WireColor, MissionOutcome, WireCandidate } from '@tabletop/shared';
 import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
 import * as wiresDb from '../db/wires.js';
 import * as tokensDb from '../db/tokens.js';
 import * as turnsDb from '../db/turns.js';
 import * as outcomesDb from '../db/outcomes.js';
+import * as candidatesDb from '../db/candidates.js';
 import { dealWires } from './wire-dealer.js';
 
 // #170 — the single way a game reaches 'won'/'lost'. Besides the status
@@ -101,7 +102,7 @@ export async function joinGame(joinCode: string, playerName: string, profileId?:
   return { game, player, players };
 }
 
-export async function startGame(gameId: string, requestingPlayerId: string, mission: number = 1): Promise<{ game: Game; players: Player[]; wires: Wire[] }> {
+export async function startGame(gameId: string, requestingPlayerId: string, mission: number = 1): Promise<{ game: Game; players: Player[]; wires: Wire[]; candidates: WireCandidate[] }> {
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');
   if (game.status !== 'waiting') throw new Error('Game already started');
@@ -123,12 +124,19 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
 
   // Deal wires for the selected mission
   const playerIds = players.map(p => p.id);
-  const dealedWires = dealWires(playerIds, game.captainId!, mission);
+  const { wires: dealedWires, candidates: dealtCandidates } = dealWires(playerIds, game.captainId!, mission);
 
   const createdWires: Wire[] = [];
   for (const dw of dealedWires) {
     const wire = await wiresDb.createWire(gameId, dw.playerId, dw.value, dw.color, dw.rackPosition);
     createdWires.push(wire);
+  }
+
+  // #215 groundwork — persist the partial-knowledge candidate pool (empty
+  // for every mission today; no config uses N-of-M yet).
+  const createdCandidates: WireCandidate[] = [];
+  for (const c of dealtCandidates) {
+    createdCandidates.push(await candidatesDb.createWireCandidate(gameId, c.color, c.value));
   }
 
   // Update game to setup phase and kick off turn-ordered opening placement:
@@ -138,7 +146,7 @@ export async function startGame(gameId: string, requestingPlayerId: string, miss
   await gamesDb.updateCurrentTurn(gameId, game.captainId!);
   const updatedGame = await gamesDb.updateDetonatorMax(gameId, detonatorMax);
 
-  return { game: updatedGame, players, wires: createdWires };
+  return { game: updatedGame, players, wires: createdWires, candidates: createdCandidates };
 }
 
 // #157 — "continue playing" after a win or loss: the same game row (same id,
@@ -151,7 +159,7 @@ export async function executeNextMission(
   gameId: string,
   requestingPlayerId: string,
   mission: number,
-): Promise<{ game: Game; players: Player[]; wires: Wire[] }> {
+): Promise<{ game: Game; players: Player[]; wires: Wire[]; candidates: WireCandidate[] }> {
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');
   if (game.status !== 'won' && game.status !== 'lost') throw new Error('Game is not in a won or lost state');
@@ -165,9 +173,11 @@ export async function executeNextMission(
 
   // Clear the prior mission's per-mission artifacts before dealing new ones.
   // Order matters: turns reference wires with no ON DELETE cascade, so they
-  // must go first; info_tokens cascade from wires automatically.
+  // must go first; info_tokens cascade from wires automatically. Candidates
+  // (#215) are per-mission too, same as wires — cleared alongside them.
   await turnsDb.deleteByGameId(gameId);
   await wiresDb.deleteByGameId(gameId);
+  await candidatesDb.deleteByGameId(gameId);
   await tokensDb.deleteValidationTokensByGameId(gameId);
   await playersDb.resetDoubleDetectorForGame(gameId);
 
@@ -176,12 +186,17 @@ export async function executeNextMission(
   await gamesDb.updateMission(gameId, mission);
 
   const playerIds = players.map(p => p.id);
-  const dealedWires = dealWires(playerIds, game.captainId!, mission);
+  const { wires: dealedWires, candidates: dealtCandidates } = dealWires(playerIds, game.captainId!, mission);
 
   const createdWires: Wire[] = [];
   for (const dw of dealedWires) {
     const wire = await wiresDb.createWire(gameId, dw.playerId, dw.value, dw.color, dw.rackPosition);
     createdWires.push(wire);
+  }
+
+  const createdCandidates: WireCandidate[] = [];
+  for (const c of dealtCandidates) {
+    createdCandidates.push(await candidatesDb.createWireCandidate(gameId, c.color, c.value));
   }
 
   await gamesDb.updateDetonator(gameId, 0);
@@ -190,7 +205,7 @@ export async function executeNextMission(
   await gamesDb.updateCurrentTurn(gameId, game.captainId!);
   const updatedGame = await gamesDb.updateDetonatorMax(gameId, detonatorMax);
 
-  return { game: updatedGame, players, wires: createdWires };
+  return { game: updatedGame, players, wires: createdWires, candidates: createdCandidates };
 }
 
 // Turn-ordered opening placement: captain places first (set as currentTurnPlayerId

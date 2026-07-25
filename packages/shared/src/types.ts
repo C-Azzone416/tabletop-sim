@@ -84,6 +84,23 @@ export interface MissionOutcome {
   updatedAt: string;
 }
 
+/**
+ * #215/#190 — a value revealed as "possible" at setup under a mission's
+ * partial-knowledge "N out of M" draw (WireGroup.candidatePoolSize > count).
+ * Not a Wire: some candidates never become a real dealt tile (set aside
+ * unseen), so this has no owner/rack position. Deliberately has NO
+ * dealt/confirmed flag — sending one would leak which candidates are
+ * actually in play, killing the deduction mechanic. Broadcast identically
+ * to every player (no per-player redaction, unlike Wire); the client
+ * derives "confirmed in play" itself by cross-referencing a candidate's
+ * (color, value) against wires that become visible through normal play.
+ */
+export interface WireCandidate {
+  gameId: string;
+  color: WireColor;
+  value: string;
+}
+
 export interface ValidationToken {
   id: string;
   gameId: string;
@@ -123,9 +140,9 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'game_created'; game: Game; player: Player }
   | { type: 'joined_game'; game: Game; player: Player; players: Player[] }
-  | { type: 'game_started'; game: Game; players: Player[]; wires: Wire[] }
+  | { type: 'game_started'; game: Game; players: Player[]; wires: Wire[]; candidates: WireCandidate[] }
   | { type: 'setup_complete'; game: Game }
-  | { type: 'game_state'; game: Game; players: Player[]; wires: Wire[]; infoTokens: InfoToken[]; validationTokens: ValidationToken[]; localPlayerId: string }
+  | { type: 'game_state'; game: Game; players: Player[]; wires: Wire[]; infoTokens: InfoToken[]; validationTokens: ValidationToken[]; localPlayerId: string; candidates: WireCandidate[] }
   | { type: 'player_joined'; player: Player }
   | { type: 'dual_cut_proposed'; proposingPlayerId: string; targetPlayerId: string; targetWireId: string; targetWireRackPosition: number; guessedValue: string }
   | { type: 'dual_cut_correct'; targetWireId: string; targetWireRackPosition: number; targetWireColor: WireColor }

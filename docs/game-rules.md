@@ -133,6 +133,11 @@ resolution (cut-by-color, red instant-loss, auto-reveal) is Phase B.
   (optional; omitted/equal-to-count means full knowledge). No mission config
   currently uses this — the draw mechanic (`drawColorGroup` in
   `wire-dealer.ts`) is built and tested ahead of Phase D's per-mission data.
+  The candidate pool (`wire_candidates` table, `WireCandidate[]` on
+  `game_started`/`game_state`) is broadcast identically to every player —
+  no owner, no dealt/confirmed flag (that would leak the answer). The
+  client derives "confirmed in play" by cross-referencing a candidate's
+  (color, value) against wires that become visible through normal play.
 - **Mission compositions are TODO(#216).** Missions 4–8 are confirmed to use
   the full 48-tile blue set; missions 1–3's blue set and every mission's
   yellow/red counts are pending Caroline's physical Mission cards. Current
