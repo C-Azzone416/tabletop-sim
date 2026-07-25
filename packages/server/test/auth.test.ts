@@ -6,9 +6,50 @@ vi.mock("../src/db/profiles.js", () => ({
 }));
 
 import * as profilesDb from "../src/db/profiles.js";
-import { authenticateUpgrade } from "../src/ws/auth.js";
+import { authenticateUpgrade, authenticateProfile } from "../src/ws/auth.js";
 
 const mockProfilesDb = vi.mocked(profilesDb);
+
+describe("auth — authenticateProfile", () => {
+  beforeEach(() => {
+    resetIds();
+    vi.clearAllMocks();
+  });
+
+  it("returns user when profile exists and name matches", async () => {
+    const profile = makeProfile({ id: "prof-1", name: "Alice" });
+    mockProfilesDb.getProfileById.mockResolvedValue(profile);
+
+    const result = await authenticateProfile("prof-1", "Alice");
+
+    expect(result).toEqual({ profileId: "prof-1", name: "Alice" });
+  });
+
+  it("returns null when profileId is missing", async () => {
+    const result = await authenticateProfile(undefined, "Alice");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when name is missing", async () => {
+    const result = await authenticateProfile("prof-1", undefined);
+    expect(result).toBeNull();
+  });
+
+  it("returns null when profile does not exist", async () => {
+    mockProfilesDb.getProfileById.mockResolvedValue(null);
+    const result = await authenticateProfile("nonexistent", "Alice");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when name does not match profile", async () => {
+    const profile = makeProfile({ id: "prof-1", name: "Alice" });
+    mockProfilesDb.getProfileById.mockResolvedValue(profile);
+
+    const result = await authenticateProfile("prof-1", "Bob");
+
+    expect(result).toBeNull();
+  });
+});
 
 describe("auth — authenticateUpgrade", () => {
   beforeEach(() => {

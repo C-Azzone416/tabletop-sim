@@ -6,32 +6,38 @@ export interface AuthenticatedUser {
 }
 
 /**
- * Verify the session from the WebSocket upgrade request.
+ * Verify a profileId + name credential against the database.
  *
- * V1 approach: the client sends profileId + name as query params on the
- * WebSocket URL. We verify the profile exists in the database.
- * This will be upgraded to JWT verification when Auth.js shares its secret.
+ * V1 approach, shared by the WS upgrade handler and the REST routes below:
+ * the client sends profileId + name, and we verify the profile exists and
+ * the name matches (prevents spoofing another profile). This will be
+ * upgraded to JWT verification when Auth.js shares its secret.
  */
-export async function authenticateUpgrade(request: { url?: string; headers: Record<string, string | string[] | undefined> }): Promise<AuthenticatedUser | null> {
-  const host = typeof request.headers.host === 'string' ? request.headers.host : 'localhost';
-  const url = new URL(request.url ?? '', `http://${host}`);
-  const profileId = url.searchParams.get('profileId');
-  const name = url.searchParams.get('name');
-
+export async function authenticateProfile(profileId: string | null | undefined, name: string | null | undefined): Promise<AuthenticatedUser | null> {
   if (!profileId || !name) {
     return null;
   }
 
-  // Verify profile exists in database
   const profile = await profilesDb.getProfileById(profileId);
   if (!profile) {
     return null;
   }
 
-  // Verify name matches (prevents spoofing another profile)
   if (profile.name !== name) {
     return null;
   }
 
   return { profileId: profile.id, name: profile.name };
+}
+
+/**
+ * Verify the session from the WebSocket upgrade request.
+ *
+ * V1 approach: the client sends profileId + name as query params on the
+ * WebSocket URL. We verify the profile exists in the database.
+ */
+export async function authenticateUpgrade(request: { url?: string; headers: Record<string, string | string[] | undefined> }): Promise<AuthenticatedUser | null> {
+  const host = typeof request.headers.host === 'string' ? request.headers.host : 'localhost';
+  const url = new URL(request.url ?? '', `http://${host}`);
+  return authenticateProfile(url.searchParams.get('profileId'), url.searchParams.get('name'));
 }

@@ -24,6 +24,7 @@ vi.mock("../src/db/games.js", () => ({
 vi.mock("../src/db/players.js", () => ({
   createPlayer: vi.fn(),
   getPlayersByGameId: vi.fn(),
+  getPlayerProfileIdsByGameId: vi.fn(),
   getPlayerById: vi.fn(),
   getActivePlayerByProfileId: vi.fn(),
   markDoubleDetectorUsed: vi.fn(),
@@ -62,6 +63,7 @@ vi.mock("../src/ws/connection-manager.js", () => ({
 
 vi.mock("../src/ws/auth.js", () => ({
   authenticateUpgrade: vi.fn().mockResolvedValue(null),
+  authenticateProfile: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../src/ws/message-handler.js", () => ({
@@ -106,6 +108,7 @@ import * as engine from "../src/engine/game-engine.js";
 import * as stateBroadcaster from "../src/ws/state-broadcaster.js";
 import * as migrationsDb from "../src/db/migrations.js";
 import * as outcomesDb from "../src/db/outcomes.js";
+import * as wsAuth from "../src/ws/auth.js";
 import { buildApp } from "../src/app.js";
 
 const mockProfilesDb = vi.mocked(profilesDb);
@@ -116,6 +119,7 @@ const mockTokensDb = vi.mocked(tokensDb);
 const mockEngine = vi.mocked(engine);
 const mockStateBroadcaster = vi.mocked(stateBroadcaster);
 const mockMigrationsDb = vi.mocked(migrationsDb);
+const mockWsAuth = vi.mocked(wsAuth);
 
 describe("routes", () => {
   let app: FastifyInstance;
@@ -268,30 +272,54 @@ describe("routes", () => {
   });
 
   describe("GET /profiles/:id", () => {
-    it("returns the profile when found", async () => {
+    it("returns the profile when the caller authenticates as that profile", async () => {
       const profile = makeProfile({ id: "prof-1", name: "Alice" });
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "prof-1", name: "Alice" });
       mockProfilesDb.getProfileById.mockResolvedValue(profile);
 
-      const res = await app.inject({ method: "GET", url: "/profiles/prof-1" });
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1?profileId=prof-1&name=Alice" });
 
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ profile });
       expect(mockProfilesDb.getProfileById).toHaveBeenCalledWith("prof-1");
+      expect(mockWsAuth.authenticateProfile).toHaveBeenCalledWith("prof-1", "Alice");
+    });
+
+    it("returns 401 when no auth credential is presented", async () => {
+      mockWsAuth.authenticateProfile.mockResolvedValue(null);
+
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1" });
+
+      expect(res.statusCode).toBe(401);
+      expect(res.json()).toEqual({ error: "Authentication required" });
+      expect(mockProfilesDb.getProfileById).not.toHaveBeenCalled();
+    });
+
+    it("returns 403 when the caller authenticates as a different profile", async () => {
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "prof-2", name: "Bob" });
+
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1?profileId=prof-2&name=Bob" });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: "Forbidden" });
+      expect(mockProfilesDb.getProfileById).not.toHaveBeenCalled();
     });
 
     it("returns 404 when the profile does not exist", async () => {
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "nonexistent", name: "Ghost" });
       mockProfilesDb.getProfileById.mockResolvedValue(null);
 
-      const res = await app.inject({ method: "GET", url: "/profiles/nonexistent" });
+      const res = await app.inject({ method: "GET", url: "/profiles/nonexistent?profileId=nonexistent&name=Ghost" });
 
       expect(res.statusCode).toBe(404);
       expect(res.json()).toEqual({ error: "Profile not found" });
     });
 
     it("returns 500 on DB error", async () => {
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "prof-1", name: "Alice" });
       mockProfilesDb.getProfileById.mockRejectedValue(new Error("DB down"));
 
-      const res = await app.inject({ method: "GET", url: "/profiles/prof-1" });
+      const res = await app.inject({ method: "GET", url: "/profiles/prof-1?profileId=prof-1&name=Alice" });
 
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Internal server error" });
@@ -299,32 +327,59 @@ describe("routes", () => {
   });
 
   describe("GET /games/:joinCode", () => {
-    it("returns the game and its players when found", async () => {
+    it("returns the game and its players when the caller is a seated player", async () => {
       const game = makeGame({ id: "g1", joinCode: "ABCD" });
       const players = [makePlayer({ id: "p1", gameId: "g1" }), makePlayer({ id: "p2", gameId: "g1" })];
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "prof-1", name: "Alice" });
       mockGamesDb.getGameByJoinCode.mockResolvedValue(game);
+      mockPlayersDb.getPlayerProfileIdsByGameId.mockResolvedValue(["prof-1", "prof-2"]);
       mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
 
-      const res = await app.inject({ method: "GET", url: "/games/ABCD" });
+      const res = await app.inject({ method: "GET", url: "/games/ABCD?profileId=prof-1&name=Alice" });
 
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ game, players });
       expect(mockPlayersDb.getPlayersByGameId).toHaveBeenCalledWith("g1");
     });
 
+    it("returns 401 when no auth credential is presented", async () => {
+      mockWsAuth.authenticateProfile.mockResolvedValue(null);
+
+      const res = await app.inject({ method: "GET", url: "/games/ABCD" });
+
+      expect(res.statusCode).toBe(401);
+      expect(res.json()).toEqual({ error: "Authentication required" });
+      expect(mockGamesDb.getGameByJoinCode).not.toHaveBeenCalled();
+    });
+
+    it("returns 403 when the caller is authenticated but not seated in this game", async () => {
+      const game = makeGame({ id: "g1", joinCode: "ABCD" });
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "prof-3", name: "Mallory" });
+      mockGamesDb.getGameByJoinCode.mockResolvedValue(game);
+      mockPlayersDb.getPlayerProfileIdsByGameId.mockResolvedValue(["prof-1", "prof-2"]);
+
+      const res = await app.inject({ method: "GET", url: "/games/ABCD?profileId=prof-3&name=Mallory" });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: "Forbidden" });
+      expect(mockPlayersDb.getPlayersByGameId).not.toHaveBeenCalled();
+    });
+
     it("returns 404 when the game does not exist", async () => {
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "prof-1", name: "Alice" });
       mockGamesDb.getGameByJoinCode.mockResolvedValue(null);
 
-      const res = await app.inject({ method: "GET", url: "/games/XXXX" });
+      const res = await app.inject({ method: "GET", url: "/games/XXXX?profileId=prof-1&name=Alice" });
 
       expect(res.statusCode).toBe(404);
       expect(res.json()).toEqual({ error: "Game not found" });
     });
 
     it("returns 500 on DB error", async () => {
+      mockWsAuth.authenticateProfile.mockResolvedValue({ profileId: "prof-1", name: "Alice" });
       mockGamesDb.getGameByJoinCode.mockRejectedValue(new Error("DB down"));
 
-      const res = await app.inject({ method: "GET", url: "/games/ABCD" });
+      const res = await app.inject({ method: "GET", url: "/games/ABCD?profileId=prof-1&name=Alice" });
 
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Internal server error" });
