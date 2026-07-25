@@ -90,6 +90,27 @@ export async function revealRedWires(gameId: string): Promise<Wire[]> {
   return rows.map(mapWire);
 }
 
+// #190 Phase B — yellow solo-cut's color-scoped all-remaining-yellow legality
+// check needs every hidden yellow wire in the game, not just one player's.
+export async function getWiresByColorAndGame(gameId: string, color: WireColor): Promise<Wire[]> {
+  const rows = await sql`
+    SELECT * FROM wires WHERE game_id = ${gameId} AND color = ${color}
+  `;
+  return rows.map(mapWire);
+}
+
+// #190 Phase B — turn-start all-red-hand auto-reveal, scoped to one player
+// (unlike revealRedWires above, which is game-wide for the reveal_reds
+// action). Marks revealed, not cut — no life lost, not a player action.
+export async function revealRedWiresForPlayer(gameId: string, playerId: string): Promise<Wire[]> {
+  const rows = await sql`
+    UPDATE wires SET status = 'revealed'
+    WHERE game_id = ${gameId} AND player_id = ${playerId} AND color = 'red' AND status = 'hidden'
+    RETURNING *
+  `;
+  return rows.map(mapWire);
+}
+
 function mapWire(row: Record<string, unknown>): Wire {
   return {
     id: row.id as string,

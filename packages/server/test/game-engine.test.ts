@@ -37,7 +37,9 @@ vi.mock("../src/db/wires.js", () => ({
   getWiresByPlayerId: vi.fn(),
   getWiresByValueAndGame: vi.fn(),
   getWiresByValueColorAndGame: vi.fn(),
+  getWiresByColorAndGame: vi.fn(),
   revealRedWires: vi.fn(),
+  revealRedWiresForPlayer: vi.fn(),
   updateWireStatus: vi.fn(),
   deleteByGameId: vi.fn(),
 }));
@@ -793,6 +795,58 @@ describe("game-engine", () => {
       expect(result.game.status).toBe("won");
       expect(mockGamesDb.updateCurrentTurn).not.toHaveBeenCalled();
     });
+
+    // #190 Phase B: yellow solo-cut is color-scoped (any values, not a
+    // specific number — yellow has no in-play numeric identity), reusing
+    // the 'YELLOW' sentinel already used for the dual-cut wrong-guess
+    // indicator. Legality mirrors #150 exactly: holds ALL remaining hidden
+    // yellow wires in the game, or it's illegal.
+    it("yellow solo-cut ('YELLOW' sentinel) succeeds when player holds all remaining hidden yellow wires", async () => {
+      const game = makeGame({ id: "g1", status: "active", currentTurnPlayerId: "p1", detonatorMax: 4 });
+      const yellowWires = [
+        makeWire({ id: "w1", playerId: "p1", color: "yellow", value: "2.1", status: "hidden" }),
+        makeWire({ id: "w2", playerId: "p1", color: "yellow", value: "5.1", status: "hidden" }),
+      ];
+      const turn = makeTurn({ id: "t1" });
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWiresByColorAndGame.mockResolvedValue(yellowWires);
+      mockTurnsDb.createTurn.mockResolvedValue(turn);
+      mockWiresDb.updateWireStatus.mockImplementation(async (id) => makeWire({ id, status: "cut" }));
+      mockTurnsDb.updateTurnResult.mockResolvedValue({ ...turn, result: "success" });
+      mockWiresDb.getWiresByValueColorAndGame.mockResolvedValue([makeWire({ status: "hidden" })]);
+      mockWiresDb.getWiresByGameId.mockResolvedValue([makeWire({ status: "hidden" })]);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([
+        makePlayer({ id: "p1", seatOrder: 0 }),
+        makePlayer({ id: "p2", seatOrder: 1 }),
+      ]);
+      mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...game, currentTurnPlayerId: "p2" });
+
+      const result = await engine.executeSoloCut("g1", "p1", "YELLOW");
+
+      expect(mockWiresDb.getWiresByColorAndGame).toHaveBeenCalledWith("g1", "yellow");
+      expect(result.turn.result).toBe("success");
+      expect(result.updatedWires).toHaveLength(2);
+      // Distinct values validated individually, not grouped under the sentinel.
+      expect(mockWiresDb.getWiresByValueColorAndGame).toHaveBeenCalledWith("g1", "2.1", "yellow");
+      expect(mockWiresDb.getWiresByValueColorAndGame).toHaveBeenCalledWith("g1", "5.1", "yellow");
+    });
+
+    it("yellow solo-cut rejects when the player doesn't hold all remaining hidden yellow wires", async () => {
+      const game = makeGame({ id: "g1", status: "active", currentTurnPlayerId: "p1", detonatorMax: 4 });
+      const yellowWires = [
+        makeWire({ id: "w1", playerId: "p1", color: "yellow", value: "2.1", status: "hidden" }),
+        makeWire({ id: "w2", playerId: "p2", color: "yellow", value: "5.1", status: "hidden" }),
+      ];
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWiresByColorAndGame.mockResolvedValue(yellowWires);
+
+      await expect(engine.executeSoloCut("g1", "p1", "YELLOW")).rejects.toThrow(
+        "You must hold all remaining yellow wires to solo cut them"
+      );
+      expect(mockTurnsDb.createTurn).not.toHaveBeenCalled();
+      expect(mockWiresDb.updateWireStatus).not.toHaveBeenCalled();
+    });
   });
 
   describe("mission outcome recording (#170)", () => {
@@ -1013,6 +1067,57 @@ describe("game-engine", () => {
       // Wraps all the way back around to the only player left with hidden wires
       expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", "p1");
       expect(result.currentTurnPlayerId).toBe("p1");
+    });
+
+    // #190 Phase B negative path: if the next candidate's ENTIRE remaining
+    // hidden hand is red (any numbers), it auto-reveals at turn-start
+    // instead of forcing a losing action — no loss, no cut, turn advances
+    // past them (same evaluation point as #152's auto-skip).
+    it("auto-reveals a candidate's all-red hand at turn-start — no loss, no cut, turn advances past them", async () => {
+      const game = makeGame({ id: "g1", status: "active", currentTurnPlayerId: "p1" });
+      const players = [
+        makePlayer({ id: "p1", seatOrder: 0 }),
+        makePlayer({ id: "p2", seatOrder: 1 }),
+        makePlayer({ id: "p3", seatOrder: 2 }),
+      ];
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      // p2's only remaining hidden wires are both red; p3 has a normal hand.
+      mockWiresDb.getWiresByGameId.mockResolvedValue([
+        makeWire({ playerId: "p2", color: "red", value: "1.5", status: "hidden" }),
+        makeWire({ playerId: "p2", color: "red", value: "4.5", status: "hidden" }),
+        makeWire({ playerId: "p3", color: "blue", value: "3", status: "hidden" }),
+      ]);
+      mockWiresDb.revealRedWiresForPlayer.mockResolvedValue([]);
+      mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...game, currentTurnPlayerId: "p3" });
+
+      const result = await engine.advanceTurn("g1");
+
+      expect(mockWiresDb.revealRedWiresForPlayer).toHaveBeenCalledWith("g1", "p2");
+      expect(mockGamesDb.updateDetonator).not.toHaveBeenCalled();
+      expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", "p3");
+      expect(result.currentTurnPlayerId).toBe("p3");
+    });
+
+    it("does NOT auto-reveal a mixed hand (red + non-red) — normal turn proceeds", async () => {
+      const game = makeGame({ id: "g1", status: "active", currentTurnPlayerId: "p1" });
+      const players = [
+        makePlayer({ id: "p1", seatOrder: 0 }),
+        makePlayer({ id: "p2", seatOrder: 1 }),
+      ];
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      mockWiresDb.getWiresByGameId.mockResolvedValue([
+        makeWire({ playerId: "p2", color: "red", value: "1.5", status: "hidden" }),
+        makeWire({ playerId: "p2", color: "blue", value: "3", status: "hidden" }),
+      ]);
+      mockGamesDb.updateCurrentTurn.mockResolvedValue({ ...game, currentTurnPlayerId: "p2" });
+
+      const result = await engine.advanceTurn("g1");
+
+      expect(mockWiresDb.revealRedWiresForPlayer).not.toHaveBeenCalled();
+      expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", "p2");
+      expect(result.currentTurnPlayerId).toBe("p2");
     });
   });
 
@@ -1387,6 +1492,36 @@ describe("game-engine", () => {
       expect(mockGamesDb.clearPendingDualCut).not.toHaveBeenCalled();
     });
 
+    // #190 Phase B negative path: red is never cut, full stop — an
+    // ACCEPTED guess against a hidden red wire must not reveal it toward
+    // completion; it's an instant loss just like a rejected one. Without
+    // this guard, this branch would have gone straight to updateWireStatus
+    // (revealed) and let executeCompleteDualCut cut the red wire.
+    it("accepted: true (red wire) is an instant loss, never reveals toward completion (checkRedSave seam, no save available)", async () => {
+      const game = makeGame({
+        id: "g1", status: "active", currentTurnPlayerId: "p1",
+        pendingDualCutWireId: "w1", pendingDualCutProposerId: "p1", pendingDualCutGuessedValue: "3.5",
+      });
+      const wire = makeWire({ id: "w1", gameId: "g1", playerId: "p2", color: "red", value: "3.5", status: "hidden" });
+      const turn = makeTurn({ id: "t1" });
+      const clearedGame = { ...game, pendingDualCutWireId: null, pendingDualCutProposerId: null, pendingDualCutGuessedValue: null };
+      const lostGame = { ...clearedGame, status: "lost" as const };
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWireById.mockResolvedValue(wire);
+      mockTurnsDb.createTurn.mockResolvedValue(turn);
+      mockTurnsDb.updateTurnResult.mockResolvedValue({ ...turn, result: "fail" });
+      mockGamesDb.clearPendingDualCut.mockResolvedValue(clearedGame);
+      mockGamesDb.updateGameStatus.mockResolvedValue(lostGame);
+
+      const result = await engine.executeRespondDualCut("g1", "p2", true);
+
+      expect(result.phase).toBe("game_over");
+      expect(result.game.status).toBe("lost");
+      expect(mockWiresDb.updateWireStatus).not.toHaveBeenCalled();
+      expect(mockTokensDb.createInfoToken).not.toHaveBeenCalled();
+    });
+
     it("accepted: false (blue wire) places info token with actual number, advances detonator", async () => {
       const game = makeGame({
         id: "g1", status: "active", currentTurnPlayerId: "p1",
@@ -1665,6 +1800,35 @@ describe("game-engine", () => {
       mockWiresDb.getWireById.mockResolvedValue(targetWire);
 
       await expect(engine.executeCompleteDualCut("g1", "p1", "w2")).rejects.toThrow("Target wire is not revealed");
+    });
+
+    // #190 Phase B defense-in-depth: should be unreachable in practice
+    // (executeRespondDualCut's accept branch already blocks a red target
+    // from ever reaching 'revealed'), but a completion step must never be
+    // the one place that actually cuts a red wire if that guard is ever
+    // bypassed.
+    it("target wire is red (defense in depth) — instant loss, never cuts", async () => {
+      const game = makeGame({
+        id: "g1", status: "active", currentTurnPlayerId: "p1",
+        pendingDualCutWireId: "w1", pendingDualCutProposerId: "p1", pendingDualCutGuessedValue: "3.5",
+      });
+      const targetWire = makeWire({ id: "w1", gameId: "g1", playerId: "p2", color: "red", value: "3.5", status: "revealed" });
+      const turn = makeTurn({ id: "t1" });
+      const clearedGame = { ...game, pendingDualCutWireId: null, pendingDualCutProposerId: null, pendingDualCutGuessedValue: null };
+      const lostGame = { ...clearedGame, status: "lost" as const };
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockWiresDb.getWireById.mockResolvedValueOnce(targetWire);
+      mockTurnsDb.createTurn.mockResolvedValue(turn);
+      mockTurnsDb.updateTurnResult.mockResolvedValue({ ...turn, result: "fail" });
+      mockGamesDb.clearPendingDualCut.mockResolvedValue(clearedGame);
+      mockGamesDb.updateGameStatus.mockResolvedValue(lostGame);
+
+      const result = await engine.executeCompleteDualCut("g1", "p1", "w2");
+
+      expect(result.game.status).toBe("lost");
+      expect(result.turn.result).toBe("fail");
+      expect(mockWiresDb.updateWireStatus).not.toHaveBeenCalled();
     });
 
     it("rejects if the game does not exist", async () => {

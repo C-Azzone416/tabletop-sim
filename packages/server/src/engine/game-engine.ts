@@ -313,7 +313,25 @@ export async function executeRespondDualCut(
   if (!wire) throw new Error('Wire not found');
   if (wire.playerId !== playerId) throw new Error('Not your wire to respond to');
 
+  const proposerId = game.pendingDualCutProposerId;
+
   if (accepted) {
+    // #190 Phase B — red is never cut, full stop: any cut attempt that
+    // resolves to red is an instant loss regardless of accept/reject,
+    // unless a saving equipment has been used (checkRedSave — always false
+    // today, no equipment system exists yet). Without this guard, an
+    // accepted guess against a hidden red wire would reveal it and let
+    // executeCompleteDualCut cut it, which the ruling forbids outright.
+    if (wire.color === 'red') {
+      const saved = await checkRedSave(gameId, proposerId);
+      if (!saved) {
+        const turn = await turnsDb.createTurn(gameId, proposerId, 'dual_cut', wire.id, game.pendingDualCutGuessedValue);
+        await turnsDb.updateTurnResult(turn.id, 'fail');
+        await gamesDb.clearPendingDualCut(gameId);
+        const lostGame = await endGame(gameId, 'lost');
+        return { phase: 'game_over', turn: { ...turn, result: 'fail' }, game: lostGame, updatedWires: [] };
+      }
+    }
     // Correct guess — reveal the target wire; proposer must still complete their half
     const revealedWire = await wiresDb.updateWireStatus(wire.id, 'revealed');
     const updatedGame = await gamesDb.getGameById(gameId) as Game;
@@ -321,15 +339,18 @@ export async function executeRespondDualCut(
   }
 
   // Wrong guess — check wire color for response
-  const proposerId = game.pendingDualCutProposerId;
-
   if (wire.color === 'red') {
-    // Red wrong guess = immediate game over
-    const turn = await turnsDb.createTurn(gameId, proposerId, 'dual_cut', wire.id, game.pendingDualCutGuessedValue);
-    await turnsDb.updateTurnResult(turn.id, 'fail');
-    await gamesDb.clearPendingDualCut(gameId);
-    const lostGame = await endGame(gameId, 'lost');
-    return { phase: 'game_over', turn: { ...turn, result: 'fail' }, game: lostGame, updatedWires: [] };
+    // Red wrong guess = immediate game over (same checkRedSave seam as the
+    // accept branch above — a rejected guess against red is just as much a
+    // "cut attempt that resolves to red" as an accepted one).
+    const saved = await checkRedSave(gameId, proposerId);
+    if (!saved) {
+      const turn = await turnsDb.createTurn(gameId, proposerId, 'dual_cut', wire.id, game.pendingDualCutGuessedValue);
+      await turnsDb.updateTurnResult(turn.id, 'fail');
+      await gamesDb.clearPendingDualCut(gameId);
+      const lostGame = await endGame(gameId, 'lost');
+      return { phase: 'game_over', turn: { ...turn, result: 'fail' }, game: lostGame, updatedWires: [] };
+    }
   }
 
   // Blue or yellow wrong guess — place info token (color-aware) + lose 1 life
@@ -366,6 +387,22 @@ export async function executeCompleteDualCut(
   const targetWire = await wiresDb.getWireById(game.pendingDualCutWireId);
   if (!targetWire) throw new Error('Wire not found');
   if (targetWire.status !== 'revealed') throw new Error('Target wire is not revealed');
+
+  // #190 Phase B — defense in depth: executeRespondDualCut's accept branch
+  // already blocks a red target from ever reaching 'revealed', so this
+  // should be unreachable in practice. Kept anyway, same pattern as the
+  // must-hold check above mirroring propose-time validation — a completion
+  // step must never be the one place that actually cuts a red wire.
+  if (targetWire.color === 'red') {
+    const saved = await checkRedSave(gameId, playerId);
+    if (!saved) {
+      const turn = await turnsDb.createTurn(gameId, playerId, 'dual_cut', targetWire.id, targetWire.value);
+      await turnsDb.updateTurnResult(turn.id, 'fail');
+      await gamesDb.clearPendingDualCut(gameId);
+      const lostGame = await endGame(gameId, 'lost');
+      return { turn: { ...turn, result: 'fail' }, game: lostGame, updatedWires: [] };
+    }
+  }
 
   const ownWire = await wiresDb.getWireById(ownWireId);
   if (!ownWire) throw new Error('Wire not found');
@@ -413,35 +450,54 @@ export async function executeSoloCut(
 ): Promise<{ turn: Turn; game: Game; updatedWires: Wire[] }> {
   await validateTurn(gameId, playerId);
 
-  // Rules-correction (#150): solo cut is legal ONLY when the player holds
-  // ALL remaining uncut wires of that number — every currently-hidden wire
-  // with this value across the whole game must be owned by this player.
-  // Hard-rejected up front, before any turn record or detonator change, the
-  // same way #133's must-hold-value dual-cut guard rejects at propose time.
-  const wiresOfValue = await wiresDb.getWiresByValueAndGame(gameId, wireValue);
-  const hiddenOfValue = wiresOfValue.filter(w => w.status === 'hidden');
-  const holdsAllRemaining = hiddenOfValue.length > 0 && hiddenOfValue.every(w => w.playerId === playerId);
+  // #190 Phase B — 'YELLOW' is the same sentinel already used for the
+  // dual-cut wrong-guess indicator: yellow has no in-play numeric value
+  // (singletons, cut by color not number), so a yellow solo-cut can't
+  // target a specific value the way blue does. Color-group scope mirrors
+  // #150's value-group scope exactly — holds ALL remaining hidden yellow
+  // wires in the game, any values, or the action is illegal.
+  const isColorScoped = wireValue === 'YELLOW';
+
+  // Rules-correction (#150) / Phase B: solo cut is legal ONLY when the
+  // player holds ALL remaining uncut wires in scope — every value-match
+  // (blue) or every hidden yellow (color-scoped) across the whole game
+  // must be owned by this player. Hard-rejected up front, before any turn
+  // record or detonator change, the same way #133's must-hold-value
+  // dual-cut guard rejects at propose time.
+  const hiddenInScope = isColorScoped
+    ? (await wiresDb.getWiresByColorAndGame(gameId, 'yellow')).filter(w => w.status === 'hidden')
+    : (await wiresDb.getWiresByValueAndGame(gameId, wireValue)).filter(w => w.status === 'hidden');
+  const holdsAllRemaining = hiddenInScope.length > 0 && hiddenInScope.every(w => w.playerId === playerId);
   if (!holdsAllRemaining) {
-    throw new Error('You must hold all remaining uncut wires of that number to solo cut it');
+    throw new Error(
+      isColorScoped
+        ? 'You must hold all remaining yellow wires to solo cut them'
+        : 'You must hold all remaining uncut wires of that number to solo cut it'
+    );
   }
 
   const turn = await turnsDb.createTurn(gameId, playerId, 'solo_cut', null, wireValue);
 
-  // Legality guarantees every hidden wire of this value belongs to the
-  // player — cut them all. Solo cut can no longer fail (that path lived on
-  // wrong-guess penalties, which now belong to dual cuts only), so this is
-  // always a success.
+  // Legality guarantees every wire in scope belongs to the player — cut
+  // them all. Solo cut can no longer fail (that path lived on wrong-guess
+  // penalties, which now belong to dual cuts only), so this is always a
+  // success.
   const updatedWires: Wire[] = [];
-  for (const w of hiddenOfValue) {
+  for (const w of hiddenInScope) {
     const updated = await wiresDb.updateWireStatus(w.id, 'cut');
     updatedWires.push(updated);
   }
   await turnsDb.updateTurnResult(turn.id, 'success');
 
-  // Check validation per color for any cut wires
-  const cutColors = new Set(hiddenOfValue.map(w => w.color!));
-  for (const color of cutColors) {
-    await checkValidation(gameId, wireValue, color);
+  // Check validation per (value, color) of what was actually cut — not the
+  // outer wireValue/sentinel, since a color-scoped yellow cut spans
+  // multiple distinct singleton values in one action.
+  const seen = new Set<string>();
+  for (const w of hiddenInScope) {
+    const key = `${w.value}:${w.color}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    await checkValidation(gameId, w.value!, w.color!);
   }
 
   // Check win
@@ -503,6 +559,17 @@ export async function executePlayerReady(
   return { players };
 }
 
+// #190 Phase B — the equipment seam. Reds are never cut; any cut attempt
+// that resolves to red is an instant loss UNLESS a saving equipment has
+// been used. Equipment isn't designed yet (separate open design topic) —
+// this is a single checked precondition that always resolves to no-save,
+// deliberately with no speculative equipment types/enums/tables behind it.
+// Every red-hit resolution path funnels through this one function so a
+// future save hook has exactly one place to plug into.
+async function checkRedSave(_gameId: string, _playerId: string): Promise<boolean> {
+  return false;
+}
+
 async function validateTurn(gameId: string, playerId: string): Promise<Game> {
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');
@@ -560,25 +627,42 @@ export async function advanceTurn(gameId: string): Promise<Game> {
 
   const players = await playersDb.getPlayersByGameId(gameId);
   const wires = await wiresDb.getWiresByGameId(gameId);
-  const hiddenCountByPlayer = new Map<string, number>();
+  const hiddenByPlayer = new Map<string, Wire[]>();
   for (const w of wires) {
     if (w.status === 'hidden') {
-      hiddenCountByPlayer.set(w.playerId, (hiddenCountByPlayer.get(w.playerId) ?? 0) + 1);
+      const hand = hiddenByPlayer.get(w.playerId) ?? [];
+      hand.push(w);
+      hiddenByPlayer.set(w.playerId, hand);
     }
   }
 
   // Rules-correction (#152): a player with no uncut wires left is skipped
-  // when rotating clockwise — no dead turns. Bounded to one full lap; if
-  // every player is fully cut (should be unreachable, the win condition
-  // fires first) this falls through to the plain next seat instead of
-  // looping forever.
+  // when rotating clockwise — no dead turns.
+  //
+  // #190 Phase B: same turn-start evaluation point also carries the
+  // all-red-hand auto-reveal — if a candidate's entire remaining hidden
+  // hand is red (any numbers), it reveals all at once (not cut, no life
+  // lost, not a player action) and rotation continues past them, since
+  // they now correctly have zero hidden wires left (#152 applies).
+  //
+  // Bounded to one full lap; if every player is fully cut/revealed (should
+  // be unreachable, the win condition fires first) this falls through to
+  // the plain next seat instead of looping forever.
   const currentIndex = players.findIndex(p => p.id === game.currentTurnPlayerId);
   let nextIndex = currentIndex;
   for (let i = 0; i < players.length; i++) {
     nextIndex = (nextIndex + 1) % players.length;
-    if ((hiddenCountByPlayer.get(players[nextIndex].id) ?? 0) > 0) {
-      return await gamesDb.updateCurrentTurn(gameId, players[nextIndex].id);
+    const candidate = players[nextIndex];
+    const hand = hiddenByPlayer.get(candidate.id) ?? [];
+    if (hand.length === 0) continue;
+
+    if (hand.every(w => w.color === 'red')) {
+      await wiresDb.revealRedWiresForPlayer(gameId, candidate.id);
+      hiddenByPlayer.set(candidate.id, []);
+      continue;
     }
+
+    return await gamesDb.updateCurrentTurn(gameId, candidate.id);
   }
   return await gamesDb.updateCurrentTurn(gameId, players[nextIndex].id);
 }
