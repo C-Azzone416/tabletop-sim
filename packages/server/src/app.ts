@@ -341,6 +341,62 @@ export async function buildApp() {
       }
     });
 
+    // #165 — mission 1 splits each value's 4 copies across 4 players, so a
+    // random /dev/seed deal gives one player all 4 copies of a value (the
+    // only way a solo cut is legal per #150) with <1% probability. Forces it
+    // deterministically: picks a fully-hidden non-red value group (mission
+    // 1's fresh deal guarantees exactly one exists per value — 4 copies,
+    // none cut yet) and reassigns every copy to Dev, mirroring
+    // positionNearWin's wire-reassignment trick but for solo-cut legality
+    // rather than an immediate win.
+    const positionSoloCutLegal = async (gameId: string, devPlayerId: string): Promise<{ value: string; color: string }> => {
+      const wires = await wiresDb.getWiresByGameId(gameId);
+      const hiddenByKey = new Map<string, typeof wires>();
+      for (const w of wires) {
+        if (w.status !== 'hidden') continue;
+        const key = `${w.color}:${w.value}`;
+        const group = hiddenByKey.get(key) ?? [];
+        group.push(w);
+        hiddenByKey.set(key, group);
+      }
+
+      const group = [...hiddenByKey.entries()]
+        .filter(([key]) => !key.startsWith('red:'))
+        .sort(([a], [b]) => a.localeCompare(b))[0]?.[1];
+      if (!group) throw new Error('No non-red wire group available to seed a legal solo cut for this mission');
+
+      const devWires = await wiresDb.getWiresByPlayerId(devPlayerId);
+      let nextRackPosition = Math.max(0, ...devWires.map(w => w.rackPosition)) + 1;
+      for (const wire of group) {
+        if (wire.playerId === devPlayerId) continue;
+        await wiresDb.updateWirePlayer(wire.id, devPlayerId, nextRackPosition);
+        nextRackPosition += 1;
+      }
+
+      return { value: group[0].value!, color: group[0].color! };
+    };
+
+    app.post('/dev/seed-solo-cut-legal', async (request, reply) => {
+      try {
+        const mission = parseMissionParam(request.body);
+        if (typeof mission === 'object') return reply.status(400).send(mission);
+
+        const result = await seedDevGame(mission, { completeSetup: true });
+        const game = await gamesDb.getGameByJoinCode(result.joinCode);
+        if (!game) throw new Error('Seeded game not found');
+        const players = await playersDb.getPlayersByGameId(game.id);
+        const devPlayer = players.find(p => p.name === 'Dev');
+        if (!devPlayer) throw new Error('Dev player not found in seeded game');
+
+        const legal = await positionSoloCutLegal(game.id, devPlayer.id);
+
+        return { ...result, soloCutValue: legal.value, soloCutColor: legal.color };
+      } catch (err) {
+        app.log.error({ err }, '[POST /dev/seed-solo-cut-legal] error');
+        return reply.status(500).send({ error: 'Seed failed' });
+      }
+    });
+
     app.post('/dev/cleanup', async (request, reply) => {
       try {
         const { joinCode } = request.body as { joinCode?: string };
