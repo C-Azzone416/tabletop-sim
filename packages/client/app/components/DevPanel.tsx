@@ -34,6 +34,13 @@ interface DevPanelProps {
 // game state, e.g. switching to the captain seat during game-over to drive
 // next_mission. z-[60] shares ErrorToast's layer; they never overlap
 // geometrically (top-center vs top-right).
+//
+// #183: top-24 sat directly over GameBoard's status-bar row (LIVES value
+// under DetonatorDisplay, right-aligned in the same header), hiding exactly
+// the number a dev watches most during manual playtesting. top-40 clears
+// that row while staying well clear of ActionPanel further down the page —
+// this is fixed positioning, so it doesn't reintroduce #144's bottom-corner
+// scroll collision, it's just a lower point on the same top-right edge.
 export function DevPanel({
   seatOptions,
   activeProfileId,
@@ -56,7 +63,7 @@ export function DevPanel({
       <button
         onClick={() => setOpen(true)}
         aria-label="Open dev tools"
-        className="fixed top-24 right-4 z-[60] rounded-lg border border-amber-400 bg-amber-100 px-3 py-1.5 font-mono text-xs font-medium text-amber-800 shadow-md hover:bg-amber-200 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+        className="fixed top-40 right-4 z-[60] rounded-lg border border-amber-400 bg-amber-100 px-3 py-1.5 font-mono text-xs font-medium text-amber-800 shadow-md hover:bg-amber-200 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
       >
         [DEV]{activeSeatName && ` Viewing: ${activeSeatName}`}
       </button>
@@ -64,7 +71,7 @@ export function DevPanel({
   }
 
   return (
-    <div className="fixed top-24 right-4 z-[60] flex max-w-xs flex-col gap-3 rounded-lg border border-amber-400 bg-white p-3 font-mono text-xs shadow-lg dark:border-amber-600 dark:bg-zinc-900">
+    <div className="fixed top-40 right-4 z-[60] flex max-w-xs flex-col gap-3 rounded-lg border border-amber-400 bg-white p-3 font-mono text-xs shadow-lg dark:border-amber-600 dark:bg-zinc-900">
       <div className="flex items-center justify-between">
         <span className="font-semibold text-amber-800 dark:text-amber-400">
           [DEV] Tools{activeSeatName && ` — Viewing: ${activeSeatName}`}
