@@ -111,15 +111,17 @@ export const MISSION_2_CONFIG: MissionConfig = {
 // confirmed — count:1 is a structurally-safe placeholder (yellow's real max
 // is 11 singletons total, nowhere near the old invented 12-tile group),
 // NOT a guess at the real mission composition. wiresPerPlayer/totalWires
-// are sized to this placeholder deck and will need re-deriving in Phase D.
+// are sized to this placeholder deck (16 total, same invariant every other
+// mission holds: total dealt is constant across 2p/3p/4p, just split
+// differently) and will need re-deriving in Phase D.
 export const MISSION_3_CONFIG: MissionConfig = {
   wireGroups: [
     { color: 'blue', values: [1, 2, 3, 4], copiesPerValue: 4 },
     { color: 'yellow', count: 1 },
   ],
-  totalWires: 17,
+  totalWires: 16,
   detonator: { 2: 4, 3: 5, 4: 6 },
-  wiresPerPlayer: { 2: 8, 3: { captain: 6, others: 3 }, 4: 4 },
+  wiresPerPlayer: { 2: 8, 3: { captain: 8, others: 4 }, 4: 4 },
 };
 
 // Mission 4: blue set CONFIRMED (rulebook: missions 4-8 use all 48 blue
