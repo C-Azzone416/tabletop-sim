@@ -11,18 +11,31 @@ or chat.
 
 ## Contracts triggered (see `DESIGN.md`)
 
-This game triggers all four platform contracts:
+This game triggers all five platform contracts:
 
 - **C1 Private state** — each player's own hidden wires are private; see
   Wire visibility below. The server never sends another player's hidden
-  wire contents to this client.
+  wire contents to this client. The projection here is per-wire position
+  and status, with value and colour redacted for hidden wires — not a
+  bare count, since rack position is the deduction substrate (see C5).
+  Any concealed/face-down representation must use a colour outside this
+  game's blue/yellow/red object palette — never `--info` (sky), since
+  blue is itself a rule-bearing wire colour.
 - **C2 Play surface** — the shared board/rack view is this game's play
   surface.
 - **C3 Randomizer** — yellow/red tiles are dealt at random (see Wire
   semantics below), including partial-knowledge "N out of M" draws.
-- **C4 Turn default** — standard turn timeout/countdown/announcement
-  applies; this doc supplies the action taken (`dual_cut` and friends,
-  see Turn structure below).
+- **C4 Turn default** — this game declares **no default action**,
+  deliberately: every legal action (`dual_cut`, `solo_cut`) can lose a
+  life or end the mission outright, so there is no safe auto-play. A
+  stalled seat is handled outside the timeout instead — nudge, then hold
+  the seat 3 minutes, then offer the table a skip vote. No declared
+  action means no timeout, per C4's own escape hatch.
+- **C5 Targeted opponents** — a turn (`dual_cut`) targets a specific wire
+  at a specific position on another player's rack. Every rack renders at
+  wire-level granularity for every seat, not a count; positions are
+  permanent and ascending-sorted (see Wire visibility / rack sort below),
+  which is the deduction substrate the whole game runs on.
 
 ## Lobby / ready flow
 
