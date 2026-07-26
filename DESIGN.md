@@ -1,6 +1,10 @@
 # Cabinet — Design System Spec
 
+**v1.2** — revised against the marketing brief, then corrected to separate platform concerns from game concerns. See §17 for what changed and what is still blocked.
+
 Authoritative design spec for the board game platform UI. Written to be read by a coding agent working in this repo.
+
+> **"Cabinet" is an internal codename, not a product name.** It must never appear in the interface, in a URL, in a page title, in an OG tag, or in user-visible copy. It is fine in file names, CSS comments, class prefixes, and this document. Until a product name exists, use the literal placeholder `PRODUCT_NAME` in any user-facing string so a grep finds every instance. Recommend a CI check: fail the build on a case-insensitive match for `cabinet` under `packages/client/**` excluding `styles/`.
 
 **Companion file**
 
@@ -20,7 +24,8 @@ Stack this was written against: Next.js 16.2 App Router, React 19.2, Tailwind 4 
 4. **Every component must work in both schemes without knowing which is active.** Test by toggling `.dark` on the root element. If a component needs a mode check in JS, the token set is wrong — fix the tokens.
 5. **`export const viewport = { colorScheme: "light dark" }` is required in the root layout.** Without it, mobile browsers force-darken the app themselves and destroy the player colors. This is not optional and it is not cosmetic.
 6. **Do not add a third font, a gradient, a blurred shadow, or a border radius above 6px** (except `--r-pill` on counts). These are identity violations, not preferences.
-7. Ask before deviating. This spec is opinionated on purpose; the tradeoffs behind each rule are documented where they're non-obvious.
+7. **Never ship the codename** (see the note at the top) and never introduce the source game's name, artwork, or rulebook wording. This product is a digital adaptation of a published board game: mechanics are not protected, but names, art, and written text are. All naming, iconography, and rules text in this product must be original. If you need to describe a rule, write it fresh — do not paraphrase the rulebook closely.
+8. Ask before deviating. This spec is opinionated on purpose; the tradeoffs behind each rule are documented where they're non-obvious.
 
 ---
 
@@ -59,6 +64,19 @@ Values live in `theme.css`. Rules:
 - **Elevation is a printing offset, not a light source.** Every shadow in a screen points down-right at the same distance. Never blur.
 - **Dark is a translation, not an inversion.** Two rules exist only in dark, both documented in the token file: `--shadow` goes *darker* than the surface, and internal rules use `--line-soft` rather than full-strength `--outline`.
 
+### Two token layers — platform frame vs game interior
+
+The brand question "one look, or a look per game?" is unresolved (§17.2). The token structure is arranged so that either answer is cheap, and **no code change is needed to keep the option open**:
+
+| Layer | Tokens | Changes per game? |
+|---|---|---|
+| **Platform frame** — chrome the player learns once | `--surface`, `--surface-raised`, `--ink`, `--ink-muted`, `--outline`, `--line-soft`, `--shadow-ink`, `--accent` | Never |
+| **Game interior** — the play surface | `--game-table`, `--game-rack`, `--game-rack-ink`, `--game-rack-border`, `--game-accent`, `--game-accent-ink`, and the five seat colors | Possibly |
+
+The game layer defaults to Cabinet's values, so today the product is visually uniform. A second title overrides only the game layer, scoped to `[data-game="<slug>"]` on the table wrapper. If the brand answer turns out to be total uniformity, the layer simply never gets overridden and costs nothing.
+
+**Rule:** buttons, toasts, modals, lobby, and navigation always use platform tokens. Only the board, rack, pieces, and seat colors may use game tokens. A game may not restyle a dialog.
+
 ### Player seats
 
 Five colors, `--p1` through `--p5`, each with a matching `--pN-ink` for text on top. Assigned in join order, never reassigned mid-game.
@@ -93,7 +111,10 @@ Rules:
 
 - Sentence case everywhere except Display and Micro, which are caps.
 - **Micro is the only tracked style.** Never letterspace lowercase.
-- **15px is the floor** for anything a player reads, including on a phone.
+- **15px is the floor for prose** — anything a player reads as a sentence, on any device. This is the rule the marketing brief correctly flagged as internally contradictory in v1: Micro is 11px and was being used for player-facing labels.
+  - **Micro (11px) is permitted only for non-essential labels** — eyebrows, section headers, timestamps. Any information conveyed *only* in Micro must also be available elsewhere.
+  - **Numbers a player acts on never use Micro.** Hand counts, scores, and clocks are 13px minimum (`text-small` + `.tabular`), because a misread count changes a decision.
+  - The rack privacy label ("only you see this") is Micro, and is duplicated by the rack's color and border treatment, so the information survives if the label isn't read.
 - **Every number a player compares uses `.t-num`.** Non-tabular scores visibly jitter as they update.
 - Display type may wrap; it may not shrink below 31px on a phone.
 - One Display per screen. If a screen needs two, it's two screens.
@@ -136,6 +157,19 @@ Required set (20): `seat`, `dice`, `hand`, `turn`, `timer`, `chat`, `invite`, `p
 ---
 
 ## 7. Components
+
+### Platform or game?
+
+Same split as the tokens in §3, applied to components. **The test: would a player expect this to look and behave identically in every game on the platform?**
+
+- **Yes → platform component.** Lives in this spec. Buttons, seat chips, toasts, modals, lobby, chat, invite. A game may not restyle these.
+- **No → game component.** Lives in that game's own spec, uses game-interior tokens, and inherits every rule in this document (type scale, spacing, icon stencil, motion, voice, accessibility) without adding to the platform inventory.
+
+Anything driven by game configuration — `MISSION_CONFIGS`, rule text, board topology, piece counts — is game data and its UI is a game component. This spec does not enumerate it.
+
+Do not create a platform component from a single game's needs. One instance is not a pattern; wait for the second game to show which parts actually generalize.
+
+### Platform components
 
 Build in this order — each tier depends on the one above.
 
@@ -208,7 +242,28 @@ Build in this order — each tier depends on the one above.
 
 - A player's hand is **rendered only on that player's client**. The server sends other clients a *count*, never contents.
 - Face-down backs use `--info` and carry no identifying mark.
-- Spectators see exactly what an empty seat would see.
+- **Spectators are out of scope for beta** (resolved; v1 of this spec contradicted itself by defining spectator behavior in this section while listing their existence as an open question). The rule stands as the definition for whenever they are built: a spectator sees exactly what an empty seat would see, and the server must never send them hand contents.
+- Until spectators exist, "All five seats are taken. Want to watch?" (§10) must not ship. Use "All five seats are taken." with no offer.
+
+---
+
+## 8b. Game components — what the platform owes them
+
+Not an inventory. The platform's obligation is to give game components somewhere to live and a set of rules to inherit.
+
+**The platform provides:**
+
+- The game-interior token layer (§3) — table, rack, pieces, seat colors.
+- A full-bleed play region with the z-order in §8, into which a game renders whatever it needs.
+- Every cross-cutting rule in this document: type scale, spacing, icon stencil, motion timings, voice, accessibility criteria, both color schemes.
+
+**A game component must not:** restyle a dialog, toast, or button; add a typeface; introduce a color outside the game-interior layer; or override platform spacing.
+
+**One genuinely platform-level question, unresolved.** Progression is currently one game's mechanic, so its UI is that game's business. But if a player has progress in more than one game, the *place they see it* — a home or library surface answering "what have I played, what's next" — is platform, and doesn't exist yet. The game supplies the content; the platform supplies the shelf.
+
+That surface should be designed when a second game with progression exists, not before. Until then, progression UI belongs entirely to the game.
+
+**Recommended structure:** this file is platform-wide. Per-game specs go in `docs/games/<slug>.md` and open by declaring which game-interior tokens they override and nothing else.
 
 ---
 
@@ -293,6 +348,24 @@ Treat these as tests, not aspirations.
 - [ ] `prefers-reduced-motion` honored per §9.
 - [ ] `<meta name="color-scheme">` present; app is not force-darkened by the browser.
 
+### What can be claimed publicly — status
+
+Marketing must not make accessibility claims from the checklist above; that list is a build target, not a description of today. Current state:
+
+| Criterion | Status | Claimable? |
+|---|---|---|
+| Contrast pairs verified | Met, measured | Yes |
+| Focus ring | Met | Yes |
+| Reduced motion honored | Met (token-level) | Yes |
+| Not force-darkened; light and dark both first-class | Met | Yes |
+| Colorblind-safe player identity | **Not met** — silhouettes for seats 1–5 are specified but not drawn | No |
+| 44×44 targets everywhere | Partially met — needs an audit pass per component | No |
+| Screen-reader turn announcements | Not built | No |
+| Full keyboard play | Not built | No |
+| 15px prose floor | **Amended in v1.1** — was unmeetable as written (§4) | Describe as "large, high-contrast type", not as a standards claim |
+
+Rule: a criterion becomes claimable only when it has a passing Playwright or unit assertion attached. Until then it is a roadmap item.
+
 ### Verified contrast pairs
 
 | Pair | Ratio | Verdict |
@@ -300,9 +373,61 @@ Treat these as tests, not aspirations.
 | Navy on paper | 14.6:1 | All text |
 | Paper on navy (dark) | 14.6:1 | All text |
 | Navy on sun | 10.1:1 | All text |
-| White on box red | 4.5:1 | 16px+ bold only |
+| White on box red | 4.5:1 | Passes AA for normal text at exactly the threshold. Do not darken the red or lighten the text further without re-measuring |
 | Box red on paper | 4.1:1 | **Fills only — never body text** |
 | Muted ink on surface | 4.8:1 | Labels and captions only |
+
+---
+
+## 12b. The shared link — content spec
+
+The core acquisition moment is someone pasting a link into a group chat. v1 gave this one line, which the marketing brief correctly identified as the highest-leverage and least-defined surface in the product. **Marketing owns the copy in this section; engineering owns the render.**
+
+Implementation on this stack: `packages/client/app/table/[id]/opengraph-image.tsx` using `next/og` `ImageResponse`. Generated per table at request time, 1200×630, no external fonts beyond the two already loaded.
+
+### Required states
+
+| State | Headline | Subline | Visual |
+|---|---|---|---|
+| **Open, seats left** | `{host}'s table` | `{n} of 5 seats taken · starts when you're in` | Five pawns, filled ones in seat color, empty ones dashed |
+| **One seat left** | `{host}'s table` | `Last seat` | Same, four filled |
+| **Full, not started** | `{host}'s table` | `All five seats are taken` | Five filled pawns. No "want to watch" until spectators exist |
+| **In progress** | `{host}'s table` | `Playing now · turn {n}` | Five filled pawns, no CTA |
+| **Finished** | `{winner} took it` | `{score} points · rematch open` | Winner's pawn enlarged |
+
+### Content rules
+
+- **Host name is user-supplied and untrusted.** Truncate at 18 characters, strip newlines, and never render it larger than the platform name. Assume someone will name themselves something hostile.
+- No seat *names* other than the host's. Five people's names in a link preview is a privacy leak into a group chat that may include people not at the table.
+- Never show hand contents, scores mid-game, or anything a player at the table can't already see.
+- **Must read with no images loaded.** Some chat clients render text only; the headline and subline alone have to make sense.
+- Fixed 1200×630 with 40px safe margins — most clients crop the edges.
+- Per-game variants are permitted and use the **game interior tokens only** (§3); the frame, type, and layout stay platform-owned so every link is recognizably the same product.
+
+### Marketing surfaces — defined or explicitly descoped
+
+v1 reserved `--s8` / `--s9` spacing "for marketing pages only" and then defined none. Status:
+
+| Surface | Status |
+|---|---|
+| Link preview (above) | Specified. Marketing owns copy |
+| Landing page hero | Specified in the visual spec; copy not ratified |
+| Page per title | **Descoped for beta.** Depends on §17.2 |
+| Press kit | **Descoped for beta.** Needs the product name first |
+| App icon / store assets | Specified; blocked on the product name |
+
+---
+
+## 12c. Language
+
+Position, so it's a decision and not an accident: **English only at beta, with strings externalized from day one.**
+
+The voice in §10 is deliberately idiomatic — contractions, possessives, names — and that is expensive to translate. Two engineering consequences that get much more expensive after launch:
+
+1. **No user-facing string literals in components**, even while only English ships. One `en.ts` (or equivalent) keyed by string id. This is nearly free now and a full-codebase sweep later.
+2. **Layout must survive a 40% longer string.** German and Finnish routinely run that long, and §10's "fits on one line at 15px" rule will break. Seat chips, buttons, and the turn banner need to wrap or truncate gracefully rather than assume English length — test with a pseudo-locale that pads every string.
+
+Nothing else about i18n is in scope for beta.
 
 ---
 
@@ -325,12 +450,26 @@ A component is finished when all of the following are true:
 
 Ask before implementing anything that depends on these.
 
-- Product name and wordmark. The app icon currently uses a placeholder box mark.
+**Blocking — engineering is guessing without these**
+
+- **Product name and wordmark.** Must be original and must not evoke the source title. Use `PRODUCT_NAME` as a placeholder until it lands. Blocks: app icon, store assets, OG tags, page titles, press kit.
+- **One look, or a look per game?** Token structure keeps both open (§3), but the answer decides whether game-scoped overrides get built at all. Blocks: nothing today, everything from the second title on.
+- **Link-preview copy** (§12b). Marketing owns the text; the render can be built against the table above in the meantime.
+- **Game or platform at beta?** Changes page titles, route naming, and whether the landing page sells a title or a service.
+
+**Non-blocking but needed**
+
 - Whether hand size varies during play. A growing rack changes card sizing rules.
-- Whether spectators exist at launch.
-- Sound design. Currently specified only as "every cue has a visual twin".
-- Piece silhouettes for seats 1–5. Colors are final; the shapes are not drawn yet.
+- Sound design ownership. "Every cue has a visual twin" is an accessibility constraint on whatever gets made, not a creative direction.
+- Piece silhouettes for seats 1–5. Colors are final; shapes are not drawn, and the colorblind-safety claim depends on them.
 - Whether the landing hero needs a Display M step between 40px and 24px.
+
+**Resolved since v1**
+
+- Spectators: out of scope for beta (§8).
+- The 15px floor vs 11px Micro contradiction: amended (§4).
+- Language: English only, strings externalized (§12c).
+- Campaign and progression components: specified (§7).
 
 ---
 
@@ -408,7 +547,7 @@ OS preference already works with zero JS via the `prefers-color-scheme` block in
                  bg-surface-raised px-2.5 py-1.5 text-small font-medium">
   <i className="size-5 rounded-full border-2 border-outline bg-p1 text-p1-ink" />
   Rob
-  <span className="tabular rounded-full border-2 border-outline px-1.5 text-[11px]">4</span>
+  <span className="tabular rounded-full border-2 border-outline px-1.5 text-small">4</span>
 </span>
 
 // primary button
@@ -461,6 +600,69 @@ Worth one E2E assertion per scheme that the rack, the active seat ring, and all 
 The E2E suite runs against a local stack rather than staging, which is fine for this work — everything here is client-rendered and needs no deployed backend. Adding the two scheme projects roughly doubles E2E wall time; if that matters, tag the visual specs and run only those in the dark project.
 
 `npm audit --audit-level=high` as a hard gate is worth knowing before adding any icon or animation library. Don't add one — §6 specifies a hand-drawn 20-icon set precisely so there's no dependency to audit.
+
+---
+
+## 17. Response to the marketing brief
+
+Point-by-point. Three of the six blocking items were spec defects and are fixed; three are brand decisions that cannot be answered from inside engineering.
+
+### 17.1 Product name — **still blocked, correctly**
+
+Cannot be answered here. What has changed: the codename rule is now at the top of this document, `PRODUCT_NAME` is the mandated placeholder so a grep finds every instance, and a CI check is recommended. The originality constraint — no evocation of the source title, no source art or rulebook wording — is now rule §0.7 and applies to every string an agent writes, not just the name.
+
+### 17.2 One look, or a look per game — **answered structurally, decision still yours**
+
+The brief is right that v1 implied total uniformity. The tokens are now split into a **platform frame** and a **game interior** (§3). Today both resolve to the same values, so nothing looks different and nothing costs anything. When the answer arrives:
+
+- *One product with modes* → the game layer is never overridden. Zero work.
+- *Titles under a brand* → a second title overrides the game layer only, scoped to `[data-game]`. The frame stays constant, so the platform is still recognizable.
+
+Either way the decision no longer requires a token rewrite, which is what made it urgent. It is now a marketing decision on a marketing timeline. **What it still gates:** whether we build a per-title landing page and per-game link previews.
+
+### 17.3 Link preview — **fixed, and marketing owns the copy**
+
+Now fully specified in §12b: five states, per-state headline and subline, host-name truncation and hostile-input handling, a rule against showing other players' names, and a requirement that it reads with images disabled. The render target is `opengraph-image.tsx` on the existing Next stack. Engineering can build against the state table while copy is being written.
+
+### 17.4 Game or platform at beta — **still blocked**
+
+Genuinely a positioning decision. Engineering impact is small and late: page titles, route naming, and whether the landing page sells a title or a service. Not blocking component work.
+
+### 17.5 Spectators — **fixed**
+
+The brief caught a real contradiction. Out of scope for beta. The spectator render rule stays as the definition for when they are built, and the "Want to watch?" string is pulled from the room-full message until then (§8, §10).
+
+### 17.6 Sound — **out of scope here, and worth saying why**
+
+"Every cue has a visual twin" is an accessibility constraint on whatever sound design happens, not a creative brief. This spec takes no position on ownership. One thing to note: if sound is in scope for trailers or demos, the constraint means the product cannot rely on audio to convey turn changes — so a trailer that leads on sound is showing something the product deliberately does not depend on.
+
+### 17.7 Voice — **ratification requested, and one change already made**
+
+The voice guide is §10 and is unchanged apart from removing the spectator offer. It is currently owned by engineering by default, which the brief is right to flag. Two things worth deciding rather than inheriting: whether it extends to marketing surfaces (recommendation: yes, with permission to be louder in a hero than the product is in an error state), and who reviews new strings.
+
+### 17.8 Language — **fixed as a decision**
+
+§12c: English only at beta, strings externalized from day one, layout tested against a 40%-longer pseudo-locale. The second point matters more than it sounds — §10's one-line-at-15px rule breaks in German, and the components affected are being built right now.
+
+### 17.9 Accessibility claims — **agreed, and now enumerated**
+
+§12 has a status table separating what is met and measured from what is a build target. Four criteria are claimable today; five are not. The brief was also right that one criterion could not be met as written: the 15px prose floor contradicted the 11px Micro style used for player-facing labels. Amended in §4, with a new rule that numbers a player acts on never use Micro.
+
+### 17.10 Third-party assets — **already a rule, now with the reason**
+
+§6 and §0. The 20-icon set is hand-built specifically so there is no dependency to license or audit, which matters given `npm audit --audit-level=high` is a hard CI gate.
+
+### 17.11 Progression — **real gap, wrong document**
+
+The brief is right that per-player mission progress is a live retention hook absent from any marketing narrative. It is not, however, a platform design concern: `MISSION_CONFIGS` is game configuration, so mission cards, campaign maps, and lock affordances are **game components** and belong in that game's spec, not here. v1.1 briefly added them to the platform inventory; v1.2 moves them out and adds the platform/game component test in §7 that should have caught it.
+
+What this spec now owes progression: the game-interior token layer, the play region, and every inherited rule (§8b). What is still genuinely platform and still missing: the surface a player sees progress *on*, once more than one game has any — the shelf, not the missions. That should wait for a second game rather than be abstracted from one.
+
+The marketing point survives all of this intact: **beta is a campaign of missions, not "one game,"** which is a materially different thing to position (§17.4).
+
+### 17.12 Marketing pages — **defined or explicitly descoped**
+
+§12b closes the loop on the reserved spacing: link preview and landing hero are in, per-title pages and press kit are descoped for beta and named as such rather than left implied.
 
 ---
 
