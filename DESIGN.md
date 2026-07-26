@@ -1,6 +1,12 @@
-# Cabinet — Design System Spec
+# Cabinet — Design System Appendix
 
-**v1.2** — revised against the marketing brief, then corrected to separate platform concerns from game concerns. See §17 for what changed and what is still blocked.
+> The short version is `DESIGN.md`. This file holds the reasoning, the code samples, the marketing response, and the detail an agent only needs occasionally. Nothing here contradicts the short version; if it appears to, the short version wins.
+
+---
+
+# Original full spec
+
+**v1.3** — the platform/game split now applies to rules as well as tokens and components. Game-conditional rules are stated as contracts, not universals. See §2b and §17.13.
 
 Authoritative design spec for the board game platform UI. Written to be read by a coding agent working in this repo.
 
@@ -51,6 +57,38 @@ Cabinet takes its language from the printed game box, not the board inside it: m
 | Outlines on everything touchable | Bubble letters, mascots, cartoon styling |
 | One dominant action per screen | Skeuomorphism — nothing pretends to be wood or felt |
 | Print technique as reference | Period-specific clip art or nostalgia pastiche |
+
+---
+
+## 2b. Three layers, one split
+
+The platform/game split applies to **tokens, components, and rules**. v1.2 applied it to the first two and left the rules stated as universals, several of which silently assumed this game's mechanics.
+
+| Layer | Platform owns | Game owns |
+|---|---|---|
+| **Tokens** (§3) | Frame: surface, ink, outline, shadow, accent | Interior: table, rack, pieces, seat colors |
+| **Components** (§7) | Buttons, seat chips, toasts, modals, lobby, chat, invite | Board, pieces, hand, campaign, anything config-driven |
+| **Rules** (this section) | Invariants — true of every game we will ever host | Conditional contracts — apply *if* the game has the mechanic |
+
+### How rules are written from here
+
+- **Invariant rules are stated flatly.** "Focus is a 3px outline." "One primary button per screen." "Chrome stays still." These hold whether the game has cards, dice, a board, or none of them.
+- **Game-conditional rules are stated as contracts**, in the form *"If the game has X, then Y."* The platform guarantees the frame and the constraints; the game declares which contracts it triggers.
+
+A rule that names a card, a die, a hand, or a board is almost certainly conditional. **The test: could a hypothetical second game — no hidden hand, no randomizer, no spatial board — violate this rule and still feel like our product?** If yes, it is a contract, not an invariant.
+
+### The conditional contracts
+
+A game spec opens by declaring which of these it triggers (see the capability table in `docs/games/<slug>.md`).
+
+| Contract | Triggered when | The platform requires |
+|---|---|---|
+| **C1 — Private state** | Any state visible to one player and not the others | It renders only on that player's client; the server never sends contents to anyone else, only a count or nothing. It lives on its own surface, visually distinct from shared state, using `--game-rack*`. That surface is pinned, never scrolls, never collapses, and holds every action available on the player's turn |
+| **C2 — Spatial play surface** | The game has a board, map, or grid | 7° tilt with a flatten toggle; tilt eases to 0° on zoom and never animates during a turn; pan and zoom act on the surface only, never on chrome; max width 640 / 600 / 560 / 520px at 2 / 3 / 4 / 5 players |
+| **C3 — Randomizer** | Dice, draws, shuffles, any visible random outcome | The result is shown resolving, not spinning: discrete steps, ≤260ms, no 3D. The outcome must be readable as text for screen readers before any animation completes |
+| **C4 — Turn default** | Always — every game has turns — but the *action* is game-defined | The platform guarantees a timeout exists, is announced with a visible countdown started ≥10s earlier, and never silently forfeits. **The game must supply the action taken on timeout.** The platform cannot know what "safest legal move" means and must not guess |
+
+If a game triggers none of C1–C3, none of those rules apply to it and nothing in this spec is violated.
 
 ---
 
@@ -179,10 +217,10 @@ Build in this order — each tier depends on the one above.
 |---|---|
 | Button | primary, secondary, yellow, danger, ghost · lg/md/sm · hover, active, focus, disabled, loading |
 | Seat chip | active, next, waiting, disconnected, empty, spectator |
-| Rack | cards, tiles, dice, empty · your-turn vs waiting |
-| Card / tile / piece | face-up, face-down, selected, illegal, just-played |
+| Private surface (C1) | your-turn vs waiting · empty · contents are game-defined |
+| Game object (C1/C2) | face-up, face-down, selected, illegal, just-played — a game with no concealed objects needs only the last three |
 | Turn banner | your turn, their turn, paused, game over |
-| Board surface | tilted, flat, zoomed |
+| Play surface (C2) | tilted, flat, zoomed |
 | Lobby seat slot | empty, filling, ready, host |
 | Invite card | in-app, shared link preview (OG image) |
 
@@ -202,46 +240,59 @@ Build in this order — each tier depends on the one above.
 - Chips sit in **turn order, left to right**, and never reorder mid-game.
 - Below 380px the name truncates before the count does. Pawn and count always survive.
 
-### Rack rules
+### Rack rules — **contract C1, applies only to games with private state**
 
-- **Yellow means yours.** The rack is the only surface painted `--surface-rack`; it is the privacy signal.
+The rack is this game's implementation of C1. A game with no hidden per-player state has no rack, and none of this applies to it.
+
+- **Yellow means yours.** The private surface is the only one painted `--game-rack`; that is the privacy signal, and it is why the token is game-interior rather than platform frame.
 - Never scrolls, never collapses, never hides — a dimmed rack still tells a player what they're holding.
-- Holds *every* action available on the player's turn: play, draw, pass, undo.
+- Holds *every* action available on the player's turn. In this game that is play, draw, pass, undo; the set is game-defined, the placement is not.
 
 ---
 
 ## 8. The table
 
-- **Tilt is 7°** by default, 0° with the flatten toggle, and eases to 0° when a tile is zoomed. **Tilt never animates during a turn.**
+**Invariant — true of every game:**
+
 - **Seat rail across the far edge**, ordered by turn. Active seat expands; others collapse to pawn, name, count.
-- **Rack pinned to the bottom**, full width. On mobile it owns the bottom third — the thumb zone. No turn action may live in a top bar.
-- **The board is what moves.** Pan and zoom act on the table only; chrome stays put.
+- **No turn action lives in a top bar.** On mobile, actions belong in the bottom third — the thumb zone.
+- **Chrome does not move.** Whatever the play area does, the frame stays put.
+
+**Contract C2 — only if the game has a spatial play surface:**
+
+- **Tilt is 7°** by default, 0° with the flatten toggle, and eases to 0° when a tile is zoomed. **Tilt never animates during a turn.**
+- **The surface is what moves.** Pan and zoom act on it only.
+
+**Contract C1 — only if the game has private state:**
+
+- **The private surface is pinned to the bottom**, full width, and owns the thumb zone on mobile.
 
 ### Z-order
 
 | Layer | Contents |
 |---|---|
 | 0 | Background field (halftone) |
-| 10 | Table surface |
-| 20 | Pieces, tiles, played cards |
+| 10 | Shared play surface (C2) |
+| 20 | Game objects — pieces, tiles, played cards |
 | 30 | Seat rail |
-| 40 | Rack — always above the table |
+| 40 | Private surface (C1) — always above shared state |
 | 50 | Toasts, tooltips, chat |
 | 60 | Modals, game-over sheet |
 
 ### Seat counts
 
-| Players | Far edge | Board max | Watch for |
+| Players | Far edge | Play area max (C2) | Watch for |
 |---|---|---|---|
 | 2 | One chip, expanded, centered | 640px | Feels empty — give the opponent presence, not more chrome |
 | 3 | Two chips, centered | 600px | — |
 | 4 | Three chips | 560px | Names begin truncating on phones |
 | 5 | Four chips, compact | 520px | ~80px per chip at 360px wide |
 
-### Hidden information (security-relevant)
+### Private state (security-relevant) — contract C1
 
-- A player's hand is **rendered only on that player's client**. The server sends other clients a *count*, never contents.
-- Face-down backs use `--info` and carry no identifying mark.
+- Private state is **rendered only on that player's client**. The server sends other clients a *count* or nothing — never contents. This is a wire-format rule, not a UI rule: a hidden div is not hidden.
+- Where private state has a concealed representation (face-down backs, hidden tokens), it uses `--info` and carries no identifying mark.
+- In this game, private state is the hand. In another game it might be a private objective, a bid, or nothing at all.
 - **Spectators are out of scope for beta** (resolved; v1 of this spec contradicted itself by defining spectator behavior in this section while listing their existence as an open question). The rule stands as the definition for whenever they are built: a spectator sees exactly what an empty seat would see, and the server must never send them hand contents.
 - Until spectators exist, "All five seats are taken. Want to watch?" (§10) must not ship. Use "All five seats are taken." with no offer.
 
@@ -274,20 +325,26 @@ Chrome stays still. Only game objects move, and only to explain something that h
 | Duration | Use |
 |---|---|
 | `--t-fast` 120ms | Hover, press, focus — anything the player caused directly |
-| `--t-base` 180ms | Card lift, seat state change, toast in |
+| `--t-base` 180ms | Object lift, seat state change, toast in |
 | `--t-slow` 260ms | Turn handoff, dealing, game-over sheet |
 
 Easing is `--ease` for everything except timers, which are **linear** — a clock that eases is a lie.
 
-The five motions that ship:
+**Platform motions — every game has these:**
 
-1. **Card lift** — 8px up on hover or focus, 120ms. A selected card stays lifted.
-2. **Card played** — rack to board in 260ms, shadow collapsing 5px → 0 on landing.
-3. **Die settle** — face changes at 60ms intervals for 240ms, then stops. No spinning, no 3D.
-4. **Turn handoff** — banner slides 12px, the sun ring moves to the next seat, 260ms. The only motion allowed to be noticeable.
-5. **Seat fill** — empty slot scales 96% → 100% in 180ms when someone joins.
+1. **Turn handoff** — banner slides 12px, the sun ring moves to the next seat, 260ms. The only motion allowed to be noticeable.
+2. **Seat fill** — empty slot scales 96% → 100% in 180ms when someone joins.
+3. **Press** — the button lands 3px down-right, shadow collapses to 1px, 120ms.
 
-**Reduced motion:** all five become instant state changes, except the turn handoff, which keeps a 400ms sun flash on the banner so the change is still noticed.
+**Game-object motions — defined by the game, constrained by the platform.** A game may add motions for its own objects. They must use `--t-fast/base/slow` and `--ease`, explain a state change rather than decorate, not loop, not exceed 260ms, and collapse to an instant state change under `prefers-reduced-motion`. No game-object motion may move chrome.
+
+This game's, for reference — they belong in `docs/games/<slug>.md`, not here:
+
+- **Card lift** (C1) — 8px up on hover or focus, 120ms. A selected card stays lifted.
+- **Card played** (C1 → C2) — rack to board in 260ms, shadow collapsing 5px → 0 on landing.
+- **Die settle** (C3) — face changes at 60ms intervals for 240ms, then stops. No spinning, no 3D.
+
+**Reduced motion:** everything above becomes an instant state change, except the turn handoff, which keeps a 400ms sun flash on the banner so the change is still noticed.
 
 ---
 
@@ -327,7 +384,7 @@ A five-player turn-based game is mostly people not being there. **These are the 
 | Opponent disconnected | Seat greys, name struck through, "back in a sec" | Hold the seat 3 minutes before offering a skip vote |
 | You disconnected | Full-width sun bar, **not a modal** | Never block the board with a reconnect dialog |
 | Rejoin | Board restores, then a 3-line "while you were gone" summary | Dismissible; never blocks your turn |
-| Turn timeout | Auto-pass with the safest legal move, announced in chat | Never silently forfeit — always say what was played |
+| Turn timeout | The game's declared default action fires, announced in chat | **Contract C4.** The platform guarantees the timeout, the countdown, and the announcement. The *action* is game-supplied — the platform cannot know what "safest legal move" means and must not guess. A game that declares no default action does not get a timeout |
 | Game over | Sheet from the bottom: winner, scores, rematch, share | Rematch keeps the same seats and the same link |
 | Table abandoned | "Everyone left" plus a rematch link they can send | Never dump someone to a home screen |
 
@@ -663,6 +720,21 @@ The marketing point survives all of this intact: **beta is a campaign of mission
 ### 17.12 Marketing pages — **defined or explicitly descoped**
 
 §12b closes the loop on the reserved spacing: link preview and landing hero are in, per-title pages and press kit are descoped for beta and named as such rather than left implied.
+
+### 17.13 Rules were still stated as universals — **fixed in v1.3**
+
+v1.2 split tokens and components but left the rules assuming this game's mechanics. Four were stated as platform universals that a second game could violate while still feeling like our product:
+
+| Was stated as a universal | Now |
+|---|---|
+| The rack is pinned, never scrolls, holds every turn action | **C1**, conditional on the game having private state. A game with no hidden state has no rack |
+| Hidden information is "a player's hand"; backs are face-down cards | **C1**, generalized to private state — a hand, a private objective, a bid, or nothing. Restated as a wire-format rule, not a UI one |
+| 7° tilt, flatten toggle, pan/zoom, play-area max widths | **C2**, conditional on a spatial play surface. A boardless game is unaffected |
+| Die settle is one of "the five motions that ship" | **C3**. Motion is now three platform motions plus game-object motions the game defines under platform constraints |
+
+Plus a fifth that was worse than the other four: **turn timeout auto-passed "the safest legal move."** The platform cannot know what safe means in a game it does not model. Now **C4** — the platform guarantees the timeout, countdown, and announcement; the game supplies the action, and a game that declares none gets no timeout.
+
+§2b adds the test that should have caught all of them: *could a second game with no hidden hand, no randomizer, and no board violate this rule and still feel like our product?* If yes, it is a contract, not an invariant.
 
 ---
 
