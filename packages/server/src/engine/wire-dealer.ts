@@ -58,9 +58,21 @@ export function drawColorGroup(color: 'yellow' | 'red', group: ColorWireGroupInp
   const dealtNumbers = drawnNumbers.slice(0, count);
 
   const toValue = (n: number) => `${n}${decimalSuffix}`;
+
+  // Security fix (weasel, PR #227 review): `dealtNumbers` is always the
+  // PREFIX of `drawnNumbers` (the first `count` of the shuffled draw) —
+  // returning `candidates` in that same order would let array position
+  // leak which values are actually dealt vs. decoy (first `count` = real,
+  // rest = discard) the instant a mission uses a genuine N-of-M split.
+  // Shuffling `candidates` independently, AFTER `dealt` is already fixed,
+  // severs that positional correlation — this is the fix itself, not a
+  // read-order workaround (a missing/present ORDER BY on the read side
+  // must not be what the secrecy guarantee depends on).
+  const candidateValues = shuffle(drawnNumbers.map(toValue));
+
   return {
     dealt: dealtNumbers.map(toValue),
-    candidates: drawnNumbers.map(toValue),
+    candidates: candidateValues,
   };
 }
 

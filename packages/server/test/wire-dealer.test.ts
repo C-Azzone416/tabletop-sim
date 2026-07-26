@@ -212,6 +212,35 @@ describe("wire-dealer", () => {
       );
     });
 
+    // Security regression (weasel, PR #227 review): `dealt` is computed as
+    // the PREFIX of the pre-shuffle draw, so without an independent
+    // reshuffle, the dealt value would always land at index 0 of
+    // `candidates` — a positional leak of exactly the secret this whole
+    // model exists to keep (which candidate is real vs. decoy). This
+    // asserts the leak is actually closed, not just that the fields are
+    // present: across many draws, the dealt value's index within
+    // `candidates` must NOT be stuck at a fixed position.
+    it("does not leak which candidate is dealt via array position (count=1 lands at every index, not always 0)", () => {
+      const ITERATIONS = 300;
+      const indexCounts = new Map<number, number>();
+
+      for (let i = 0; i < ITERATIONS; i++) {
+        const { dealt, candidates } = drawColorGroup("yellow", { count: 1, candidatePoolSize: 3 });
+        const index = candidates.indexOf(dealt[0]);
+        indexCounts.set(index, (indexCounts.get(index) ?? 0) + 1);
+      }
+
+      // With a real shuffle, all 3 positions should appear roughly a third
+      // of the time each. The pre-fix code always put it at index 0 — this
+      // would see indexCounts = Map{0: 300} and fail outright. Loose bound
+      // (>10% each) avoids flaking on shuffle variance while still failing
+      // hard on the "always index 0" regression this guards against.
+      expect(indexCounts.size).toBe(3);
+      for (const count of indexCounts.values()) {
+        expect(count).toBeGreaterThan(ITERATIONS * 0.1);
+      }
+    });
+
     it("throws if candidatePoolSize exceeds the 11-singleton master set", () => {
       expect(() => drawColorGroup("red", { count: 1, candidatePoolSize: 12 })).toThrow(
         /exceeds the master set/
