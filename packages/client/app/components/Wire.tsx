@@ -26,12 +26,13 @@ function valueColorClass(color: WireType["color"]): string {
   return "text-zinc-900 dark:text-zinc-100";
 }
 
-// #190: whether yellow/red should ever show their decimal as a numeral (vs.
-// a bare color tile, decimal driving sort position only) is pending
-// Caroline's confirm — the physical tiles have the decimal printed on them,
-// which cuts against suppressing it even though the rulebook says it has no
-// value during play. Holding at "always show" (pre-#190 behavior) until
-// that ruling lands.
+// #190 (Caroline's ruling): yellow/red DO show their decimal as a tinted
+// numeral on the owner's own rack, same as blue shows its number — the
+// physical tiles have the decimal printed on them, and the rulebook's "no
+// numeric value during play" line is about interaction semantics (yellow is
+// cut by color, red is never cut, both server-enforced), not tile
+// visibility. Without the numeral the ascending rack sort looks arbitrary
+// to the one person who needs to read it. No suppression, any color.
 
 export function Wire({
   wire,

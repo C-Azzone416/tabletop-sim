@@ -111,11 +111,17 @@ resolution (cut-by-color, red instant-loss, auto-reveal) is Phase B.
   - Yellow: **singletons** 1.1–11.1 (11 tiles).
   - Red: **singletons** 1.5–11.5 (11 tiles).
   - Missions may not invent tiles outside this set.
-- **Decimals are sort position only.** Yellow's `.1` and red's `.5` suffix
-  exists solely to place the tile in the rack sort. During play, yellow/red
-  wires carry **no numeric value** — they are simply "yellow" or "red".
-  Nothing in the engine may read a yellow/red decimal as a gameplay quantity;
-  only color may ever be compared for a yellow/red resolution.
+- **Decimals are sort position only, for *gameplay* — not display.** Yellow's
+  `.1` and red's `.5` suffix exists solely to place the tile in the rack
+  sort; nothing in the engine may read a yellow/red decimal as a gameplay
+  quantity, and only color may ever be compared for a yellow/red resolution
+  (cut-by-color, no number guessing). **Display is a separate ruling
+  (Caroline, 2026-07-25, #190):** the owner's own rack still shows the
+  decimal as a tinted numeral (`4.1`, `3.5`), matching the physical tiles
+  and explaining the rack's ascending order to the one person reading it.
+  A player can't act on the decimal as if it were a blue number — the
+  color-scoped guards above are enforced server-side regardless of what's
+  shown — so this is a display-only exception, not a gameplay one.
 - **Single interleaved rack sort.** A player's rack is ONE ascending numeric
   sequence across all colors, not grouped by color. Example: `3.5, 4.1, 2, 3,
   4, 6` racks as `2, 3, 3.5, 4, 4.1, 6`.

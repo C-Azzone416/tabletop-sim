@@ -184,6 +184,45 @@ describe("Wire (#156)", () => {
     });
   });
 
+  // #190 (Caroline's ruling, 2026-07-25): yellow/red decimals ARE shown as a
+  // tinted numeral on the owner's own rack, same as blue — the physical
+  // tiles have the decimal printed on them, and "no numeric value during
+  // play" is about interaction semantics (color-scoped cutting, enforced
+  // server-side), not tile visibility. Locking this in explicitly with real
+  // decimal values, since an earlier draft on this branch briefly suppressed
+  // it before the ruling landed.
+  describe("yellow/red decimal shown on own rack, tinted (#190 ruling)", () => {
+    it("shows a yellow wire's decimal value, tinted yellow, on the owner's own hidden rack", () => {
+      resetIds();
+      const wire = makeWire({ status: "hidden", value: "4.1", color: "yellow" });
+      render(<Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />);
+      expect(screen.getByText("4.1").className).toContain("text-yellow-700");
+    });
+
+    it("shows a red wire's decimal value, tinted red, on the owner's own hidden rack", () => {
+      resetIds();
+      const wire = makeWire({ status: "hidden", value: "3.5", color: "red" });
+      render(<Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />);
+      expect(screen.getByText("3.5").className).toContain("text-red-700");
+    });
+
+    it("shows a cut yellow wire's decimal value plainly (#173's public-value treatment applies)", () => {
+      resetIds();
+      const wire = makeWire({ status: "cut", value: "2.1", color: "yellow" });
+      render(<Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />);
+      expect(screen.getByText("2.1")).toBeInTheDocument();
+    });
+
+    it("carries the decimal value on data-wire-value unchanged, same as the visible numeral", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: "4.1", color: "yellow" });
+      const { container } = render(
+        <Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />,
+      );
+      expect(container.querySelector("button")).toHaveAttribute("data-wire-value", "4.1");
+    });
+  });
+
   // #200 (Caroline's ruling): a pending info token reads as a placed token —
   // a circular chip, distinct in shape from the rectangular wire tile — not
   // just a color variant of the same rectangle.
