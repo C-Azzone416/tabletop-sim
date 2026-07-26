@@ -41,6 +41,7 @@ Each game declares which it triggers, in `docs/games/<slug>.md`.
 | **C3 Randomizer** | Dice, draws, shuffles | Resolves in discrete steps ≤260ms, no spinning. Result readable as text before the animation ends |
 | **C4 Turn default** | Always | Platform guarantees the timeout, countdown, and announcement. **The game supplies the action taken.** No declared action means no timeout |
 | **C5 Targeted opponents** | A turn action targets a specific element of another player's state | Every seat renders at element-level granularity, not a count. The active seat is distinguished by emphasis, not by being the only expanded one. Element positions are stable and never reorder while the game is live |
+| **C6 Dense private state** | Max holdings × 44px exceeds the surface width at the minimum viewport | The game names its resolution rather than improvising per component. Default order of preference: wrap to a second row first; if density still exceeds the floor after wrapping, tap targets may overlap their neighbor (already permitted for fanned cards); only relax the 44×44 floor itself as a last resort, and only for the specific over-dense case |
 
 Test for anything new: *could a game with no hidden hand, no randomizer, and no board violate this and still feel like our product?* If yes, it's a contract, not an invariant.
 
@@ -208,7 +209,6 @@ Semantic tokens only · both schemes · all states including disabled and loadin
 **Blocking**
 - **Product name and wordmark.** Original, must not evoke the source title. Blocks app icon, store assets, OG tags, page titles.
 - **The C4 default turn action.** Without it a disconnected player stalls the table indefinitely.
-- **Dense private state vs. the 44×44 minimum target.** No contract covers what a game does when max holdings × 44px exceeds the surface width at the minimum viewport — wrap, overlap tap targets beyond the visible element, or scale-with-overlap. The point isn't which answer for a given game, it's that each game must name its resolution rather than improvising per component. Candidate: **C6 — Dense private state**.
 
 **Needed, not blocking**
 - One look, or a look per game? (Token structure keeps both open, so this can wait.)

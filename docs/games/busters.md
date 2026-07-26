@@ -36,6 +36,12 @@ This game triggers all five platform contracts:
   wire-level granularity for every seat, not a count; positions are
   permanent and ascending-sorted (see Wire visibility / rack sort below),
   which is the deduction substrate the whole game runs on.
+- **C6 Dense private state** — max hand is 12 wires (2-player captain),
+  which drops below the 44×44 tap-target floor at the 360px viewport
+  floor. Per C6's default order: **wraps to a second row** first. Only
+  fall back to tap-target overlap if two rows still isn't enough at some
+  seat count/viewport combination — don't relax the 44×44 floor itself
+  unless both of those are tried first.
 
 ## Lobby / ready flow
 
