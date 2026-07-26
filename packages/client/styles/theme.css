@@ -1,0 +1,308 @@
+/* =========================================================================
+   CABINET — theme
+   @tabletop/client · Tailwind 4 (CSS-first config, no tailwind.config.js)
+
+   Import this ONCE from the App Router root layout:
+       import "@/styles/theme.css";
+
+   Layer order matters: @import "tailwindcss" first, then the runtime
+   custom properties, then @theme inline mapping them to utilities.
+
+   RULES
+   - Components use Tailwind utilities generated from these tokens
+     (bg-surface, text-ink, border-outline, shadow-print-md...).
+   - Never write a hex in a component, and never use an arbitrary value
+     like bg-[#E43126]. If a token is missing, add it here first and log it
+     in DESIGN.md §14.
+   - Raw brand values live only in this file.
+   ========================================================================= */
+
+@import "tailwindcss";
+
+/* Class-based dark mode. Tailwind 4 has no darkMode config key — this is it. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* -------------------------------------------------------------------------
+   1. RUNTIME VALUES
+   Plain custom properties so they can flip at runtime. @theme inline below
+   points the utilities at these, so a single class on <html> reskins the app.
+   ------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light dark;
+
+  /* raw brand — referenced only inside this file */
+  --cab-red: #E43126;
+  --cab-red-lift: #FF5346;
+  --cab-sky: #2BB3E8;
+  --cab-sky-lift: #4FC3F0;
+  --cab-sun: #FFC53D;
+  --cab-grass: #2E9E5B;
+  --cab-grass-lift: #3BBE72;
+  --cab-grape: #7B4CC4;
+  --cab-grape-lift: #A177E8;
+  --cab-navy: #10233F;
+  --cab-navy-deep: #0E1B2E;
+  --cab-paper: #FBF7EF;
+
+  /* semantic — LIGHT (native scheme) */
+  --surface: #FBF7EF;
+  --surface-raised: #FFFFFF;
+  --surface-table: #FFFFFF;
+  --surface-rack: #FFC53D;
+  --rack-ink: #10233F;
+  --rack-border: #10233F;
+
+  --ink: #10233F;
+  --ink-muted: #5A6D86;
+  --ink-inverse: #FBF7EF;
+
+  --outline: #10233F;
+  --line-soft: rgb(16 35 63 / 0.24);
+
+  --accent: #E43126;
+  --accent-ink: #FFFFFF;
+  --info: #2BB3E8;
+  --success: #2E9E5B;
+  --warning: #FFC53D;
+  --danger: #E43126;
+
+  --shadow-ink: #10233F;
+  --halftone: #10233F;
+  --halftone-opacity: 0.16;
+
+  /* player seats */
+  --p1: #E43126; --p1-ink: #FFFFFF;
+  --p2: #2BB3E8; --p2-ink: #10233F;
+  --p3: #FFC53D; --p3-ink: #10233F;
+  --p4: #2E9E5B; --p4-ink: #FFFFFF;
+  --p5: #7B4CC4; --p5-ink: #FFFFFF;
+}
+
+/*
+  DARK — a translation, not an inversion. Two rules exist only here:
+  1. --shadow-ink goes DARKER than the surface. A paper-colored offset shadow
+     on every card turns the screen into a field of glowing boxes.
+  2. --surface-rack is deep amber with a sun edge. Full-brightness yellow
+     across the bottom third of a dark screen is unusable at night, but
+     "yellow means yours" has to survive the flip.
+*/
+@layer base {
+  .dark {
+    --surface: #0E1B2E;
+    --surface-raised: #132741;
+    --surface-table: #132741;
+    --surface-rack: #3D3312;
+    --rack-ink: #FBF7EF;
+    --rack-border: #FFC53D;
+
+    --ink: #FBF7EF;
+    --ink-muted: #94A7BF;
+    --ink-inverse: #0E1B2E;
+
+    --outline: #FBF7EF;
+    --line-soft: rgb(251 247 239 / 0.22);
+
+    --accent: #FF5346;
+    --accent-ink: #0E1B2E;
+    --info: #4FC3F0;
+    --success: #3BBE72;
+    --warning: #FFC53D;
+    --danger: #FF5346;
+
+    --shadow-ink: #040C17;
+    --halftone: #FBF7EF;
+    --halftone-opacity: 0.07;
+
+    --p1: #FF5346; --p1-ink: #0E1B2E;
+    --p2: #4FC3F0; --p2-ink: #0E1B2E;
+    --p3: #FFC53D; --p3-ink: #10233F;
+    --p4: #3BBE72; --p4-ink: #0E1B2E;
+    --p5: #A177E8; --p5-ink: #0E1B2E;
+  }
+
+  /* Follow the OS unless the user chose explicitly (.light / .dark wins).
+     Requires `export const viewport = { colorScheme: "light dark" }` in the
+     root layout — without it mobile browsers force-darken the app themselves
+     and wreck the player colors. */
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light) {
+      --surface: #0E1B2E;
+      --surface-raised: #132741;
+      --surface-table: #132741;
+      --surface-rack: #3D3312;
+      --rack-ink: #FBF7EF;
+      --rack-border: #FFC53D;
+      --ink: #FBF7EF;
+      --ink-muted: #94A7BF;
+      --ink-inverse: #0E1B2E;
+      --outline: #FBF7EF;
+      --line-soft: rgb(251 247 239 / 0.22);
+      --accent: #FF5346;
+      --accent-ink: #0E1B2E;
+      --info: #4FC3F0;
+      --success: #3BBE72;
+      --warning: #FFC53D;
+      --danger: #FF5346;
+      --shadow-ink: #040C17;
+      --halftone: #FBF7EF;
+      --halftone-opacity: 0.07;
+      --p1: #FF5346; --p1-ink: #0E1B2E;
+      --p2: #4FC3F0; --p2-ink: #0E1B2E;
+      --p3: #FFC53D; --p3-ink: #10233F;
+      --p4: #3BBE72; --p4-ink: #0E1B2E;
+      --p5: #A177E8; --p5-ink: #0E1B2E;
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------
+   2. UTILITIES
+   `inline` keeps the var() indirection at the use site, which is what makes
+   runtime theme switching work. Without it the values bake in at build time.
+   ------------------------------------------------------------------------- */
+
+@theme inline {
+  /* colors → bg-*, text-*, border-*, ring-*, fill-*, stroke-* */
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-table: var(--surface-table);
+  --color-surface-rack: var(--surface-rack);
+  --color-rack-ink: var(--rack-ink);
+  --color-rack-border: var(--rack-border);
+
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-inverse: var(--ink-inverse);
+
+  --color-outline: var(--outline);
+  --color-line-soft: var(--line-soft);
+
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-info: var(--info);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --color-p1: var(--p1); --color-p1-ink: var(--p1-ink);
+  --color-p2: var(--p2); --color-p2-ink: var(--p2-ink);
+  --color-p3: var(--p3); --color-p3-ink: var(--p3-ink);
+  --color-p4: var(--p4); --color-p4-ink: var(--p4-ink);
+  --color-p5: var(--p5); --color-p5-ink: var(--p5-ink);
+
+  /* type scale → text-display-xl, text-body, text-micro …
+     line-height and tracking ride along with each size. */
+  --text-display-xl: 56px;
+  --text-display-xl--line-height: 54px;
+  --text-display-xl--letter-spacing: -0.035em;
+
+  --text-display-xl-sm: 40px;          /* phone default; step up at md: */
+  --text-display-xl-sm--line-height: 39px;
+  --text-display-xl-sm--letter-spacing: -0.035em;
+
+  --text-display-l: 40px;
+  --text-display-l--line-height: 40px;
+  --text-display-l--letter-spacing: -0.03em;
+
+  --text-display-l-sm: 31px;
+  --text-display-l-sm--line-height: 31px;
+  --text-display-l-sm--letter-spacing: -0.03em;
+
+  --text-heading: 24px;
+  --text-heading--line-height: 26px;
+  --text-heading--letter-spacing: -0.02em;
+
+  --text-subhead: 19px;
+  --text-subhead--line-height: 26px;
+  --text-subhead--letter-spacing: -0.01em;
+
+  --text-body-l: 17px;
+  --text-body-l--line-height: 26px;
+
+  --text-body: 15px;
+  --text-body--line-height: 23px;
+
+  --text-small: 13px;
+  --text-small--line-height: 18px;
+
+  --text-micro: 11px;
+  --text-micro--line-height: 14px;
+  --text-micro--letter-spacing: 0.14em;
+
+  /* fonts — wired to next/font in layout.tsx, see DESIGN.md §16 */
+  --font-sans: var(--font-archivo), system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-archivo-black), system-ui, sans-serif;
+
+  /* radius → rounded-piece, rounded-cab, rounded-die */
+  --radius-piece: 2px;
+  --radius-cab: 4px;
+  --radius-die: 6px;
+
+  /* hard print shadows → shadow-print-sm|md|lg. Zero blur, always down-right. */
+  --shadow-print-sm: 3px 3px 0 var(--shadow-ink);
+  --shadow-print-md: 5px 5px 0 var(--shadow-ink);
+  --shadow-print-lg: 8px 8px 0 var(--shadow-ink);
+  --shadow-print-pressed: 1px 1px 0 var(--shadow-ink);
+
+  /* motion → duration-fast|base|slow, ease-cab */
+  --ease-cab: cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+/* Spacing: Tailwind 4's default 4px step already matches this system exactly.
+   s1→p-1, s2→p-2, s3→p-3, s4→p-4, s5→p-6, s6→p-8, s7→p-12, s8→p-16, s9→p-24.
+   Do not add custom spacing tokens. */
+
+/* -------------------------------------------------------------------------
+   3. BASE
+   ------------------------------------------------------------------------- */
+
+@layer base {
+  body {
+    background-color: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 23px;
+  }
+
+  /* Focus is non-negotiable: 3px outline at 2px offset, never removed. */
+  :focus-visible {
+    outline: 3px solid var(--outline);
+    outline-offset: 2px;
+  }
+
+  /* Every number a player compares. Prevents layout shift on score updates. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------
+   4. UTILITIES that are identity, not convenience
+   ------------------------------------------------------------------------- */
+
+@utility halftone {
+  background-image: radial-gradient(var(--halftone) 1px, transparent 1.15px);
+  background-size: 14px 14px;
+  opacity: var(--halftone-opacity);
+}
+
+/* The press: button lands down-right and the shadow collapses. */
+@utility press {
+  transition: transform var(--t-fast, 120ms) var(--ease-cab),
+              box-shadow var(--t-fast, 120ms) var(--ease-cab);
+
+  &:active {
+    transform: translate(3px, 3px);
+    box-shadow: var(--shadow-print-pressed);
+  }
+}
