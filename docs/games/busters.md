@@ -1,8 +1,28 @@
-# Game Rules
+# Game Rules — Busters
 
 Canonical capture of Caroline's rulings on setup flow and turn structure
 (via deep-dingo, 2026-07-22). This is the reference to check before a rules
-question round-trips back to Caroline.
+question round-trips back to Caroline. Source of truth for this game's
+specifics going forward — mechanics live here, not scattered across issues
+or chat.
+
+`busters` is an internal codename, same rule as "Cabinet" for the platform
+(see `DESIGN.md`) — never in the UI, a URL, a page title, or an OG tag.
+
+## Contracts triggered (see `DESIGN.md`)
+
+This game triggers all four platform contracts:
+
+- **C1 Private state** — each player's own hidden wires are private; see
+  Wire visibility below. The server never sends another player's hidden
+  wire contents to this client.
+- **C2 Play surface** — the shared board/rack view is this game's play
+  surface.
+- **C3 Randomizer** — yellow/red tiles are dealt at random (see Wire
+  semantics below), including partial-knowledge "N out of M" draws.
+- **C4 Turn default** — standard turn timeout/countdown/announcement
+  applies; this doc supplies the action taken (`dual_cut` and friends,
+  see Turn structure below).
 
 ## Lobby / ready flow
 
