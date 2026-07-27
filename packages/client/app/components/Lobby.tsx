@@ -42,48 +42,48 @@ export function Lobby({
   return (
     <div className="flex flex-col items-center gap-8 p-8">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+        <h2 className="text-2xl font-bold text-ink">
           Game Lobby
         </h2>
         <div className="mt-2 flex items-center justify-center gap-2">
-          <span className="text-sm text-zinc-500 dark:text-zinc-400">
+          <span className="text-sm text-ink-muted">
             Join Code:
           </span>
-          <code className="rounded bg-zinc-100 px-3 py-1 text-lg font-mono font-bold tracking-widest text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">
+          <code className="rounded-cab bg-surface-raised px-3 py-1 text-lg font-mono font-bold tracking-widest text-ink">
             {joinCode}
           </code>
         </div>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-ink-muted">
           Share this code with other players
         </p>
       </div>
 
       <div className="w-full max-w-sm">
-        <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-muted">
           Players ({players.length}/4)
         </h3>
         <ul className="space-y-2">
           {players.map((player) => (
             <li
               key={player.id}
-              className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800"
+              className="flex items-center gap-3 rounded-cab border-2 border-outline bg-surface-raised px-4 py-3"
             >
               <div
                 className={`h-2 w-2 rounded-full ${
-                  player.ready ? "bg-green-500" : "bg-zinc-300 dark:bg-zinc-600"
+                  player.ready ? "bg-success" : "bg-line-soft"
                 }`}
                 title={player.ready ? "Ready" : "Not ready"}
               />
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">
+              <span className="font-medium text-ink">
                 {player.name}
               </span>
               {player.id === captainId && (
-                <span className="ml-auto text-xs font-medium text-amber-600 dark:text-amber-400">
+                <span className="ml-auto rounded-full bg-warning px-2 py-0.5 text-xs font-medium text-warning-ink">
                   Captain
                 </span>
               )}
               {player.id === localPlayerId && (
-                <span className={player.id === captainId ? "text-xs text-zinc-400" : "ml-auto text-xs text-zinc-400"}>
+                <span className={player.id === captainId ? "text-xs text-ink-muted" : "ml-auto text-xs text-ink-muted"}>
                   (you)
                 </span>
               )}
@@ -94,7 +94,7 @@ export function Lobby({
 
       {isCaptain && (
         <div className="w-full max-w-sm">
-          <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+          <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-muted">
             Select Mission
           </h3>
           <MissionSelector
@@ -109,7 +109,7 @@ export function Lobby({
         {!isLocalPlayerReady && (
           <button
             onClick={onReady}
-            className="rounded-full bg-teal-600 px-8 py-3 font-medium text-white transition-colors hover:bg-teal-700"
+            className="press min-h-11 rounded-cab border-2 border-outline bg-accent px-8 py-3 font-bold text-accent-ink shadow-print-sm"
           >
             Ready
           </button>
@@ -119,20 +119,20 @@ export function Lobby({
           <button
             onClick={handleStartGame}
             disabled={!canStart || isStarting}
-            className="rounded-full bg-green-600 px-8 py-3 font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="press min-h-11 rounded-cab border-2 border-outline bg-accent px-8 py-3 font-bold text-accent-ink shadow-print-sm disabled:opacity-50"
           >
             {isStarting ? "Starting..." : `Start Mission ${selectedMission}`}
           </button>
         )}
 
         {isLocalPlayerReady && !allPlayersReady && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-ink-muted">
             Waiting for {notReadyPlayerNames.join(", ")} to ready up...
           </p>
         )}
 
         {isLocalPlayerReady && allPlayersReady && !isCaptain && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-ink-muted">
             Waiting for the host to start the game...
           </p>
         )}

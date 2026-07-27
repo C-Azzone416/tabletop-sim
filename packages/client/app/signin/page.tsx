@@ -39,16 +39,16 @@ export default function SignInPage() {
       <GameRoomScene />
 
       {/* Warm overlay — no black */}
-      <div className="absolute inset-0 bg-amber-900/10" />
+      <div className="absolute inset-0 bg-ink/10" />
 
       {/* Sign-in card — compact, upper portion */}
       <main className="relative z-10 mt-28 w-full max-w-sm px-6 sm:mt-36">
-        <div className="rounded-2xl border border-stone-300/50 bg-stone-50/80 px-6 py-6 shadow-2xl backdrop-blur-sm dark:bg-stone-900/70">
+        <div className="rounded-cab border-2 border-outline bg-surface-raised/80 px-6 py-6 shadow-print-lg backdrop-blur-sm">
           <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+            <h1 className="text-2xl font-bold tracking-tight text-ink">
               Tabletop Simulator
             </h1>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="mt-1 text-sm text-ink-muted">
               Gather your friends. Roll the dice.
             </p>
           </div>
@@ -56,7 +56,7 @@ export default function SignInPage() {
           {!expanded ? (
             <button
               onClick={() => setExpanded(true)}
-              className="mt-5 w-full rounded-lg bg-teal-700 px-4 py-3 font-medium text-white transition-colors hover:bg-teal-800"
+              className="press mt-5 w-full min-h-11 rounded-cab border-2 border-outline bg-accent px-4 py-3 font-bold text-accent-ink shadow-print-sm"
             >
               Join
             </button>
@@ -71,12 +71,12 @@ export default function SignInPage() {
                   placeholder="Choose your name"
                   maxLength={20}
                   autoFocus
-                  className="w-full rounded-lg border border-stone-300 bg-white/60 px-4 py-3 text-stone-900 placeholder-stone-400 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600 dark:border-stone-600 dark:bg-stone-800/40 dark:text-stone-100 dark:placeholder-stone-500"
+                  className="w-full rounded-cab border-2 border-outline bg-surface px-4 py-3 text-ink placeholder-ink-muted focus:outline-none"
                 />
               </div>
 
               {error && (
-                <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                <div className="rounded-cab border-2 border-outline bg-danger px-4 py-3 text-sm text-accent-ink">
                   {error}
                 </div>
               )}
@@ -84,7 +84,7 @@ export default function SignInPage() {
               <button
                 type="submit"
                 disabled={!name.trim() || loading}
-                className="w-full rounded-lg bg-teal-700 px-4 py-3 font-medium text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="press w-full min-h-11 rounded-cab border-2 border-outline bg-accent px-4 py-3 font-bold text-accent-ink shadow-print-sm disabled:opacity-50"
               >
                 {loading ? "Joining..." : "Enter the Room"}
               </button>

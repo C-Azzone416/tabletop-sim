@@ -26,12 +26,12 @@ export function MissionSelector({
             <div
               key={mission}
               data-testid={`mission-locked-${mission}`}
-              className="cursor-not-allowed rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-left opacity-60 dark:border-zinc-700 dark:bg-zinc-900"
+              className="cursor-not-allowed rounded-cab border-2 border-outline/40 bg-surface px-3 py-2 text-left opacity-60"
             >
-              <span className="flex items-center gap-1 text-sm font-semibold text-zinc-400 dark:text-zinc-500">
+              <span className="flex items-center gap-1 text-sm font-semibold text-ink-muted">
                 <span aria-hidden="true">🔒</span> Mission {mission}
               </span>
-              <p className="mt-0.5 text-xs text-zinc-400 dark:text-zinc-500">
+              <p className="mt-0.5 text-xs text-ink-muted">
                 Beat mission {mission - 1} to unlock
               </p>
             </div>
@@ -42,26 +42,18 @@ export function MissionSelector({
           <button
             key={mission}
             onClick={() => onSelectMission(mission)}
-            className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+            className={`rounded-cab border-2 px-3 py-2 text-left transition-colors ${
               isSelected
-                ? "border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20"
-                : "border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600"
+                ? "border-outline bg-accent/10"
+                : "border-outline/40 bg-surface-raised hover:border-outline"
             }`}
           >
-            <span
-              className={`text-sm font-semibold ${
-                isSelected
-                  ? "text-blue-700 dark:text-blue-300"
-                  : "text-zinc-900 dark:text-zinc-100"
-              }`}
-            >
+            <span className="text-sm font-semibold text-ink">
               Mission {mission}
             </span>
             <p
               className={`mt-0.5 text-xs ${
-                isSelected
-                  ? "text-blue-600 dark:text-blue-400"
-                  : "text-zinc-500 dark:text-zinc-400"
+                isSelected ? "text-ink" : "text-ink-muted"
               }`}
             >
               {desc}
