@@ -71,6 +71,17 @@
   --halftone: #10233F;
   --halftone-opacity: 0.16;
 
+  /* game interior — the play surface (board, rack, pieces, seats only;
+     see DESIGN-APPENDIX.md §3 "platform frame vs game interior").
+     Defaults to Cabinet's own values; a second title overrides this
+     layer under [data-game="<slug>"], never the platform layer. */
+  --game-table: #FFFFFF;
+  --game-rack: #FFC53D;
+  --game-rack-ink: #10233F;
+  --game-rack-border: #10233F;
+  --game-accent: #E43126;
+  --game-accent-ink: #FFFFFF;
+
   /* player seats */
   --p1: #E43126; --p1-ink: #FFFFFF;
   --p2: #2BB3E8; --p2-ink: #10233F;
@@ -114,6 +125,13 @@
     --halftone: #FBF7EF;
     --halftone-opacity: 0.07;
 
+    --game-table: #132741;
+    --game-rack: #3D3312;
+    --game-rack-ink: #FBF7EF;
+    --game-rack-border: #FFC53D;
+    --game-accent: #FF5346;
+    --game-accent-ink: #0E1B2E;
+
     --p1: #FF5346; --p1-ink: #0E1B2E;
     --p2: #4FC3F0; --p2-ink: #0E1B2E;
     --p3: #FFC53D; --p3-ink: #10233F;
@@ -147,6 +165,12 @@
       --shadow-ink: #040C17;
       --halftone: #FBF7EF;
       --halftone-opacity: 0.07;
+      --game-table: #132741;
+      --game-rack: #3D3312;
+      --game-rack-ink: #FBF7EF;
+      --game-rack-border: #FFC53D;
+      --game-accent: #FF5346;
+      --game-accent-ink: #0E1B2E;
       --p1: #FF5346; --p1-ink: #0E1B2E;
       --p2: #4FC3F0; --p2-ink: #0E1B2E;
       --p3: #FFC53D; --p3-ink: #10233F;
@@ -184,6 +208,14 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+
+  /* game interior — board, rack, pieces, seats only. Never buttons/chrome. */
+  --color-game-table: var(--game-table);
+  --color-game-rack: var(--game-rack);
+  --color-game-rack-ink: var(--game-rack-ink);
+  --color-game-rack-border: var(--game-rack-border);
+  --color-game-accent: var(--game-accent);
+  --color-game-accent-ink: var(--game-accent-ink);
 
   --color-p1: var(--p1); --color-p1-ink: var(--p1-ink);
   --color-p2: var(--p2); --color-p2-ink: var(--p2-ink);
@@ -245,8 +277,12 @@
   --shadow-print-lg: 8px 8px 0 var(--shadow-ink);
   --shadow-print-pressed: 1px 1px 0 var(--shadow-ink);
 
-  /* motion → duration-fast|base|slow, ease-cab */
-  --ease-cab: cubic-bezier(0.2, 0.8, 0.3, 1);
+  /* motion → duration-fast|base|slow, ease. See DESIGN-APPENDIX.md §7 for
+     when each duration applies; timers stay linear, never --ease. */
+  --t-fast: 120ms;
+  --t-base: 180ms;
+  --t-slow: 260ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 
 /* Spacing: Tailwind 4's default 4px step already matches this system exactly.
@@ -298,8 +334,8 @@
 
 /* The press: button lands down-right and the shadow collapses. */
 @utility press {
-  transition: transform var(--t-fast, 120ms) var(--ease-cab),
-              box-shadow var(--t-fast, 120ms) var(--ease-cab);
+  transition: transform var(--t-fast) var(--ease),
+              box-shadow var(--t-fast) var(--ease);
 
   &:active {
     transform: translate(3px, 3px);
