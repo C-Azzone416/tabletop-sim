@@ -1,6 +1,7 @@
 import type { Game, Player, Wire, ServerMessage } from '@tabletop/shared';
 import * as wiresDb from '../db/wires.js';
 import * as tokensDb from '../db/tokens.js';
+import * as candidatesDb from '../db/candidates.js';
 import { getGameSockets, sendToPlayer } from './connection-manager.js';
 
 /**
@@ -31,6 +32,10 @@ export async function broadcastGameState(
   const wires = await wiresDb.getWiresByGameId(gameId);
   const infoTokens = await tokensDb.getInfoTokensByGameId(gameId);
   const validationTokens = await tokensDb.getValidationTokensByGameId(gameId);
+  // #215 groundwork — broadcast identically to every player, no redaction
+  // (a candidate has no owner to redact against). Empty for every mission
+  // today; no config uses N-of-M yet.
+  const candidates = await candidatesDb.getWireCandidatesByGameId(gameId);
 
   const gameSockets = getGameSockets(gameId);
 
@@ -44,6 +49,7 @@ export async function broadcastGameState(
       infoTokens,
       validationTokens,
       localPlayerId: playerId,
+      candidates,
     };
     sendToPlayer(gameId, playerId, message);
   }

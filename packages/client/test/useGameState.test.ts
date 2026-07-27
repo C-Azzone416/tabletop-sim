@@ -72,7 +72,7 @@ describe("useGameState", () => {
       makeWire({ id: "w2", playerId: "p2", rackPosition: 0 }),
     ];
 
-    act(() => { result.current.handleMessage({ type: "game_started", game, players, wires }); });
+    act(() => { result.current.handleMessage({ type: "game_started", game, players, wires, candidates: [] }); });
 
     expect(result.current.state.game?.status).toBe("setup");
     expect(result.current.state.wires).toEqual(wires);
@@ -97,6 +97,7 @@ describe("useGameState", () => {
         type: "game_started", game,
         players: [makePlayer({ id: "p1" }), makePlayer({ id: "p2" })],
         wires: [wire1, wire2],
+        candidates: [],
       });
     });
 
@@ -122,6 +123,7 @@ describe("useGameState", () => {
         type: "game_started", game,
         players: [makePlayer({ id: "p1" }), makePlayer({ id: "p2" })],
         wires: [wire],
+        candidates: [],
       });
     });
 
@@ -140,7 +142,7 @@ describe("useGameState", () => {
     const { result } = renderHook(() => useGameState());
     const game = makeGame({ id: "g1", status: "active" });
 
-    act(() => { result.current.handleMessage({ type: "game_started", game, players: [], wires: [] }); });
+    act(() => { result.current.handleMessage({ type: "game_started", game, players: [], wires: [], candidates: [] }); });
     act(() => { result.current.handleMessage({ type: "validation_complete", wireValue: "3", wireColor: "blue", game }); });
 
     expect(result.current.state.validationTokens).toHaveLength(1);
@@ -152,7 +154,7 @@ describe("useGameState", () => {
     const wire = makeWire({ id: "w1", value: "3", status: "hidden" });
     const game = makeGame({ id: "g1", status: "active" });
 
-    act(() => { result.current.handleMessage({ type: "game_started", game, players: [], wires: [wire] }); });
+    act(() => { result.current.handleMessage({ type: "game_started", game, players: [], wires: [wire], candidates: [] }); });
 
     const updatedWire = { ...wire, status: "revealed" as const };
     act(() => { result.current.handleMessage({ type: "wire_updated", wire: updatedWire }); });
@@ -164,7 +166,7 @@ describe("useGameState", () => {
     const { result } = renderHook(() => useGameState());
     const game = makeGame({ id: "g1", status: "active" });
 
-    act(() => { result.current.handleMessage({ type: "game_started", game, players: [], wires: [] }); });
+    act(() => { result.current.handleMessage({ type: "game_started", game, players: [], wires: [], candidates: [] }); });
     act(() => { result.current.handleMessage({ type: "game_over", result: "won", reason: "All values validated!" }); });
 
     expect(result.current.state.game?.status).toBe("won");
@@ -175,7 +177,7 @@ describe("useGameState", () => {
     const { result } = renderHook(() => useGameState());
     const game = makeGame({ id: "g1", status: "active" });
 
-    act(() => { result.current.handleMessage({ type: "game_started", game, players: [], wires: [] }); });
+    act(() => { result.current.handleMessage({ type: "game_started", game, players: [], wires: [], candidates: [] }); });
     act(() => { result.current.handleMessage({ type: "game_over", result: "lost", reason: "Detonator exploded!" }); });
 
     expect(result.current.state.game?.status).toBe("lost");
@@ -215,7 +217,7 @@ describe("useGameState", () => {
     const validationTokens = [{ id: "v1", gameId: "g1", wireValue: "3", wireColor: "blue" as const, validatedAt: "2026-01-01T00:00:00Z" }];
 
     act(() => {
-      result.current.handleMessage({ type: "game_state", game, players, wires, infoTokens, validationTokens, localPlayerId: "p1" });
+      result.current.handleMessage({ type: "game_state", game, players, wires, infoTokens, validationTokens, localPlayerId: "p1", candidates: [] });
     });
 
     expect(result.current.state.game).toEqual(game);

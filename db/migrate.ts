@@ -45,6 +45,7 @@ const migrations = [
   '010_info_token_dev_created.sql',
   '011_mission_outcomes.sql',
   '012_game_created_via.sql',
+  '013_wire_candidates.sql',
 ];
 
 // #166 — arbitrary fixed key for this runner's session-level advisory lock.

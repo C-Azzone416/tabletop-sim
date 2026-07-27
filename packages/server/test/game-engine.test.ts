@@ -64,6 +64,12 @@ vi.mock("../src/db/outcomes.js", () => ({
   getMissionOutcomesByProfileId: vi.fn(),
 }));
 
+vi.mock("../src/db/candidates.js", () => ({
+  createWireCandidate: vi.fn(),
+  getWireCandidatesByGameId: vi.fn(),
+  deleteByGameId: vi.fn(),
+}));
+
 import * as gamesDb from "../src/db/games.js";
 import * as playersDb from "../src/db/players.js";
 import * as wiresDb from "../src/db/wires.js";
@@ -185,6 +191,8 @@ describe("game-engine", () => {
       expect(result.game.detonatorMax).toBe(1);
       expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", "p1");
       expect(result.game.currentTurnPlayerId).toBe("p1");
+      // #215 groundwork — mission 1 has no N-of-M groups, so nothing to persist.
+      expect(result.candidates).toEqual([]);
     });
 
     it("persists the computed detonatorMax to the DB, not just the returned object (issue #137)", async () => {

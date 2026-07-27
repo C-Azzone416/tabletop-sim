@@ -114,6 +114,7 @@ describe("GameClient — full game flow integration", () => {
     act(() => {
       ws.simulateMessage({
         type: "game_started",
+        candidates: [],
         game: setupGame,
         players,
         wires,
@@ -137,6 +138,7 @@ describe("GameClient — full game flow integration", () => {
     act(() => {
       ws.simulateMessage({
         type: "game_state",
+        candidates: [],
         game: activeGame,
         players,
         wires,
@@ -233,6 +235,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_started",
+          candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
           wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -241,6 +244,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_state",
+          candidates: [],
           game: makeGame({
             id: "g1",
             status: "active",
@@ -312,6 +316,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_started",
+          candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
           wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -333,6 +338,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_started",
+          candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
           wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -341,6 +347,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_state",
+          candidates: [],
           game: makeGame({
             id: "g1",
             status: "active",
@@ -420,6 +427,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_state",
+          candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
           wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -444,6 +452,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_state",
+          candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
           wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -457,6 +466,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_state",
+          candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
           wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -485,6 +495,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_state",
+          candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
           wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -534,6 +545,7 @@ describe("GameClient — full game flow integration", () => {
     act(() => {
       ws.simulateMessage({
         type: "game_started",
+        candidates: [],
         game: { ...game, status: "setup" },
         players: [makePlayer({ id: "p1", name: "Alice" })],
         wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -543,6 +555,7 @@ describe("GameClient — full game flow integration", () => {
     act(() => {
       ws.simulateMessage({
         type: "game_state",
+        candidates: [],
         game,
         players: [makePlayer({ id: "p1", name: "Alice" })],
         wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -582,6 +595,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_state",
+          candidates: [],
           game,
           players: [makePlayer({ id: "p1", name: "Alice" })],
           wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -619,6 +633,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_state",
+          candidates: [],
           game,
           players: [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })],
           wires: [makeWire({ id: "w1", playerId: "p1" }), makeWire({ id: "w2", playerId: "p2" })],
@@ -668,6 +683,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_started",
+          candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
           wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -690,6 +706,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_started",
+          candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
           wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -698,6 +715,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_state",
+          candidates: [],
           game: makeGame({
             id: "g1",
             status: "active",
@@ -732,6 +750,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_started",
+          candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
           wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -757,6 +776,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_started",
+          candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
           wires: [makeWire({ id: "w1", playerId: "p1" })],
@@ -765,6 +785,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         ws.simulateMessage({
           type: "game_state",
+          candidates: [],
           game: makeGame({
             id: "g1",
             status: "active",
@@ -889,6 +910,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         devWs.simulateMessage({
           type: "game_started",
+          candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1", currentTurnPlayerId: "p4" }),
           players: [makePlayer({ id: "p1", name: "Dev" }), makePlayer({ id: "p4", name: "Carol" })],
           wires: [makeWire({ id: "w1", playerId: "p4" })],
@@ -909,6 +931,7 @@ describe("GameClient — full game flow integration", () => {
       act(() => {
         carolWs.simulateMessage({
           type: "game_state",
+          candidates: [],
           game: makeGame({
             id: "g1",
             status: "active",

@@ -8,6 +8,9 @@ vi.mock("../src/db/tokens.js", () => ({
   getInfoTokensByGameId: vi.fn(),
   getValidationTokensByGameId: vi.fn(),
 }));
+vi.mock("../src/db/candidates.js", () => ({
+  getWireCandidatesByGameId: vi.fn(),
+}));
 vi.mock("../src/ws/connection-manager.js", () => ({
   getGameSockets: vi.fn(() => new Map()),
   sendToPlayer: vi.fn(),
@@ -15,10 +18,12 @@ vi.mock("../src/ws/connection-manager.js", () => ({
 
 import * as wiresDb from "../src/db/wires.js";
 import * as tokensDb from "../src/db/tokens.js";
+import * as candidatesDb from "../src/db/candidates.js";
 import * as connManager from "../src/ws/connection-manager.js";
 
 const mockWiresDb = vi.mocked(wiresDb);
 const mockTokensDb = vi.mocked(tokensDb);
+const mockCandidatesDb = vi.mocked(candidatesDb);
 const mockConnManager = vi.mocked(connManager);
 
 describe("state-broadcaster", () => {
@@ -131,6 +136,7 @@ describe("state-broadcaster", () => {
       mockWiresDb.getWiresByGameId.mockResolvedValue(wires);
       mockTokensDb.getInfoTokensByGameId.mockResolvedValue(infoTokens);
       mockTokensDb.getValidationTokensByGameId.mockResolvedValue(validationTokens);
+      mockCandidatesDb.getWireCandidatesByGameId.mockResolvedValue([]);
       mockConnManager.getGameSockets.mockReturnValue(gameSockets);
 
       await broadcastGameState("g1", game, players);
@@ -157,6 +163,7 @@ describe("state-broadcaster", () => {
       mockWiresDb.getWiresByGameId.mockResolvedValue(wires);
       mockTokensDb.getInfoTokensByGameId.mockResolvedValue([]);
       mockTokensDb.getValidationTokensByGameId.mockResolvedValue([]);
+      mockCandidatesDb.getWireCandidatesByGameId.mockResolvedValue([]);
       mockConnManager.getGameSockets.mockReturnValue(gameSockets);
 
       await broadcastGameState("g1", game, players);
@@ -175,6 +182,7 @@ describe("state-broadcaster", () => {
       mockWiresDb.getWiresByGameId.mockResolvedValue([]);
       mockTokensDb.getInfoTokensByGameId.mockResolvedValue([]);
       mockTokensDb.getValidationTokensByGameId.mockResolvedValue([]);
+      mockCandidatesDb.getWireCandidatesByGameId.mockResolvedValue([]);
       mockConnManager.getGameSockets.mockReturnValue(new Map());
 
       await broadcastGameState("g1", makeGame({ id: "g1" }), []);

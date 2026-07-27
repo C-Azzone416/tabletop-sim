@@ -209,13 +209,13 @@ async function handleStartGame(socket: WebSocket, mission: number): Promise<void
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
-  const { game, players, wires } = await withTimeout(engine.startGame(info.gameId, info.playerId, mission), 'startGame');
+  const { game, players, wires, candidates } = await withTimeout(engine.startGame(info.gameId, info.playerId, mission), 'startGame');
 
   // Send game_started with per-player wire views
   const gameSockets = connManager.getGameSockets(info.gameId);
   for (const [playerId, playerSocket] of gameSockets) {
     const playerWires = buildPlayerView(wires, playerId);
-    const response: ServerMessage = { type: 'game_started', game, players, wires: playerWires };
+    const response: ServerMessage = { type: 'game_started', game, players, wires: playerWires, candidates };
     playerSocket.send(JSON.stringify(response));
   }
 }
@@ -290,7 +290,7 @@ async function handleRespondDualCut(socket: WebSocket, accepted: boolean): Promi
     const gameSockets = connManager.getGameSockets(info.gameId);
     for (const [playerId, playerSocket] of gameSockets) {
       const playerWireView = buildPlayerView(updatedWires, playerId);
-      const stateMsg: ServerMessage = { type: 'game_state', game, players, wires: playerWireView, infoTokens: [], validationTokens: [], localPlayerId: playerId };
+      const stateMsg: ServerMessage = { type: 'game_state', game, players, wires: playerWireView, infoTokens: [], validationTokens: [], localPlayerId: playerId, candidates: [] };
       playerSocket.send(JSON.stringify(stateMsg));
     }
     await broadcastGameState(info.gameId, game, players);
