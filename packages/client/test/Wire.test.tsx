@@ -89,8 +89,8 @@ describe("Wire (#156)", () => {
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
       );
       const button = container.querySelector("button")!;
-      expect(button.className).not.toContain("bg-blue-600");
-      expect(button.className).toContain("bg-zinc-100");
+      expect(button.className).not.toContain("bg-p2");
+      expect(button.className).toContain("bg-outline/10");
       expect(screen.getByText("7").className).not.toContain("text-white");
       expect(screen.getByText("7").className).not.toContain("line-through");
     });
@@ -141,10 +141,10 @@ describe("Wire (#156)", () => {
       const { container } = render(
         <Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />,
       );
-      expect(screen.getByText("6").className).toContain("text-yellow-700");
+      expect(screen.getByText("6").className).toContain("text-p3");
       const button = container.querySelector("button")!;
-      expect(button.className).not.toContain("bg-yellow-100");
-      expect(button.className).not.toContain("bg-blue-100");
+      expect(button.className).not.toContain("bg-p3");
+      expect(button.className).not.toContain("bg-p2");
     });
 
     it("gives a cut wire's numeral the wire's color while keeping the dim-grey background (#173)", () => {
@@ -153,10 +153,10 @@ describe("Wire (#156)", () => {
       const { container } = render(
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />,
       );
-      expect(screen.getByText("9").className).toContain("text-red-700");
+      expect(screen.getByText("9").className).toContain("text-p1");
       const button = container.querySelector("button")!;
-      expect(button.className).toContain("bg-zinc-100");
-      expect(button.className).not.toContain("bg-red-100");
+      expect(button.className).toContain("bg-outline/10");
+      expect(button.className).not.toContain("bg-p1");
     });
 
     it("never tints the background by color, for any color, on a non-cut wire", () => {
@@ -167,8 +167,8 @@ describe("Wire (#156)", () => {
           <Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />,
         );
         const button = container.querySelector("button")!;
-        expect(button.className).toContain("bg-white");
-        expect(button.className).not.toMatch(/bg-(blue|yellow|red)-100/);
+        expect(button.className).toContain("bg-game-table");
+        expect(button.className).not.toMatch(/bg-p[123](?!-ink)/);
         unmount();
       }
     });
@@ -180,7 +180,7 @@ describe("Wire (#156)", () => {
       render(
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
       );
-      expect(screen.getByText("7").className).toContain("text-blue-700");
+      expect(screen.getByText("7").className).toContain("text-p2");
     });
   });
 
@@ -266,7 +266,7 @@ describe("Wire (#156)", () => {
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
       );
       const button = container.querySelector("button")!;
-      expect(button.className).toContain("border-yellow-500");
+      expect(button.className).toContain("border-p3");
       expect(button.className).toContain("rounded-full");
       expect(screen.queryByText("YELLOW")).not.toBeInTheDocument();
       expect(button.textContent).toBe("");
@@ -293,8 +293,8 @@ describe("Wire (#156)", () => {
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
       );
       const button = container.querySelector("button")!;
-      expect(button.className).not.toContain("border-yellow-500");
-      expect(button.className).toContain("border-blue-500");
+      expect(button.className).not.toContain("border-p3");
+      expect(button.className).toContain("border-p2");
       expect(screen.getByText("7")).toBeInTheDocument();
     });
 
@@ -336,8 +336,8 @@ describe("Wire (#156)", () => {
 
       expect(revealedClasses).not.toBe(hiddenClasses);
       expect(revealedClasses).not.toBe(cutClasses);
-      expect(revealedClasses).toContain("bg-amber-50");
-      expect(revealedClasses).toContain("border-amber-400");
+      expect(revealedClasses).toContain("bg-warning/10");
+      expect(revealedClasses).toContain("border-warning");
     });
 
     it("is not disabled or grey like a cut wire", () => {
@@ -347,7 +347,7 @@ describe("Wire (#156)", () => {
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} onSelect={() => {}} />,
       );
       const button = container.querySelector("button")!;
-      expect(button.className).not.toContain("bg-zinc-100");
+      expect(button.className).not.toContain("bg-outline/10");
       expect(button).not.toBeDisabled();
     });
   });

@@ -1,21 +1,34 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Archivo, Archivo_Black } from "next/font/google";
 import { Providers } from "./providers";
-import "./globals.css";
+import "@/styles/theme.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const archivo = Archivo({
   subsets: ["latin"],
+  variable: "--font-archivo",
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const archivoBlack = Archivo_Black({
   subsets: ["latin"],
+  weight: "400",
+  variable: "--font-archivo-black",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "Tabletop Simulator",
   description: "A multiplayer tabletop gaming platform",
+};
+
+// Stops mobile browsers force-darkening the app themselves, which would
+// wreck the player seat colors (DESIGN-APPENDIX.md §16).
+export const viewport = {
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#FBF7EF" },
+    { media: "(prefers-color-scheme: dark)", color: "#0E1B2E" },
+  ],
 };
 
 export default function RootLayout({
@@ -24,10 +37,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+    <html lang="en" className={`${archivo.variable} ${archivoBlack.variable}`}>
+      <body className="antialiased">
         <Providers>{children}</Providers>
       </body>
     </html>

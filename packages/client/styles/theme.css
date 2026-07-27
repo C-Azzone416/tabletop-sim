@@ -65,6 +65,7 @@
   --info: #2BB3E8;
   --success: #2E9E5B;
   --warning: #FFC53D;
+  --warning-ink: #10233F;
   --danger: #E43126;
 
   --shadow-ink: #10233F;
@@ -218,6 +219,7 @@
   --color-info: var(--info);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-warning-ink: var(--warning-ink);
   --color-danger: var(--danger);
 
   /* game interior — board, rack, pieces, seats only. Never buttons/chrome. */

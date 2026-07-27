@@ -64,38 +64,40 @@ export function ActionPanel({
     }
   };
 
+  // Button variants per DESIGN-APPENDIX.md §7/§16 — primary/secondary/yellow/
+  // danger/ghost is the platform's full palette, mapped one-to-one onto this
+  // panel's four actions plus Cancel. Buttons are a platform component; a
+  // game may not invent its own button colors.
+  const primaryBtn =
+    "press min-h-11 rounded-cab border-2 border-outline bg-accent px-4 py-2 text-sm font-bold text-accent-ink shadow-print-sm disabled:opacity-50";
+  const secondaryBtn =
+    "press min-h-11 rounded-cab border-2 border-outline bg-surface-raised px-4 py-2 text-sm font-bold text-ink shadow-print-sm disabled:opacity-50";
+  const yellowBtn =
+    "press min-h-11 rounded-cab border-2 border-outline bg-warning px-4 py-2 text-sm font-bold text-warning-ink shadow-print-sm disabled:opacity-50";
+  const dangerBtn =
+    "press min-h-11 rounded-cab border-2 border-outline bg-danger px-4 py-2 text-sm font-bold text-accent-ink shadow-print-sm disabled:opacity-50";
+  const ghostBtn = "text-sm text-ink-muted hover:text-ink";
+
   if (mode === "idle") {
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
-        <h3 className="text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+      <div className="flex flex-col gap-3 rounded-cab border-2 border-outline bg-surface-raised p-4">
+        <h3 className="text-sm font-medium uppercase tracking-wide text-ink-muted">
           Choose Action
         </h3>
         <div className="flex gap-2">
-          <button
-            onClick={() => onSetMode("dual_cut")}
-            className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-          >
+          <button onClick={() => onSetMode("dual_cut")} className={`flex-1 ${primaryBtn}`}>
             Dual Cut
           </button>
-          <button
-            onClick={() => onSetMode("solo_cut")}
-            className="flex-1 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
-          >
+          <button onClick={() => onSetMode("solo_cut")} className={`flex-1 ${secondaryBtn}`}>
             Solo Cut
           </button>
           {!doubleDetectorUsed && (
-            <button
-              onClick={() => onSetMode("double_detector")}
-              className="flex-1 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-700"
-            >
+            <button onClick={() => onSetMode("double_detector")} className={`flex-1 ${yellowBtn}`}>
               Double Detector
             </button>
           )}
           {hasRedWires && (
-            <button
-              onClick={onRevealReds}
-              className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
-            >
+            <button onClick={onRevealReds} className={`flex-1 ${dangerBtn}`}>
               Reveal Reds
             </button>
           )}
@@ -105,42 +107,39 @@ export function ActionPanel({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
+    <div className="flex flex-col gap-4 rounded-cab border-2 border-outline bg-surface-raised p-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        <h3 className="text-sm font-medium uppercase tracking-wide text-ink-muted">
           {mode === "dual_cut" && "Dual Cut — Click an opponent's wire to guess its value"}
           {mode === "solo_cut" && "Solo Cut — Select 2 matching wires on your rack"}
           {mode === "double_detector" && "Double Detector — Pick 2 wires to compare"}
           {mode === "reveal_reds" && "Reveal Reds"}
         </h3>
-        <button
-          onClick={handleCancelAll}
-          className="text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-        >
+        <button onClick={handleCancelAll} className={ghostBtn}>
           Cancel
         </button>
       </div>
 
       {mode === "dual_cut" && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-ink-muted">
           Click any opponent wire tile on the board above to open the guess popup.
         </p>
       )}
 
       {mode === "solo_cut" && (
         <div className="space-y-2">
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="text-sm text-ink-muted">
             {soloCutSelectedCount === 0 && "Select a revealed wire from your rack."}
             {soloCutSelectedCount === 1 && "Select one more matching wire."}
             {soloCutSelectedCount >= 2 && soloCutMatchStatus === "valid" && "Wires match — ready to cut!"}
             {soloCutSelectedCount >= 2 && soloCutMatchStatus === "mismatch" && (
-              <span className="text-red-500 dark:text-red-400">Selected wires don&apos;t match.</span>
+              <span className="text-danger">Selected wires don&apos;t match.</span>
             )}
           </p>
           <button
             onClick={onSoloCutConfirm}
             disabled={soloCutMatchStatus !== "valid"}
-            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className={secondaryBtn}
           >
             Confirm Solo Cut
           </button>
@@ -149,7 +148,7 @@ export function ActionPanel({
 
       {mode === "double_detector" && (
         <div className="space-y-3">
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="text-sm text-ink-muted">
             Select 2 of your own wires to check if they share the same value.
           </p>
           <div className="flex flex-wrap gap-2">
@@ -169,10 +168,10 @@ export function ActionPanel({
                       setDdWire2(w.id);
                     }
                   }}
-                  className={`rounded-lg border px-3 py-2 text-sm ${
+                  className={`rounded-cab border-2 px-3 py-2 text-sm ${
                     isSelected
-                      ? "border-amber-500 bg-amber-50 dark:bg-amber-900/30"
-                      : "border-zinc-300 dark:border-zinc-600"
+                      ? "border-warning bg-warning/20"
+                      : "border-outline/40"
                   }`}
                 >
                   Wire #{w.rackPosition}
@@ -183,7 +182,7 @@ export function ActionPanel({
           <button
             onClick={handleSubmitDoubleDetector}
             disabled={!ddWire1 || !ddWire2}
-            className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className={yellowBtn}
           >
             Check Wires
           </button>

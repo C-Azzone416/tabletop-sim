@@ -20,8 +20,8 @@ export function TurnIndicator({
     <div
       className={`rounded-lg px-4 py-2 text-center font-medium ${
         isMyTurn
-          ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-          : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+          ? "bg-accent/10 text-accent"
+          : "bg-surface-raised text-ink-muted"
       }`}
     >
       {isMyTurn
