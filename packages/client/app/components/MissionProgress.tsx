@@ -21,7 +21,7 @@ export function MissionProgress({ outcomes }: MissionProgressProps) {
           <div
             key={mission}
             data-testid={`mission-progress-${mission}`}
-            className={`flex h-9 w-9 items-center justify-center gap-0.5 rounded-lg border text-xs font-semibold ${
+            className={`flex h-9 w-9 items-center justify-center gap-0.5 rounded-cab border text-xs font-semibold ${
               outcome === "won"
                 ? "border-success/40 bg-success/10 text-success"
                 : outcome === "lost"

@@ -43,7 +43,7 @@ export function ValidationTracker({
                 <div
                   key={key}
                   title={`${group.color} ${value}`}
-                  className={`flex h-10 w-10 items-center justify-center rounded-lg border-2 font-bold transition-all ${
+                  className={`flex h-10 w-10 items-center justify-center rounded-cab border-2 font-bold transition-all ${
                     // #153: validation is green throughout — this game's success
                     // color and its p4 seat color are the same green, so reuse
                     // the seat token pair for guaranteed-readable fill contrast.

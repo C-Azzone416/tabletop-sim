@@ -25,7 +25,7 @@ export function PlayerRack({
   return (
     <div
       data-testid="player-rack"
-      className={`flex gap-1.5 rounded-xl border-2 p-2 transition-colors ${
+      className={`flex gap-1.5 rounded-cab border-2 p-2 transition-colors ${
         // "Yellow means yours" (DESIGN.md) — the private surface is the only
         // one painted --game-rack; that's the privacy signal, so this must
         // never share styling with any other player's (shared/public) view.

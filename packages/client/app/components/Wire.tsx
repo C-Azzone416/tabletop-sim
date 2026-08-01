@@ -148,7 +148,7 @@ export function Wire({
       data-wire-value={showValue && displayValue !== null ? displayValue : undefined}
       className={`
         relative flex flex-col items-center justify-center
-        h-16 w-12 rounded-lg border-2 transition-all shadow-print-sm
+        h-16 w-12 rounded-piece border-2 transition-all shadow-print-sm
         ${borderClass} ${bgClass}
         ${isSelectable && !isSelected ? "ring-1 ring-p2/20" : ""}
         ${!isCut && onSelect ? "cursor-pointer press hover:ring-2 hover:ring-p2/40" : "cursor-default"}

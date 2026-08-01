@@ -18,7 +18,7 @@ export function TurnIndicator({
 
   return (
     <div
-      className={`rounded-lg px-4 py-2 text-center font-medium ${
+      className={`rounded-cab px-4 py-2 text-center font-medium ${
         isMyTurn
           ? "bg-accent/10 text-accent"
           : "bg-surface-raised text-ink-muted"

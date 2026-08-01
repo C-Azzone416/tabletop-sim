@@ -207,7 +207,7 @@ describe("Wire (#156)", () => {
         <Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />,
       );
       const button = container.querySelector("button")!;
-      expect(button.className).toContain("rounded-lg");
+      expect(button.className).toContain("rounded-piece");
       expect(button.className).not.toContain("rounded-full");
     });
 
@@ -219,7 +219,7 @@ describe("Wire (#156)", () => {
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
       );
       const button = container.querySelector("button")!;
-      expect(button.className).toContain("rounded-lg");
+      expect(button.className).toContain("rounded-piece");
       expect(button.className).not.toContain("rounded-full");
     });
 
