@@ -30,7 +30,9 @@ export async function buildApp() {
       redact: [
         'req.url',
         'value', 'color', 'guessedValue', 'wireValue', 'wireColor',
+        'nearWinValue', 'nearWinColor', 'soloCutValue', 'soloCutColor',
         '*.value', '*.color', '*.guessedValue', '*.wireValue', '*.wireColor',
+        '*.nearWinValue', '*.nearWinColor', '*.soloCutValue', '*.soloCutColor',
       ],
     },
   });
