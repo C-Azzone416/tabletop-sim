@@ -223,3 +223,30 @@ test("dual cut: target denies a wrong guess — detonator advances", async ({
     await cleanupGame(seed.joinCode);
   }
 });
+
+// ── Test: Dual cut — yellow branch (BLOCKED) ────────────────────────────────
+//
+// #253 gap list item 1: propose against a yellow target (must-hold-yellow
+// guard, not must-hold-value — executeProposeDualCut's `wire.color ===
+// 'yellow'` branch in game-engine.ts), wrong-guess yellow indicator
+// (outline, no number — Wire.tsx's isYellowIndicator, driven by the
+// 'YELLOW' sentinel token value), correct-guess yellow completion
+// (must-reveal-yellow-colour, not same-number — executeCompleteDualCut's
+// `targetWire.color === 'yellow'` branch).
+//
+// Structurally unreachable via any real /dev/seed deal today, same root
+// cause as gap-list items 2 and 4 (#256): every mission's yellow count is
+// #216's TODO placeholder of exactly 1 (MISSION_CONFIGS[3..8]). The
+// must-hold-yellow guard requires the PROPOSER to already hold a hidden
+// yellow wire before targeting an OPPONENT's separate hidden yellow wire —
+// two distinct yellow wires held by two different players, simultaneously.
+// With only one yellow wire in the entire deal, either Dev holds it (no
+// opponent yellow wire exists to target) or an opponent holds it (Dev holds
+// zero, so the guard rejects the propose before a target prompt is ever
+// sent) — no seed, retry, or #256 color-scoped reassignment can produce
+// both at once, since #256 only moves EXISTING yellow wires around, it
+// doesn't create a second one. Genuinely blocked on #216 raising yellow's
+// count above 1, not on #256 alone — flagged to dove/toucan rather than
+// silently skipped without explanation.
+
+test.skip("dual cut on a yellow wire: must-hold-yellow guard, outline wrong-guess indicator, colour-match completion — BLOCKED on #216 (yellow count > 1)", () => {});
