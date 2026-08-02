@@ -4,6 +4,14 @@ on:
   pull_request:
     branches:
       - develop
+  # #248 — per-PR green describes a pre-merge branch state, never the merged
+  # result. #228 + #241 each passed CI alone and turned develop red combined;
+  # nothing caught that until a human ran the suite locally. This makes "is
+  # develop green?" a fact CI produces on its own instead of a policy someone
+  # has to remember to check.
+  push:
+    branches:
+      - develop
 
 jobs:
   ci:
