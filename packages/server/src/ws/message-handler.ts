@@ -6,7 +6,7 @@ import * as playersDb from '../db/players.js';
 import * as connManager from './connection-manager.js';
 import { broadcastGameState, buildPlayerView } from './state-broadcaster.js';
 
-type ActionLogger = { info: (data: object) => void };
+type ActionLogger = { info: (data: object, msg?: string) => void; debug: (data: object, msg?: string) => void };
 type ActionResult = 'success' | 'fail' | 'explosion' | 'won';
 
 function getAuthenticatedUser(socket: WebSocket) {
@@ -101,8 +101,6 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
     return;
   }
 
-  console.log('[ws] message:', msg.type);
-
   const priorInfo = connManager.getConnectionInfo(socket);
   let actionResult: ActionResult = 'success';
 
@@ -176,7 +174,12 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
   } finally {
     const postInfo = connManager.getConnectionInfo(socket);
     const info = priorInfo ?? postInfo;
-    log?.info({ gameId: info?.gameId, playerId: info?.playerId, action: msg.type, result: actionResult });
+    // #82 — gameId/playerId at info so a session is findable without turning
+    // on debug logging; the action outcome itself is diagnostic detail and
+    // stays at debug, since there's no LOG_LEVEL toggle short of a deploy
+    // and every message on every game would otherwise log at the default level.
+    log?.info({ gameId: info?.gameId, playerId: info?.playerId, action: msg.type });
+    log?.debug({ gameId: info?.gameId, playerId: info?.playerId, action: msg.type, result: actionResult });
   }
 }
 

@@ -20,6 +20,12 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Logs
+
+Game logs (wire cuts, info tokens, questions, connections) come from `packages/server`, a Fastify process running on the server host — **not** Vercel, which only hosts the Next.js client in `packages/client`. If you're debugging a live game session, check the server host's logs, not the Vercel dashboard.
+
+The server logs at `info` by default (`LOG_LEVEL` env var). Per-action outcomes log at `debug` — set `LOG_LEVEL=debug` on the server host and restart to see them; no code change or redeploy needed.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

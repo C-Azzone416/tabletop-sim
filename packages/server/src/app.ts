@@ -15,7 +15,27 @@ import { authenticateUpgrade, authenticateProfile } from './ws/auth.js';
 import { broadcastGameState } from './ws/state-broadcaster.js';
 
 export async function buildApp() {
-  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.url'] } });
+  // #82 — wire value/colour must never reach a log line, even by accident:
+  // the whole game mechanic is hidden information (#187), and a log is just
+  // another place the server can disclose state it isn't supposed to. Pino
+  // redact paths match exact depth, not arbitrary nesting, so this covers
+  // these field names at the top level and one level of nesting (e.g. a
+  // future `log.info({ result: { value } })`) — it is not a blanket
+  // guarantee against every possible shape. Authors still need to not log
+  // full wire/candidate objects; this is a backstop for the common cases,
+  // not a substitute for that discipline.
+  const app = Fastify({
+    logger: {
+      level: process.env.LOG_LEVEL ?? 'info',
+      redact: [
+        'req.url',
+        'value', 'color', 'guessedValue', 'wireValue', 'wireColor',
+        'nearWinValue', 'nearWinColor', 'soloCutValue', 'soloCutColor',
+        '*.value', '*.color', '*.guessedValue', '*.wireValue', '*.wireColor',
+        '*.nearWinValue', '*.nearWinColor', '*.soloCutValue', '*.soloCutColor',
+      ],
+    },
+  });
 
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
@@ -191,6 +211,7 @@ export async function buildApp() {
           const game = await gamesDb.getGameById(player.gameId);
           if (game) {
             registerConnection(socket, player.id, game.id);
+            app.log.info({ gameId: game.id, playerId: player.id }, '[WS /ws] player reconnected');
             const players = await playersDb.getPlayersByGameId(game.id);
             await broadcastGameState(game.id, game, players);
           }
