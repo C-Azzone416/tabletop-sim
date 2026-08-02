@@ -102,17 +102,36 @@ export async function buildApp() {
         '*.nearWinValue', '*.nearWinColor', '*.soloCutValue', '*.soloCutColor',
       ],
     },
-    // #264 — Render terminates TLS and proxies every request to this
-    // process, so without this, `request.ip` resolves to Render's internal
-    // proxy address for every request, not the real client — a per-IP rate
-    // limit built on that would rate-limit "everyone" as a single client
-    // instead of each caller individually. `trustProxy: true` trusts the
-    // immediate hop (Render's proxy) and reads the real client IP from
-    // X-Forwarded-For, which is standard behavior for Render's (and every
-    // major PaaS's) proxy layer. Nothing sits between a local dev server and
-    // its caller, so this is a no-op locally — request.ip already resolves
-    // correctly there either way.
-    trustProxy: true,
+    // #264/#279 — `trustProxy: true` was wrong: Fastify's `request.ip`
+    // getter (lib/request.js) with `true` trusts every entry in
+    // X-Forwarded-For and returns the FIRST (leftmost) one, which is
+    // exactly the entry a caller supplies themselves, unmodified, if
+    // nothing downstream strips it — toucan demonstrated live against the
+    // deployed environment that changing the header resets the rate-limit
+    // quota completely, so `true` made the limiter trust the one value an
+    // attacker fully controls.
+    //
+    // `trustProxy: 1` trusts exactly one hop: Fastify counts inward from
+    // `request.socket.remoteAddress` (always trusted, hop 0) and returns
+    // the address at the boundary once N (here 1) additional hops have been
+    // walked — i.e. the rightmost X-Forwarded-For entry. The open question
+    // this doesn't fully resolve: Render's own docs describe TWO layers in
+    // front of the app (Cloudflare's edge, then Render's load balancer —
+    // render.com/articles/how-render-handles-ddos-attacks), and if both
+    // independently append to XFF, the real client IP would be the
+    // SECOND-from-right entry, needing `trustProxy: 2`, not 1. Whether
+    // Render's LB actually appends its own hop distinctly from Cloudflare's,
+    // or passes Cloudflare's XFF through unmodified, isn't settled by
+    // public docs — see the write-up on #278/#264 for the sources checked
+    // and why 1 is being shipped now regardless (it fully closes the
+    // caller-controlled-leftmost-entry spoof either way; the open question
+    // is only whether it resolves to the exact client IP or a shared
+    // Cloudflare-edge IP one hop out from it — a precision gap, not a
+    // reopened spoof).
+    //
+    // Nothing sits between a local dev server and its caller, so this is a
+    // no-op locally either way.
+    trustProxy: 1,
   });
 
   const allowedOrigins = process.env.CORS_ORIGINS

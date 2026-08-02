@@ -289,6 +289,54 @@ describe("routes", () => {
         const health = await limitedApp.inject({ method: "GET", url: "/health" });
         expect(health.statusCode).toBe(200);
       });
+
+      // #279 — trustProxy: true trusted the ENTIRE X-Forwarded-For chain
+      // and read the leftmost (caller-supplied) entry, so a caller could
+      // reset their own quota just by changing that header — the limiter
+      // didn't limit anyone who tried. trustProxy: 1 trusts exactly one
+      // hop and reads the RIGHTMOST entry instead, so a caller prepending
+      // a new fake leftmost value must NOT get a fresh quota.
+      it("changing only the leftmost (caller-supplied) X-Forwarded-For entry does not reset the quota", async () => {
+        mockProfilesDb.getProfileByName.mockResolvedValue(null);
+        mockProfilesDb.createProfile.mockImplementation(async (name: string) => makeProfile({ name }));
+
+        await limitedApp.inject({
+          method: "POST", url: "/profiles", payload: { name: "Alice" },
+          headers: { "x-forwarded-for": "9.9.9.9, 203.0.113.42" },
+        });
+        await limitedApp.inject({
+          method: "POST", url: "/profiles", payload: { name: "Bob" },
+          headers: { "x-forwarded-for": "9.9.9.9, 203.0.113.42" },
+        });
+        // Same rightmost (trusted) entry, different leftmost (attacker-
+        // controlled) entry — must still be treated as the same caller.
+        const third = await limitedApp.inject({
+          method: "POST", url: "/profiles", payload: { name: "Carol" },
+          headers: { "x-forwarded-for": "1.1.1.1, 203.0.113.42" },
+        });
+
+        expect(third.statusCode).toBe(429);
+      });
+
+      it("a genuinely different rightmost (proxy-appended) entry does get its own quota", async () => {
+        mockProfilesDb.getProfileByName.mockResolvedValue(null);
+        mockProfilesDb.createProfile.mockImplementation(async (name: string) => makeProfile({ name }));
+
+        await limitedApp.inject({
+          method: "POST", url: "/profiles", payload: { name: "Alice" },
+          headers: { "x-forwarded-for": "9.9.9.9, 203.0.113.42" },
+        });
+        await limitedApp.inject({
+          method: "POST", url: "/profiles", payload: { name: "Bob" },
+          headers: { "x-forwarded-for": "9.9.9.9, 203.0.113.42" },
+        });
+        const third = await limitedApp.inject({
+          method: "POST", url: "/profiles", payload: { name: "Carol" },
+          headers: { "x-forwarded-for": "9.9.9.9, 198.51.100.7" },
+        });
+
+        expect(third.statusCode).toBe(201);
+      });
     });
   });
 
