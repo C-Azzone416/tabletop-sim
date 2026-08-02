@@ -36,10 +36,12 @@ Each game declares which it triggers, in `docs/games/<slug>.md`.
 
 | | Applies when | Platform requires |
 |---|---|---|
-| **C1 Private state** | Some state is visible to one player only | Renders only on that client. **The server never sends contents to anyone else** — a hidden div is not hidden. Lives on its own surface, pinned, never scrolls, holds every action available on that turn |
+| **C1 Private state** | Some state is visible to one player only | The server never sends a client any state that player is not entitled to. The *projection* is game-defined — a count, nothing, or a redacted per-element view. Whatever the projection, an attribute that carries rules meaning is never included for concealed elements — and a concealed representation's color is drawn from outside the game's object palette, never a semantic token like `--info` that could double as a rule-bearing color elsewhere in the game. Lives on its own surface, pinned, never scrolls, holds every action available on that turn |
 | **C2 Play surface** | The game has a board or map | 7° tilt with a flatten toggle; tilt never animates during a turn; pan/zoom act on the surface only; max width 640/600/560/520px at 2/3/4/5 players |
 | **C3 Randomizer** | Dice, draws, shuffles | Resolves in discrete steps ≤260ms, no spinning. Result readable as text before the animation ends |
 | **C4 Turn default** | Always | Platform guarantees the timeout, countdown, and announcement. **The game supplies the action taken.** No declared action means no timeout |
+| **C5 Targeted opponents** | A turn action targets a specific element of another player's state | Every seat renders at element-level granularity, not a count. The active seat is distinguished by emphasis, not by being the only expanded one. Element positions are stable and never reorder while the game is live |
+| **C6 Dense private state** | Max holdings × 44px exceeds the surface width at the minimum viewport | The game names its resolution rather than improvising per component. Default order of preference: wrap to a second row first; if density still exceeds the floor after wrapping, tap targets may overlap their neighbor (already permitted for fanned cards); only relax the 44×44 floor itself as a last resort, and only for the specific over-dense case |
 
 Test for anything new: *could a game with no hidden hand, no randomizer, and no board violate this and still feel like our product?* If yes, it's a contract, not an invariant.
 

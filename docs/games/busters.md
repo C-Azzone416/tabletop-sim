@@ -1,8 +1,47 @@
-# Game Rules
+# Game Rules — Busters
 
 Canonical capture of Caroline's rulings on setup flow and turn structure
 (via deep-dingo, 2026-07-22). This is the reference to check before a rules
-question round-trips back to Caroline.
+question round-trips back to Caroline. Source of truth for this game's
+specifics going forward — mechanics live here, not scattered across issues
+or chat.
+
+`busters` is an internal codename, same rule as "Cabinet" for the platform
+(see `DESIGN.md`) — never in the UI, a URL, a page title, or an OG tag.
+
+## Contracts triggered (see `DESIGN.md`)
+
+This game triggers all five platform contracts:
+
+- **C1 Private state** — each player's own hidden wires are private; see
+  Wire visibility below. The server never sends another player's hidden
+  wire contents to this client. The projection here is per-wire position
+  and status, with value and colour redacted for hidden wires — not a
+  bare count, since rack position is the deduction substrate (see C5).
+  Any concealed/face-down representation must use a colour outside this
+  game's blue/yellow/red object palette — never `--info` (sky), since
+  blue is itself a rule-bearing wire colour.
+- **C2 Play surface** — the shared board/rack view is this game's play
+  surface.
+- **C3 Randomizer** — yellow/red tiles are dealt at random (see Wire
+  semantics below), including partial-knowledge "N out of M" draws.
+- **C4 Turn default** — this game declares **no default action**,
+  deliberately: every legal action (`dual_cut`, `solo_cut`) can lose a
+  life or end the mission outright, so there is no safe auto-play. A
+  stalled seat is handled outside the timeout instead — nudge, then hold
+  the seat 3 minutes, then offer the table a skip vote. No declared
+  action means no timeout, per C4's own escape hatch.
+- **C5 Targeted opponents** — a turn (`dual_cut`) targets a specific wire
+  at a specific position on another player's rack. Every rack renders at
+  wire-level granularity for every seat, not a count; positions are
+  permanent and ascending-sorted (see Wire visibility / rack sort below),
+  which is the deduction substrate the whole game runs on.
+- **C6 Dense private state** — max hand is 12 wires (2-player captain),
+  which drops below the 44×44 tap-target floor at the 360px viewport
+  floor. Per C6's default order: **wraps to a second row** first. Only
+  fall back to tap-target overlap if two rows still isn't enough at some
+  seat count/viewport combination — don't relax the 44×44 floor itself
+  unless both of those are tried first.
 
 ## Lobby / ready flow
 
