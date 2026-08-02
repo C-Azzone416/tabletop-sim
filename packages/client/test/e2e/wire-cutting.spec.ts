@@ -93,3 +93,25 @@ test("solo cut on two matching-value wires succeeds and cuts both wires", async 
 // outcome path around dual_cut's deny flow rather than solo_cut, which
 // remains structurally unreachable for this specific case.
 test.skip("solo cut with a wrong/no-match value advances the detonator", () => {});
+
+// ── Test: Solo cut — yellow colour-scoped legality (BLOCKED) ───────────────
+//
+// #253 gap-list item 2: a yellow solo_cut via the 'YELLOW' sentinel with
+// colour-scoped legality (#190 Phase B — holds all remaining hidden yellow
+// wires, any values, not a per-value match). #256 was supposed to unblock
+// this server-side (/dev/seed-solo-cut-legal now takes `{ color: "yellow" }`
+// and reassigns every hidden yellow wire to Dev) — it doesn't, because the
+// real blocker turned out to be the CLIENT, not the seed data. Filed as
+// #265: GameBoard.tsx's solo-cut selection (`soloCutMatchStatus`) only ever
+// reads as "valid" when two selected wires share an exact `value` — two
+// yellow wires never do (they're singletons) — and `handleSoloCutConfirm`
+// always sends the literal wire value to `onSoloCut`, never constructs the
+// 'YELLOW' sentinel `executeSoloCut` (game-engine.ts) expects for the
+// colour-scoped path. There is no code path in GameBoard.tsx/ActionPanel.tsx
+// that can submit a colour-scoped cut at all today — this isn't a seed-data
+// or E2E-tooling gap like item 1, it's a missing client affordance for an
+// action the server fully supports. See #265 for the reproduction and
+// suggested scope; a design call (selection UX beyond 2 wires, colour-scoped
+// copy) belongs to whoever picks that issue up, not assumed here.
+
+test.skip("solo cut on yellow wires (colour-scoped): selecting 2+ hidden yellow wires and confirming cuts all of them — BLOCKED on #265 (no client UI path for a colour-scoped solo cut)", () => {});
