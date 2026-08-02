@@ -24,3 +24,31 @@ describe("PlayerRack (#159 item 2)", () => {
     expect(getByTestId("player-rack").className).not.toContain("bg-game-rack");
   });
 });
+
+describe("PlayerRack — C6 dense private state (#244)", () => {
+  // jsdom does not lay out, so this asserts the mechanism, not the pixels.
+  // Measured in a real engine at 360px with 12 wires: without `flex-wrap` the
+  // tiles shrink to 23px (the 44x44 floor, halved) rather than overflowing;
+  // with it, 2 rows and tiles back at 48px. The pixel check belongs in E2E.
+  it("wraps rather than squeezing tiles below the tap-target floor", () => {
+    resetIds();
+    const wires = Array.from({ length: 12 }, (_, i) =>
+      makeWire({ status: "hidden", value: String(i + 1) }),
+    );
+    const { getByTestId } = render(
+      <PlayerRack wires={wires} isLocal infoTokens={[]} />,
+    );
+    expect(getByTestId("player-rack").className).toContain("flex-wrap");
+  });
+
+  it("wraps opponent racks too — density is not a local-only concern", () => {
+    resetIds();
+    const wires = Array.from({ length: 12 }, () =>
+      makeWire({ status: "hidden", value: null }),
+    );
+    const { getByTestId } = render(
+      <PlayerRack wires={wires} isLocal={false} infoTokens={[]} />,
+    );
+    expect(getByTestId("player-rack").className).toContain("flex-wrap");
+  });
+});

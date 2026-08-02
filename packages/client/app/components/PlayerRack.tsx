@@ -25,7 +25,22 @@ export function PlayerRack({
   return (
     <div
       data-testid="player-rack"
-      className={`flex gap-1.5 rounded-cab border-2 p-2 transition-colors ${
+      // C6 "Dense private state" (DESIGN.md:44, issue #244). At max holdings —
+      // 12 wires, the 2-player captain hand — on the 360px viewport floor, a
+      // bare `flex` row does not wrap. Measured at 360px, the failure is NOT
+      // the horizontal overflow #244 predicted: wire tiles carry no `shrink-0`,
+      // so flexbox silently squeezed them from 48px to **23px** instead. That
+      // is the 44x44 tap-target floor breached by half, and C6 names relaxing
+      // that floor as the LAST resort — reached here without passing through
+      // either of the two preferred steps.
+      //
+      // (Pending info-token chips do set `shrink-0`, so a rack holding those
+      // overflows rather than shrinking. Same contract, two symptoms, one fix.)
+      //
+      // Wrapping is C6's stated first preference and resolves both: 2 rows,
+      // tiles back at their full 48px, nothing overlapping. `gap-1.5` already
+      // sets row-gap as well as column-gap, so wrapped rows inherit spacing.
+      className={`flex flex-wrap gap-1.5 rounded-cab border-2 p-2 transition-colors ${
         // "Yellow means yours" (DESIGN.md) — the private surface is the only
         // one painted --game-rack; that's the privacy signal, so this must
         // never share styling with any other player's (shared/public) view.
