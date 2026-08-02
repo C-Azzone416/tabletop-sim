@@ -159,6 +159,23 @@ describe("wire-dealer", () => {
         expect(v).toBeLessThanOrEqual(12);
       }
     });
+
+    // #253 gap list — the only mission-config shape with all three colors
+    // guaranteed present at once. Checks each hand independently (sort
+    // correctness never depends on which colors happen to land together)
+    // and separately confirms all three colors actually appear across the
+    // deal, so this isn't vacuously true on an all-blue hand.
+    it("racks a full yellow+red+blue mix as a single ascending numeric sequence, no color grouping", () => {
+      const { wires } = dealWires(["p1", "p2"], "p1", 8);
+      for (const pid of ["p1", "p2"]) {
+        const hand = wires.filter((w) => w.playerId === pid);
+        const values = hand.map((w) => Number(w.value));
+        const sorted = [...values].sort((a, b) => a - b);
+        expect(values).toEqual(sorted);
+      }
+      const colors = new Set(wires.map((w) => w.color));
+      expect(colors).toEqual(new Set(["blue", "yellow", "red"]));
+    });
   });
 
   describe("dealWires — invalid mission", () => {
