@@ -13,6 +13,7 @@ import { ErrorToast } from "../../components/ErrorToast";
 import { JoinCodeBadge } from "../../components/JoinCodeBadge";
 import { LAST_MISSION } from "../../lib/missions";
 import { highestUnlockedMission } from "../../lib/missionUnlocks";
+import { apiHeaders } from "../../lib/serverApi";
 
 export interface DevSeatOption {
   name: string;
@@ -116,7 +117,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   const revealAllTokens = () => {
     fetch(`${serverUrl}/dev/reveal-all-tokens`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ joinCode }),
     });
   };
@@ -124,7 +125,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   const hideDevTokens = () => {
     fetch(`${serverUrl}/dev/hide-dev-tokens`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ joinCode }),
     });
   };
@@ -132,7 +133,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   const skipTurn = () => {
     fetch(`${serverUrl}/dev/advance-turn`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ joinCode }),
     });
   };

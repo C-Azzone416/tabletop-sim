@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { MissionOutcome, MissionOutcomeResult } from "@tabletop/shared";
-
-const SERVER_URL =
-  process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3001";
+import { SERVER_URL, apiHeaders } from "../lib/serverApi";
 
 // #170: missions absent from the server response were never played — the
 // returned map only ever has entries for missions with a recorded outcome.
@@ -36,7 +34,9 @@ export function useMissionOutcomes(
     params.set("profileId", profileId);
     if (playerName) params.set("name", playerName);
 
-    fetch(`${SERVER_URL}/profiles/${profileId}/mission-outcomes?${params}`)
+    fetch(`${SERVER_URL}/profiles/${profileId}/mission-outcomes?${params}`, {
+      headers: apiHeaders(),
+    })
       .then((res) => {
         if (res.ok) return res.json();
         if (res.status === 401) {

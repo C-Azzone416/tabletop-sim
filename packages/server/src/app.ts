@@ -14,7 +14,36 @@ import { removeConnection, setAuthenticatedUser, registerConnection } from './ws
 import { authenticateUpgrade, authenticateProfile } from './ws/auth.js';
 import { broadcastGameState } from './ws/state-broadcaster.js';
 
+// #252 — pre-launch access gate. Two independent mechanisms, per Caroline's
+// requirement: a shared secret alone would still let anyone holding it mint
+// or claim any name, so the allow-list is not optional once the secret
+// exists. Both read once at boot, not per-request. Unset (dev/test default)
+// disables the corresponding gate entirely — see docs/local-dev.md. In
+// production, unset is a startup failure rather than a silent open door.
+function getAccessKey(): string | null {
+  return process.env.API_ACCESS_KEY?.trim() || null;
+}
+
+function getProfileAllowlist(): Set<string> | null {
+  const raw = process.env.PROFILE_ALLOWLIST;
+  if (!raw) return null;
+  const names = raw.split(',').map(n => n.trim().toLowerCase()).filter(Boolean);
+  return names.length > 0 ? new Set(names) : null;
+}
+
 export async function buildApp() {
+  const apiAccessKey = getAccessKey();
+  const profileAllowlist = getProfileAllowlist();
+
+  if (process.env.NODE_ENV === 'production') {
+    if (!apiAccessKey) {
+      throw new Error('API_ACCESS_KEY must be set in production — see docs/access-control.md (#252)');
+    }
+    if (!profileAllowlist) {
+      throw new Error('PROFILE_ALLOWLIST must be set in production — see docs/access-control.md (#252)');
+    }
+  }
+
   // #82 — wire value/colour must never reach a log line, even by accident:
   // the whole game mechanic is hidden information (#187), and a log is just
   // another place the server can disclose state it isn't supposed to. Pino
@@ -62,6 +91,22 @@ export async function buildApp() {
   });
   await app.register(websocket, { options: { maxPayload: 4096 } });
 
+  // Shared-secret gate — the first of the two #252 mechanisms. Runs before
+  // every route handler except the liveness probes. Accepts the secret as
+  // either the `x-api-key` header (plain HTTP fetches) or an `apiKey` query
+  // param (the WS upgrade — browsers can't set custom headers on that
+  // handshake, so it rides the URL the same way profileId/name already do).
+  app.addHook('preHandler', async (request, reply) => {
+    if (!apiAccessKey) return;
+    if (request.url.startsWith('/health')) return;
+    const headerKey = request.headers['x-api-key'];
+    const queryKey = (request.query as Record<string, unknown> | undefined)?.apiKey;
+    const provided = typeof headerKey === 'string' ? headerKey : typeof queryKey === 'string' ? queryKey : null;
+    if (provided !== apiAccessKey) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+  });
+
   app.get('/health', async () => ({ status: 'ok' }));
   app.get('/healthz', async () => ({ status: 'ok' }));
 
@@ -79,6 +124,12 @@ export async function buildApp() {
       return reply.status(400).send({ error: 'name is required (1-20 chars)' });
     }
     const trimmed = name.trim();
+    // #252 — invite-only: a shared secret alone doesn't stop anyone holding
+    // it from minting or claiming an arbitrary name, so this checks the
+    // allow-list before either branch of find-or-create, not just create.
+    if (profileAllowlist && !profileAllowlist.has(trimmed.toLowerCase())) {
+      return reply.status(403).send({ error: 'This name is not on the invite list' });
+    }
     try {
       const existing = await profilesDb.getProfileByName(trimmed);
       if (existing) {

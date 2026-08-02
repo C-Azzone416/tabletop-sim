@@ -1,16 +1,31 @@
 # Access Control Matrix
 
-Every externally-reachable surface in this application and its current auth requirement, verified directly against the implementation on `develop` (HEAD includes #217/#218/#219). This matrix records what the code currently does — it does not describe intended behavior that isn't actually implemented. Any surface found not to match its intended auth level is filed as its own issue, not noted here as a caveat.
+Every externally-reachable surface in this application and its current auth requirement, verified directly against the implementation on `develop` (HEAD includes #217/#218/#219, #252). This matrix records what the code currently does — it does not describe intended behavior that isn't actually implemented. Any surface found not to match its intended auth level is filed as its own issue, not noted here as a caveat.
 
 Re-derived from scratch for #186 after the original draft was lost to channel auto-pruning (unprotected work channels are not durable storage — security artifacts belong in the repo, a PR, or an issue).
 
+## Pre-launch access gate (#252)
+
+Before #252, `POST /profiles` — the credential-issuance step everything else in this matrix sits downstream of — was reachable by anyone with the URL, unauthenticated, find-or-create by name. Two independent mechanisms now sit in front of the whole API surface, per Caroline's standing pre-launch requirement:
+
+1. **Shared-secret header (`API_ACCESS_KEY`)** — a global `preHandler` hook in `app.ts` rejects any request that doesn't carry the configured secret, before it reaches route logic. Accepted as the `x-api-key` header (plain HTTP) or an `apiKey` query param (the WS upgrade — browsers can't set custom headers on that handshake, so it rides the URL the same way `profileId`/`name` already do). `/health` and `/healthz` stay reachable unauthenticated (liveness probes).
+2. **Invite allow-list (`PROFILE_ALLOWLIST`)** — `POST /profiles` checks the requested name against a configured allow-list *before* either branch of find-or-create, so an uninvited caller can neither mint a new profile nor be handed back an existing one by posting its name.
+
+**Why both, not just the secret:** the secret is one deploy-wide value — everyone who has it (anyone with the URL, since it ships in the client bundle) can call `POST /profiles` with any name. Without the allow-list, that's still open name-based identity assumption once the secret is known; the secret alone does not close the name-collision path #252 was filed over. The two are independent and both required.
+
+**Configuration is fail-open in dev, fail-closed in production:** if either env var is unset, `buildApp()` disables the corresponding gate — this keeps local dev and the test suite running without extra setup. If `NODE_ENV=production` and either is unset, `buildApp()` throws at startup rather than serving unprotected. Both are plain env vars, never committed (see `docs/local-dev.md` for the dev-path defaults and `.env.example`).
+
+**What this does not do:** neither mechanism authenticates an individual person — the allow-list is a name check, not identity verification, and two people who both know an allow-listed name can still both claim it (the same structural limitation `ws/auth.ts` already documents: "will be upgraded to JWT verification when Auth.js shares its secret"). It only prevents an uninvited caller with just the URL from minting or claiming a profile at all.
+
 ## HTTP routes (`packages/server/src/app.ts`)
+
+Every row below is also behind the shared-secret gate described above (except `/health`/`/healthz`); it's omitted from each row's "Auth" column to avoid repeating it 8 times, but it is enforced first, on every request.
 
 | Method + path | Auth | Notes |
 |---|---|---|
-| `GET /health`, `GET /healthz` | None (intentional) | Liveness probes, no sensitive data |
+| `GET /health`, `GET /healthz` | None (intentional) | Liveness probes, no sensitive data. Also the only routes exempt from the shared-secret gate. |
 | `POST /games` | None | Stubbed, always 501 — games are actually created over WS (`create_game`) |
-| `POST /profiles` | None (by design) | Find-or-create by name; this *is* the credential-issuance step — returns `{id, name}` used as the credential thereafter |
+| `POST /profiles` | **Invite allow-list** (`PROFILE_ALLOWLIST`, #252) | Find-or-create by name, restricted to allow-listed names; this *is* the credential-issuance step — returns `{id, name}` used as the credential thereafter |
 | `GET /profiles/:id` | **Required** — `authenticateProfile(profileId, name)`, then 403 unless `user.profileId === params.id` | Own-profile-only (#194/#204) |
 | `GET /profiles/:id/mission-outcomes` | **Required** — `authenticateProfile(profileId, name)`, then 403 unless `user.profileId === params.id` | Own-profile-only (#222/#224), same pattern as `/profiles/:id` — closes the mission-history-leak composition #194's neighboring fix called out but hadn't itself closed. |
 | `GET /games/:joinCode` | **Required** — `authenticateProfile`, then 403 unless requester's profileId is seated in that game | Returns game state + all seated players' id/name/seatOrder (#194/#204) |
@@ -55,6 +70,6 @@ Every message resolves `playerId`/`gameId` from the server-tracked socket→conn
 
 ## Summary
 
-- Confirmed fixed and currently correct: #204 (`/profiles/:id`, `/games/:joinCode`), #222/#224 (`/profiles/:id/mission-outcomes`), #193 (`/game/*` client gate), #206 (server-side mission-unlock), #192 (hidden-wire color+value redaction, still unbroken by today's #190 wire-semantics work).
+- Confirmed fixed and currently correct: #204 (`/profiles/:id`, `/games/:joinCode`), #222/#224 (`/profiles/:id/mission-outcomes`), #193 (`/game/*` client gate), #206 (server-side mission-unlock), #192 (hidden-wire color+value redaction, still unbroken by today's #190 wire-semantics work), #252 (shared-secret gate + invite allow-list close the previously-open `POST /profiles` credential-issuance step).
 - Confirmed present but intentionally cosmetic: #209 (client-side mission-unlock picker), backstopped by #206.
-- `/dev/*` (server + client): gated by build/deploy config only, not request-time authentication — acceptable given structural absence in production, stated explicitly rather than implying a request-level check exists.
+- `/dev/*` (server + client): gated by build/deploy config only, not request-time authentication — acceptable given structural absence in production, stated explicitly rather than implying a request-level check exists. Also behind the #252 shared-secret gate when one is configured.

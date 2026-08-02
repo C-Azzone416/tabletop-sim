@@ -2,9 +2,7 @@
 
 import { useRef, useCallback, useEffect, useState } from "react";
 import type { ClientMessage, ServerMessage } from "@tabletop/shared";
-
-const SERVER_URL =
-  process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3001";
+import { SERVER_URL, withApiKeyParam } from "../lib/serverApi";
 
 const MAX_RECONNECT_DELAY = 30_000;
 const INITIAL_RECONNECT_DELAY = 1_000;
@@ -43,6 +41,7 @@ export function useWebSocket(
     const params = new URLSearchParams();
     if (profileId) params.set("profileId", profileId);
     if (playerName) params.set("name", playerName);
+    withApiKeyParam(params);
     const wsUrl = params.toString() ? `${base}?${params}` : base;
     setStatus("connecting");
 
