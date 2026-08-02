@@ -333,20 +333,42 @@ export async function buildApp() {
       return existing ?? await profilesDb.createProfile(name);
     };
 
-    const seedDevGame = async (mission: number, options: { completeSetup: boolean }) => {
-      const devProfile = await getOrCreateProfile('Dev');
-      const { game, player } = await engine.createGame('Dev', devProfile.id, 'dev_seed');
+    // #270 — Dev is always the captain/creator; the rest of DEV_SEED_NAMES
+    // fills in join order, so a playerCount of 2 or 3 seeds Dev+Alice or
+    // Dev+Alice+Bob rather than all four. Every per-count rule (stand
+    // allocation, detonator max) already reads off the actual seated player
+    // count in game-engine.ts/wire-dealer.ts — dealWires' wiresPerPlayer
+    // lookup and startGame's `players.length - 1` detonator formula were
+    // never hardcoded to 4, so seeding fewer players is the entire fix.
+    const DEV_SEED_NAMES = ['Dev', 'Alice', 'Bob', 'Carol'] as const;
 
-      const aliceProfile = await getOrCreateProfile('Alice');
-      const bobProfile = await getOrCreateProfile('Bob');
-      const carolProfile = await getOrCreateProfile('Carol');
-      const { player: alice } = await engine.joinGame(game.joinCode, 'Alice', aliceProfile.id);
-      const { player: bob } = await engine.joinGame(game.joinCode, 'Bob', bobProfile.id);
-      const { player: carol } = await engine.joinGame(game.joinCode, 'Carol', carolProfile.id);
+    const parsePlayerCountParam = (body: unknown): number | { error: string } => {
+      const raw = (body as Record<string, unknown> | null ?? {}).playerCount;
+      if (raw === undefined) return DEV_SEED_NAMES.length;
+      if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 2 || raw > DEV_SEED_NAMES.length) {
+        return { error: `playerCount must be an integer between 2 and ${DEV_SEED_NAMES.length}` };
+      }
+      return raw;
+    };
+
+    const seedDevGame = async (mission: number, options: { completeSetup: boolean; playerCount?: number }) => {
+      const names = DEV_SEED_NAMES.slice(0, options.playerCount ?? DEV_SEED_NAMES.length);
+
+      const devProfile = await getOrCreateProfile(names[0]);
+      const { game, player } = await engine.createGame(names[0], devProfile.id, 'dev_seed');
+
+      const seatedPlayers = [player];
+      const profilesByName = new Map([[names[0], devProfile]]);
+      for (const name of names.slice(1)) {
+        const profile = await getOrCreateProfile(name);
+        profilesByName.set(name, profile);
+        const { player: joined } = await engine.joinGame(game.joinCode, name, profile.id);
+        seatedPlayers.push(joined);
+      }
 
       // startGame now requires every player to have readied up in the lobby;
       // dev seeding skips the real ready flow, so ready everyone up here.
-      for (const p of [player, alice, bob, carol]) {
+      for (const p of seatedPlayers) {
         await engine.executePlayerReady(game.id, p.id);
       }
 
@@ -367,17 +389,12 @@ export async function buildApp() {
       return {
         joinCode: game.joinCode,
         profileId: devProfile.id,
-        playerName: 'Dev',
+        playerName: names[0],
         mission,
         // Real profileIds for every dev-seeded player, so a dev-mode client can connect via
         // the standard WS auth (profileId + name) as any seat, not just the creator. Bounded
-        // strictly to the Alice/Bob/Carol/Dev rows this seed call itself creates/reuses.
-        players: [
-          { name: 'Dev', profileId: devProfile.id },
-          { name: 'Alice', profileId: aliceProfile.id },
-          { name: 'Bob', profileId: bobProfile.id },
-          { name: 'Carol', profileId: carolProfile.id },
-        ],
+        // strictly to the names this seed call itself creates/reuses/joins.
+        players: names.map(name => ({ name, profileId: profilesByName.get(name)!.id })),
       };
     };
 
@@ -390,8 +407,10 @@ export async function buildApp() {
       try {
         const mission = parseMissionParam(request.body);
         if (typeof mission === 'object') return reply.status(400).send(mission);
+        const playerCount = parsePlayerCountParam(request.body);
+        if (typeof playerCount === 'object') return reply.status(400).send(playerCount);
 
-        const result = await seedDevGame(mission, { completeSetup: false });
+        const result = await seedDevGame(mission, { completeSetup: false, playerCount });
         return result;
       } catch (err) {
         app.log.error({ err }, '[POST /dev/seed] error');
@@ -491,8 +510,10 @@ export async function buildApp() {
         const color = colorResult;
         const mission = parseMissionParam(request.body, color === 'yellow' ? 3 : 1);
         if (typeof mission === 'object') return reply.status(400).send(mission);
+        const playerCount = parsePlayerCountParam(request.body);
+        if (typeof playerCount === 'object') return reply.status(400).send(playerCount);
 
-        const result = await seedDevGame(mission, { completeSetup: true });
+        const result = await seedDevGame(mission, { completeSetup: true, playerCount });
         const game = await gamesDb.getGameByJoinCode(result.joinCode);
         if (!game) throw new Error('Seeded game not found');
         const players = await playersDb.getPlayersByGameId(game.id);
@@ -545,8 +566,10 @@ export async function buildApp() {
         const color = colorResult;
         const mission = parseMissionParam(request.body, color === 'yellow' ? 3 : 1);
         if (typeof mission === 'object') return reply.status(400).send(mission);
+        const playerCount = parsePlayerCountParam(request.body);
+        if (typeof playerCount === 'object') return reply.status(400).send(playerCount);
 
-        const result = await seedDevGame(mission, { completeSetup: true });
+        const result = await seedDevGame(mission, { completeSetup: true, playerCount });
         const game = await gamesDb.getGameByJoinCode(result.joinCode);
         if (!game) throw new Error('Seeded game not found');
         const players = await playersDb.getPlayersByGameId(game.id);
