@@ -196,14 +196,14 @@ describe("Wire (#156)", () => {
       resetIds();
       const wire = makeWire({ status: "hidden", value: "4.1", color: "yellow" });
       render(<Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />);
-      expect(screen.getByText("4.1").className).toContain("text-yellow-700");
+      expect(screen.getByText("4.1").className).toContain("text-p3");
     });
 
     it("shows a red wire's decimal value, tinted red, on the owner's own hidden rack", () => {
       resetIds();
       const wire = makeWire({ status: "hidden", value: "3.5", color: "red" });
       render(<Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />);
-      expect(screen.getByText("3.5").className).toContain("text-red-700");
+      expect(screen.getByText("3.5").className).toContain("text-p1");
     });
 
     it("shows a cut yellow wire's decimal value plainly (#173's public-value treatment applies)", () => {
