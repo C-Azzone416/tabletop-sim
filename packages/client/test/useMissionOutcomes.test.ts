@@ -26,6 +26,7 @@ describe("useMissionOutcomes (#170)", () => {
     });
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/profiles/p1/mission-outcomes"),
+      expect.any(Object),
     );
   });
 
