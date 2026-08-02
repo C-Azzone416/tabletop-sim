@@ -1537,6 +1537,21 @@ describe("routes", () => {
       expect(res.statusCode).toBe(401);
     });
 
+    // #259 — the comparison hashes both sides to a fixed-size digest before
+    // calling timingSafeEqual specifically so a length mismatch (shorter OR
+    // longer than the real secret) can never throw or behave differently
+    // from a same-length wrong guess — both just fail to match.
+    it("rejects a wrong key that is much longer than the real secret, without throwing", async () => {
+      const res = await keyedApp.inject({
+        method: "POST",
+        url: "/profiles",
+        payload: { name: "Alice" },
+        headers: { "x-api-key": "a".repeat(500) },
+      });
+
+      expect(res.statusCode).toBe(401);
+    });
+
     it("accepts the key via the x-api-key header", async () => {
       const profile = makeProfile({ id: "prof-1", name: "Alice" });
       mockProfilesDb.getProfileByName.mockResolvedValue(profile);
