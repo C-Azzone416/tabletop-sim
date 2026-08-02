@@ -119,6 +119,10 @@ The game layer defaults to Cabinet's values, so today the product is visually un
 
 **Test for whether an object earns its own token:** the rules refer to it by colour, and a player can be *wrong* about it. Wires qualify; a rack tint does not.
 
+**Exclusivity rule (#245).** Owning a token is only half of it: a rule-bearing object colour may **never be reused to mean something that is not that object**. `--game-rack` meaning "yours" while holding `--wire-yellow`'s exact hex is the case that produced #245 — a player scanning their own rack saw the yellow-wire colour spread across a surface made of wire tiles. The split (#247) made a wire re-tintable; this rule is what stops the collision being re-created from the other side. It is enforced by `packages/client/test/theme.test.ts`, which compares the hexes directly in all three scheme blocks — the collision survived a design review, a token migration and a token split precisely because nothing ever compared them.
+
+Two known instances remain and are *not* covered by that guard, because they are not "yours" cues and were out of #245's scope — `--warning` is byte-identical to `--wire-yellow`, and `--info` to `--wire-blue`, in both schemes, and `Wire.tsx` paints both onto wire tiles (revealed border/tint, selected border/ring). Tracked separately; see the issue linked from #245.
+
 **Constraint that survives the split:** object colors must stay distinguishable from the seat palette, from `--game-concealed`, and from each other — colour still may not be the only signal (see *Player seats* below), and the redaction boundary (#187) means the client may not have colour data at all for a concealed piece.
 
 ### Player seats
@@ -250,7 +254,7 @@ Build in this order — each tier depends on the one above.
 
 The rack is this game's implementation of C1. A game with no hidden per-player state has no rack, and none of this applies to it.
 
-- **Yellow means yours.** The private surface is the only one painted `--game-rack`; that is the privacy signal, and it is why the token is game-interior rather than platform frame.
+- **The rack tint means yours.** The private surface is the only one painted `--game-rack`; that is the privacy signal, and it is why the token is game-interior rather than platform frame. The tint is a deep amber chosen to sit off the wire palette — this rule previously read "yellow means yours" and `--game-rack` held `#FFC53D`, byte-identical to `--wire-yellow` (#245).
 - Never scrolls, never collapses, never hides — a dimmed rack still tells a player what they're holding.
 - Holds *every* action available on the player's turn. In this game that is play, draw, pass, undo; the set is game-defined, the placement is not.
 
