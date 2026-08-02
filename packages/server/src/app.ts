@@ -253,13 +253,28 @@ export async function buildApp() {
       }
     });
 
-    const parseMissionParam = (body: unknown): number | { error: string } => {
+    const parseMissionParam = (body: unknown, defaultMission = 1): number | { error: string } => {
       const rawMission = (body as Record<string, unknown> | null ?? {}).mission;
-      if (rawMission === undefined) return 1;
+      if (rawMission === undefined) return defaultMission;
       if (typeof rawMission !== 'number' || !Number.isInteger(rawMission) || rawMission < 1 || rawMission > 8) {
         return { error: 'mission must be an integer between 1 and 8' };
       }
       return rawMission;
+    };
+
+    // #256 — explicit colour targeting for the near-win / solo-cut-legal dev
+    // seeds. 'yellow' is the only other colour they ever need to target
+    // (red is never a solo-cut path); every mission below 3 has no yellow
+    // wires, so a caller asking for yellow without naming a mission gets
+    // mission 3 (the first one that has any) rather than a confusing error.
+    type DevSoloCutColor = 'blue' | 'yellow';
+    const parseColorParam = (body: unknown): DevSoloCutColor | undefined | { error: string } => {
+      const raw = (body as Record<string, unknown> | null ?? {}).color;
+      if (raw === undefined) return undefined;
+      if (raw !== 'blue' && raw !== 'yellow') {
+        return { error: "color must be 'blue' or 'yellow'" };
+      }
+      return raw;
     };
 
     const getOrCreateProfile = async (name: string) => {
@@ -333,38 +348,81 @@ export async function buildApp() {
       }
     });
 
-    // Positions a freshly-seeded active game one correct solo cut from
-    // victory: finds a same-value, same-color hidden wire pair (never red —
-    // solo cutting a red pair isn't the intended win path, and every mission
-    // config guarantees a blue group to pick from instead), reassigns both
-    // wires to the Dev player, cuts every other hidden wire, and hands Dev
-    // the turn. Lets E2E/manual testing exercise the win flow (checklist
-    // item 7) via a single real solo_cut instead of an unverified
-    // multi-identity turn-ordered solver.
-    const positionNearWin = async (gameId: string, devPlayerId: string): Promise<{ value: string; color: string }> => {
-      const wires = await wiresDb.getWiresByGameId(gameId);
-      const hiddenByKey = new Map<string, typeof wires>();
-      for (const w of wires) {
-        if (w.status !== 'hidden') continue;
-        const key = `${w.color}:${w.value}`;
-        const group = hiddenByKey.get(key) ?? [];
-        group.push(w);
-        hiddenByKey.set(key, group);
+    // #256 — colour-scoped (yellow, #190 Phase B) vs value-scoped (every
+    // other non-red colour) hidden-wire selection, shared by positionNearWin
+    // and positionSoloCutLegal below. Previously both grouped by
+    // (color, value) and picked the alphabetically-first non-red key, which
+    // is always a blue group since every mission includes blue — no caller
+    // could ever reach the yellow path this way. Selection is explicit now:
+    // pass 'yellow' to target it; leave targetColor unset for the
+    // longstanding blue-preferred default every existing caller relies on.
+    const selectHiddenScope = (
+      wires: Awaited<ReturnType<typeof wiresDb.getWiresByGameId>>,
+      targetColor?: DevSoloCutColor,
+    ): { color: string; value: string; wires: typeof wires } | null => {
+      if (targetColor === 'yellow') {
+        // Colour-scoped: any hidden yellow wires, any values — solo-cut
+        // legality for yellow is "holds every remaining hidden yellow wire
+        // in the game," not a per-value match. Works whether yellow's count
+        // is today's placeholder of 1 or #216's eventual higher count.
+        const yellowWires = wires.filter(w => w.status === 'hidden' && w.color === 'yellow');
+        return yellowWires.length > 0 ? { color: 'yellow', value: 'YELLOW', wires: yellowWires } : null;
       }
 
-      const pair = [...hiddenByKey.entries()]
-        .filter(([key, group]) => !key.startsWith('red:') && group.length >= 2)
-        .sort(([a], [b]) => a.localeCompare(b))[0]?.[1];
-      if (!pair) throw new Error(`No matching non-red wire pair available to seed a near-win for this mission`);
-      const [wireA, wireB] = pair;
+      // Only 'blue' reaches here — 'yellow' is handled above (colour-scoped)
+      // and 'red' is never a solo-cut/near-win path, and those are the only
+      // three wire colours (WireColor in packages/shared/src/types.ts), so
+      // there's no other colour left to prefer between.
+      const hiddenByValue = new Map<string, typeof wires>();
+      for (const w of wires) {
+        if (w.status !== 'hidden' || w.color !== 'blue') continue;
+        const group = hiddenByValue.get(w.value!) ?? [];
+        group.push(w);
+        hiddenByValue.set(w.value!, group);
+      }
+      if (hiddenByValue.size === 0) return null;
+
+      // Explicit, not an artifact of key ordering: numeric value ascending,
+      // never a string/alphabetical sort (which is what let a decimal like
+      // "4.1" jump ahead of "5" under the old code).
+      const [pickedValue, group] = [...hiddenByValue.entries()]
+        .sort(([a], [b]) => Number(a) - Number(b))[0];
+      return { color: 'blue', value: pickedValue, wires: group };
+    };
+
+    // Positions a freshly-seeded active game one correct solo cut from
+    // victory: finds a hidden-wire pair in scope (value-matched for blue and
+    // every other non-red/non-yellow colour; any two hidden yellows for the
+    // colour-scoped #190 Phase B path), reassigns them to the Dev player,
+    // cuts every other hidden wire, and hands Dev the turn. Lets E2E/manual
+    // testing exercise the win flow (checklist item 7) via a single real
+    // solo_cut instead of an unverified multi-identity turn-ordered solver.
+    const positionNearWin = async (gameId: string, devPlayerId: string, targetColor?: DevSoloCutColor): Promise<{ value: string; color: string }> => {
+      const wires = await wiresDb.getWiresByGameId(gameId);
+      const scope = selectHiddenScope(wires, targetColor);
+      if (!scope || (targetColor !== 'yellow' && scope.wires.length < 2)) {
+        throw new Error(
+          targetColor === 'yellow'
+            ? 'No hidden yellow wire available to seed a near-win for this mission'
+            : 'No matching non-red wire pair available to seed a near-win for this mission'
+        );
+      }
+      // Yellow's "pair" can be a single wire (matches today's placeholder
+      // count of 1, still correct once #216 raises it) — every other colour
+      // keeps #165's original >= 2 requirement (already enforced above), so
+      // the cut-two-at-once demo is unchanged.
+      const pair = scope.wires.slice(0, 2);
+      const pairIds = new Set(pair.map(w => w.id));
 
       const devWires = await wiresDb.getWiresByPlayerId(devPlayerId);
-      const nextRackPosition = Math.max(0, ...devWires.map(w => w.rackPosition)) + 1;
-      await wiresDb.updateWirePlayer(wireA.id, devPlayerId, nextRackPosition);
-      await wiresDb.updateWirePlayer(wireB.id, devPlayerId, nextRackPosition + 1);
+      let nextRackPosition = Math.max(0, ...devWires.map(w => w.rackPosition)) + 1;
+      for (const w of pair) {
+        await wiresDb.updateWirePlayer(w.id, devPlayerId, nextRackPosition);
+        nextRackPosition += 1;
+      }
 
       for (const w of wires) {
-        if (w.id === wireA.id || w.id === wireB.id) continue;
+        if (pairIds.has(w.id)) continue;
         if (w.status === 'hidden') {
           await wiresDb.updateWireStatus(w.id, 'cut');
         }
@@ -372,12 +430,15 @@ export async function buildApp() {
 
       await gamesDb.updateCurrentTurn(gameId, devPlayerId);
 
-      return { value: wireA.value!, color: wireA.color! };
+      return targetColor === 'yellow' ? { value: 'YELLOW', color: 'yellow' } : { value: pair[0].value!, color: pair[0].color! };
     };
 
     app.post('/dev/seed-near-win', async (request, reply) => {
       try {
-        const mission = parseMissionParam(request.body);
+        const colorResult = parseColorParam(request.body);
+        if (typeof colorResult === 'object') return reply.status(400).send(colorResult);
+        const color = colorResult;
+        const mission = parseMissionParam(request.body, color === 'yellow' ? 3 : 1);
         if (typeof mission === 'object') return reply.status(400).send(mission);
 
         const result = await seedDevGame(mission, { completeSetup: true });
@@ -387,7 +448,7 @@ export async function buildApp() {
         const devPlayer = players.find(p => p.name === 'Dev');
         if (!devPlayer) throw new Error('Dev player not found in seeded game');
 
-        const nearWin = await positionNearWin(game.id, devPlayer.id);
+        const nearWin = await positionNearWin(game.id, devPlayer.id, color);
 
         return { ...result, nearWinValue: nearWin.value, nearWinColor: nearWin.color };
       } catch (err) {
@@ -399,41 +460,39 @@ export async function buildApp() {
     // #165 — mission 1 splits each value's 4 copies across 4 players, so a
     // random /dev/seed deal gives one player all 4 copies of a value (the
     // only way a solo cut is legal per #150) with <1% probability. Forces it
-    // deterministically: picks a fully-hidden non-red value group (mission
-    // 1's fresh deal guarantees exactly one exists per value — 4 copies,
-    // none cut yet) and reassigns every copy to Dev, mirroring
+    // deterministically: picks a fully-hidden scope (#256 — value group for
+    // blue/other colours, every hidden yellow wire for the colour-scoped
+    // #190 Phase B path) and reassigns every wire in it to Dev, mirroring
     // positionNearWin's wire-reassignment trick but for solo-cut legality
     // rather than an immediate win.
-    const positionSoloCutLegal = async (gameId: string, devPlayerId: string): Promise<{ value: string; color: string }> => {
+    const positionSoloCutLegal = async (gameId: string, devPlayerId: string, targetColor?: DevSoloCutColor): Promise<{ value: string; color: string }> => {
       const wires = await wiresDb.getWiresByGameId(gameId);
-      const hiddenByKey = new Map<string, typeof wires>();
-      for (const w of wires) {
-        if (w.status !== 'hidden') continue;
-        const key = `${w.color}:${w.value}`;
-        const group = hiddenByKey.get(key) ?? [];
-        group.push(w);
-        hiddenByKey.set(key, group);
+      const scope = selectHiddenScope(wires, targetColor);
+      if (!scope) {
+        throw new Error(
+          targetColor === 'yellow'
+            ? 'No hidden yellow wire available to seed a legal solo cut for this mission'
+            : 'No non-red wire group available to seed a legal solo cut for this mission'
+        );
       }
-
-      const group = [...hiddenByKey.entries()]
-        .filter(([key]) => !key.startsWith('red:'))
-        .sort(([a], [b]) => a.localeCompare(b))[0]?.[1];
-      if (!group) throw new Error('No non-red wire group available to seed a legal solo cut for this mission');
 
       const devWires = await wiresDb.getWiresByPlayerId(devPlayerId);
       let nextRackPosition = Math.max(0, ...devWires.map(w => w.rackPosition)) + 1;
-      for (const wire of group) {
+      for (const wire of scope.wires) {
         if (wire.playerId === devPlayerId) continue;
         await wiresDb.updateWirePlayer(wire.id, devPlayerId, nextRackPosition);
         nextRackPosition += 1;
       }
 
-      return { value: group[0].value!, color: group[0].color! };
+      return { value: scope.value, color: scope.color };
     };
 
     app.post('/dev/seed-solo-cut-legal', async (request, reply) => {
       try {
-        const mission = parseMissionParam(request.body);
+        const colorResult = parseColorParam(request.body);
+        if (typeof colorResult === 'object') return reply.status(400).send(colorResult);
+        const color = colorResult;
+        const mission = parseMissionParam(request.body, color === 'yellow' ? 3 : 1);
         if (typeof mission === 'object') return reply.status(400).send(mission);
 
         const result = await seedDevGame(mission, { completeSetup: true });
@@ -443,7 +502,7 @@ export async function buildApp() {
         const devPlayer = players.find(p => p.name === 'Dev');
         if (!devPlayer) throw new Error('Dev player not found in seeded game');
 
-        const legal = await positionSoloCutLegal(game.id, devPlayer.id);
+        const legal = await positionSoloCutLegal(game.id, devPlayer.id, color);
 
         return { ...result, soloCutValue: legal.value, soloCutColor: legal.color };
       } catch (err) {
