@@ -17,14 +17,15 @@ interface WireProps {
 // longer assume it always has real color data to paint with. The color
 // signal moves entirely to the numeral instead.
 //
-// This game's blue/yellow/red object palette is the platform's p2/p3/p1 seat
-// colors (see DESIGN.md's brand palette) — the game-interior token layer's
-// closed inventory is table/rack/accent/seat colors, so wire identity reuses
-// seat tokens rather than introducing new ones.
+// Wire identity has its own tokens (--wire-blue/-yellow/-red) as of
+// Caroline's 2026-08-02 ruling. It used to borrow the p2/p3/p1 seat colors,
+// which meant a wire could not be re-tinted without re-tinting a seat —
+// see DESIGN-APPENDIX §3, which now permits the wire inventory. The hexes
+// are unchanged by that split; only the ownership moved.
 function valueColorClass(color: WireType["color"]): string {
-  if (color === "blue") return "text-p2";
-  if (color === "yellow") return "text-p3";
-  if (color === "red") return "text-p1";
+  if (color === "blue") return "text-wire-blue";
+  if (color === "yellow") return "text-wire-yellow";
+  if (color === "red") return "text-wire-red";
   // null — shouldn't be reachable when a value is actually being displayed,
   // since color and value are redacted together (#187); kept as a safe
   // fallback rather than asserting.
@@ -91,19 +92,19 @@ export function Wire({
           isYellowIndicator
             ? `
           flex h-16 w-16 shrink-0 items-center justify-center
-          rounded-full border-2 border-p3 bg-p3/10 shadow-print-sm
+          rounded-full border-2 border-wire-yellow bg-wire-yellow/10 shadow-print-sm
           transition-all press
-          ${isSelected ? "ring-2 ring-p3/40" : ""}
-          ${isSelectable && !isSelected ? "ring-1 ring-p3/20" : ""}
-          ${onSelect ? "cursor-pointer hover:ring-2 hover:ring-p3/40" : "cursor-default"}
+          ${isSelected ? "ring-2 ring-wire-yellow/40" : ""}
+          ${isSelectable && !isSelected ? "ring-1 ring-wire-yellow/20" : ""}
+          ${onSelect ? "cursor-pointer hover:ring-2 hover:ring-wire-yellow/40" : "cursor-default"}
         `
             : `
           flex h-16 w-16 shrink-0 items-center justify-center
-          rounded-full border-2 border-p2 bg-p2/10 text-lg font-bold
-          text-p2 shadow-print-sm transition-all press
-          ${isSelected ? "ring-2 ring-p2/40" : ""}
-          ${isSelectable && !isSelected ? "ring-1 ring-p2/20" : ""}
-          ${onSelect ? "cursor-pointer hover:ring-2 hover:ring-p2/40" : "cursor-default"}
+          rounded-full border-2 border-wire-blue bg-wire-blue/10 text-lg font-bold
+          text-wire-blue shadow-print-sm transition-all press
+          ${isSelected ? "ring-2 ring-wire-blue/40" : ""}
+          ${isSelectable && !isSelected ? "ring-1 ring-wire-blue/20" : ""}
+          ${onSelect ? "cursor-pointer hover:ring-2 hover:ring-wire-blue/40" : "cursor-default"}
         `
         }
       >
@@ -125,7 +126,12 @@ export function Wire({
   } else if (isRevealed) {
     borderClass = "border-warning";
   } else if (isSelected) {
-    borderClass = "border-p2 ring-2 ring-p2/40";
+    // Selection is an interaction affordance, not wire identity — it stays on
+    // the platform's --info token rather than moving to --wire-blue, so a
+    // future blue re-tint can't silently change what "selected" looks like.
+    // --info and the old --p2 are the same hex in both schemes, so this is
+    // pixel-identical today.
+    borderClass = "border-info ring-2 ring-info/40";
   } else {
     borderClass = "border-outline/40";
   }
@@ -151,8 +157,8 @@ export function Wire({
         relative flex flex-col items-center justify-center
         h-16 w-12 rounded-piece border-2 transition-all shadow-print-sm
         ${borderClass} ${bgClass}
-        ${isSelectable && !isSelected ? "ring-1 ring-p2/20" : ""}
-        ${!isCut && onSelect ? "cursor-pointer press hover:ring-2 hover:ring-p2/40" : "cursor-default"}
+        ${isSelectable && !isSelected ? "ring-1 ring-info/20" : ""}
+        ${!isCut && onSelect ? "cursor-pointer press hover:ring-2 hover:ring-info/40" : "cursor-default"}
       `}
     >
       {showValue && displayValue !== null && (

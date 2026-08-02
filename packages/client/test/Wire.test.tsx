@@ -141,9 +141,9 @@ describe("Wire (#156)", () => {
       const { container } = render(
         <Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />,
       );
-      expect(screen.getByText("6").className).toContain("text-p3");
+      expect(screen.getByText("6").className).toContain("text-wire-yellow");
       const button = container.querySelector("button")!;
-      expect(button.className).not.toContain("bg-p3");
+      expect(button.className).not.toContain("bg-wire-yellow");
       expect(button.className).not.toContain("bg-p2");
     });
 
@@ -153,7 +153,7 @@ describe("Wire (#156)", () => {
       const { container } = render(
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={[]} />,
       );
-      expect(screen.getByText("9").className).toContain("text-p1");
+      expect(screen.getByText("9").className).toContain("text-wire-red");
       const button = container.querySelector("button")!;
       expect(button.className).toContain("bg-outline/10");
       expect(button.className).not.toContain("bg-p1");
@@ -180,7 +180,7 @@ describe("Wire (#156)", () => {
       render(
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
       );
-      expect(screen.getByText("7").className).toContain("text-p2");
+      expect(screen.getByText("7").className).toContain("text-wire-blue");
     });
   });
 
@@ -196,14 +196,14 @@ describe("Wire (#156)", () => {
       resetIds();
       const wire = makeWire({ status: "hidden", value: "4.1", color: "yellow" });
       render(<Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />);
-      expect(screen.getByText("4.1").className).toContain("text-p3");
+      expect(screen.getByText("4.1").className).toContain("text-wire-yellow");
     });
 
     it("shows a red wire's decimal value, tinted red, on the owner's own hidden rack", () => {
       resetIds();
       const wire = makeWire({ status: "hidden", value: "3.5", color: "red" });
       render(<Wire wire={wire} isLocal isSelected={false} infoTokens={[]} />);
-      expect(screen.getByText("3.5").className).toContain("text-p1");
+      expect(screen.getByText("3.5").className).toContain("text-wire-red");
     });
 
     it("shows a cut yellow wire's decimal value plainly (#173's public-value treatment applies)", () => {
@@ -305,7 +305,7 @@ describe("Wire (#156)", () => {
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
       );
       const button = container.querySelector("button")!;
-      expect(button.className).toContain("border-p3");
+      expect(button.className).toContain("border-wire-yellow");
       expect(button.className).toContain("rounded-full");
       expect(screen.queryByText("YELLOW")).not.toBeInTheDocument();
       expect(button.textContent).toBe("");
@@ -332,8 +332,8 @@ describe("Wire (#156)", () => {
         <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
       );
       const button = container.querySelector("button")!;
-      expect(button.className).not.toContain("border-p3");
-      expect(button.className).toContain("border-p2");
+      expect(button.className).not.toContain("border-wire-yellow");
+      expect(button.className).toContain("border-wire-blue");
       expect(screen.getByText("7")).toBeInTheDocument();
     });
 

@@ -96,6 +96,18 @@
   --game-concealed: #7B4CC4;
   --game-concealed-ink: #FFFFFF;
 
+  /* wire colours (Caroline's ruling, 2026-08-02) — the game's rule-bearing
+     object vocabulary, owned separately from the seat palette it used to
+     borrow. Wire.tsx previously mapped yellow -> --p3, which welded wire
+     identity to seat 3: re-tinting a wire re-tinted a seat, and the rack's
+     "yellow means yours" collision (#245) could not be fixed without moving
+     both. These start as the exact hexes the seat tokens hold today — the
+     split is a no-op rename, and the palette decision rides on top of it as
+     a one-file hex edit. */
+  --wire-blue: #2BB3E8;
+  --wire-yellow: #FFC53D;
+  --wire-red: #E43126;
+
   /* player seats */
   --p1: #E43126; --p1-ink: #FFFFFF;
   --p2: #2BB3E8; --p2-ink: #10233F;
@@ -149,6 +161,10 @@
     --game-concealed: #A177E8;
     --game-concealed-ink: #0E1B2E;
 
+    --wire-blue: #4FC3F0;
+    --wire-yellow: #FFC53D;
+    --wire-red: #FF5346;
+
     --p1: #FF5346; --p1-ink: #0E1B2E;
     --p2: #4FC3F0; --p2-ink: #0E1B2E;
     --p3: #FFC53D; --p3-ink: #10233F;
@@ -190,6 +206,10 @@
       --game-accent-ink: #0E1B2E;
       --game-concealed: #A177E8;
       --game-concealed-ink: #0E1B2E;
+
+      --wire-blue: #4FC3F0;
+      --wire-yellow: #FFC53D;
+      --wire-red: #FF5346;
       --p1: #FF5346; --p1-ink: #0E1B2E;
       --p2: #4FC3F0; --p2-ink: #0E1B2E;
       --p3: #FFC53D; --p3-ink: #10233F;
@@ -238,6 +258,11 @@
   --color-game-accent-ink: var(--game-accent-ink);
   --color-game-concealed: var(--game-concealed);
   --color-game-concealed-ink: var(--game-concealed-ink);
+
+  /* wire colours — text-wire-blue, border-wire-yellow, ring-wire-red … */
+  --color-wire-blue: var(--wire-blue);
+  --color-wire-yellow: var(--wire-yellow);
+  --color-wire-red: var(--wire-red);
 
   --color-p1: var(--p1); --color-p1-ink: var(--p1-ink);
   --color-p2: var(--p2); --color-p2-ink: var(--p2-ink);
