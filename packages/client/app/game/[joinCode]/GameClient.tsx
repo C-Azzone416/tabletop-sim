@@ -155,7 +155,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   // Waiting / Lobby
   if (!state.game || gameStatus === "waiting") {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+      <div className="min-h-screen bg-surface">
         <Lobby
           joinCode={joinCode}
           players={state.players}
@@ -174,7 +174,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   // Setup phase
   if (gameStatus === "setup") {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+      <div className="min-h-screen bg-surface">
         <JoinCodeBadge joinCode={joinCode} />
         <SetupPhase
           game={state.game}
@@ -195,7 +195,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   // Active game
   if (gameStatus === "active") {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+      <div className="min-h-screen bg-surface">
         <JoinCodeBadge joinCode={joinCode} />
         <GameBoard
           game={state.game}
@@ -235,7 +235,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   // Game over
   if (gameStatus === "won" || gameStatus === "lost") {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+      <div className="min-h-screen bg-surface">
         <JoinCodeBadge joinCode={joinCode} />
         <GameBoard
           game={state.game}
@@ -269,8 +269,8 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
 
   // Fallback: connecting
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
-      <p className="text-zinc-500 dark:text-zinc-400">
+    <div className="flex min-h-screen items-center justify-center bg-surface">
+      <p className="text-ink-muted">
         {status === "connecting"
           ? "Connecting to server..."
           : "Loading game..."}

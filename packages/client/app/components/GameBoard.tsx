@@ -172,12 +172,12 @@ export function GameBoard({
       {/* Last turn result */}
       {lastTurnResult && (
         <div
-          className={`rounded-lg px-4 py-2 text-center text-sm ${
+          className={`rounded-cab px-4 py-2 text-center text-sm ${
             lastTurnResult.turn.result === "success"
-              ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
+              ? "bg-success/10 text-success"
               : lastTurnResult.turn.result === "fail"
-                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300"
-                : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300"
+                ? "bg-warning/20 text-warning-ink"
+                : "bg-danger/10 text-danger"
           }`}
         >
           {lastTurnResult.turn.result === "success" && "Wire cut successfully!"}
@@ -189,7 +189,7 @@ export function GameBoard({
 
       {/* Dual cut: waiting indicator for proposer while owner responds */}
       {pendingDualCut && isProposer && !pendingDualCutCorrect && pendingTargetPlayer && (
-        <div className="rounded-lg bg-blue-50 px-4 py-3 text-center text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+        <div className="rounded-cab bg-info/10 px-4 py-3 text-center text-sm text-info">
           Waiting for {pendingTargetPlayer.name} to respond to your guess…
         </div>
       )}
@@ -231,23 +231,22 @@ export function GameBoard({
                 <span
                   className={
                     isLocal
-                      ? "text-base font-bold text-blue-700 dark:text-blue-300"
-                      : "text-sm font-medium text-zinc-600 dark:text-zinc-400"
+                      ? "text-base font-bold text-accent"
+                      : "text-sm font-medium text-ink-muted"
                   }
                 >
                   {isLocal ? "You" : player.name}
                 </span>
                 {player.id === game.captainId && (
-                  <span className="text-xs text-amber-600 dark:text-amber-400">
-                    Captain
-                  </span>
+                  <span className="text-xs text-ink-muted">Captain</span>
                 )}
-                {/* #159 item 3: active-turn flag must be unmistakable —
-                    solid fill rather than the previous light tint, since
-                    whose-turn-it-is is exactly the ambiguity #149 filed
-                    against. */}
+                {/* #159 item 3: active-turn flag must be unmistakable — solid
+                    fill rather than a light tint, since whose-turn-it-is is
+                    exactly the ambiguity #149 filed against. --warning is the
+                    platform's active-turn/active-seat color (DESIGN-APPENDIX
+                    §7 seat chip rules). */}
                 {isActiveTurn && (
-                  <span className="rounded bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm dark:bg-blue-500">
+                  <span className="rounded-cab bg-warning px-2 py-0.5 text-xs font-semibold text-warning-ink shadow-print-sm">
                     Active
                   </span>
                 )}
@@ -301,13 +300,11 @@ export function GameBoard({
           onClick={handleDualCutGuessCancel}
         >
           <div
-            className="w-80 rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-900"
+            className="w-80 rounded-cab border-2 border-outline bg-surface-raised p-6 shadow-print-md"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              Dual Cut
-            </h2>
-            <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+            <h2 className="mb-1 text-base font-semibold text-ink">Dual Cut</h2>
+            <p className="mb-4 text-sm text-ink-muted">
               Guess the value of {dualCutTargetOwner.name}&apos;s wire #
               {dualCutTargetWire.rackPosition}.
             </p>
@@ -318,19 +315,19 @@ export function GameBoard({
               onKeyDown={(e) => e.key === "Enter" && handleDualCutGuessSubmit()}
               placeholder="Enter value…"
               autoFocus
-              className="mb-4 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+              className="mb-4 w-full rounded-cab border-2 border-outline bg-surface px-3 py-2 text-sm text-ink focus:outline-none"
             />
             <div className="flex gap-3">
               <button
                 onClick={handleDualCutGuessCancel}
-                className="flex-1 rounded-lg border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="press flex-1 rounded-cab border-2 border-outline bg-surface-raised px-4 py-2 text-sm font-bold text-ink shadow-print-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDualCutGuessSubmit}
                 disabled={!dualCutGuess.trim()}
-                className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                className="press flex-1 rounded-cab border-2 border-outline bg-accent px-4 py-2 text-sm font-bold text-accent-ink shadow-print-sm disabled:opacity-50"
               >
                 Propose Cut
               </button>
@@ -342,14 +339,14 @@ export function GameBoard({
       {/* Step 2: Owner confirm/deny popup */}
       {isTarget && pendingDualCut && !pendingDualCutCorrect && pendingProposerPlayer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-80 rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-900">
-            <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">
+          <div className="w-80 rounded-cab border-2 border-outline bg-surface-raised p-6 shadow-print-md">
+            <h2 className="mb-1 text-base font-semibold text-ink">
               Dual Cut — Incoming Guess
             </h2>
-            <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="mb-6 text-sm text-ink-muted">
               {pendingProposerPlayer.name} guesses your wire #
               {pendingDualCut.targetWireRackPosition} has value{" "}
-              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+              <span className="font-semibold text-ink">
                 {pendingDualCut.guessedValue}
               </span>
               . Is that correct?
@@ -357,13 +354,13 @@ export function GameBoard({
             <div className="flex gap-3">
               <button
                 onClick={() => onRespondDualCut(false)}
-                className="flex-1 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                className="press flex-1 rounded-cab border-2 border-danger px-4 py-2 text-sm font-bold text-danger hover:bg-danger/10"
               >
                 No
               </button>
               <button
                 onClick={() => onRespondDualCut(true)}
-                className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                className="press flex-1 rounded-cab border-2 border-outline bg-accent px-4 py-2 text-sm font-bold text-accent-ink shadow-print-sm"
               >
                 Yes
               </button>
@@ -375,11 +372,11 @@ export function GameBoard({
       {/* Step 3: Proposer picks own matching wire after correct guess */}
       {isCompletingDualCut && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-80 rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-900">
-            <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">
+          <div className="w-80 rounded-cab border-2 border-outline bg-surface-raised p-6 shadow-print-md">
+            <h2 className="mb-1 text-base font-semibold text-ink">
               Correct Guess!
             </h2>
-            <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="mb-4 text-sm text-ink-muted">
               Pick a matching wire from your rack to cut both.
             </p>
             <div className="flex flex-wrap gap-2">
@@ -387,7 +384,7 @@ export function GameBoard({
                 <button
                   key={w.id}
                   onClick={() => onCompleteDualCut(w.id)}
-                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:border-blue-500 hover:bg-blue-50 dark:border-zinc-600 dark:hover:border-blue-400 dark:hover:bg-blue-900/20"
+                  className="press rounded-cab border-2 border-outline px-3 py-2 text-sm text-ink hover:border-accent hover:bg-accent/10"
                 >
                   Wire #{w.rackPosition}
                 </button>
@@ -417,14 +414,14 @@ function DetonatorDisplay({
   const warning = !urgent && livesRemaining <= Math.floor(max / 2);
 
   const colorClass = urgent
-    ? "text-red-600 dark:text-red-400 font-bold"
+    ? "text-danger font-bold"
     : warning
-      ? "text-amber-600 dark:text-amber-400"
-      : "text-zinc-500 dark:text-zinc-400";
+      ? "text-warning-ink"
+      : "text-ink-muted";
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <h3 className="text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+      <h3 className="text-sm font-medium uppercase tracking-wide text-ink-muted">
         Lives
       </h3>
       <span className={`text-sm tabular-nums ${colorClass}`}>

@@ -38,13 +38,13 @@ export function SetupPhase({
   return (
     <div className="flex flex-col items-center gap-6 p-6">
       <div className="text-center">
-        <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">
+        <h2 className="text-xl font-bold text-ink">
           Place Your Opening Info Token
         </h2>
 
         {/* Turn Indicator */}
-        <div className="mt-3 rounded-lg bg-blue-100 px-4 py-2 dark:bg-blue-900">
-          <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+        <div className="mt-3 rounded-cab bg-accent/10 px-4 py-2">
+          <p className="text-sm font-semibold text-accent">
             {isLocalPlayerActivePlacer
               ? "Your turn — place your opening info token"
               : `Waiting for ${activePlacer?.name ?? "..."} to place their token...`}
@@ -66,11 +66,11 @@ export function SetupPhase({
 
           return (
             <div key={player.id}>
-              <h3 className="mb-2 text-sm font-medium text-zinc-600 dark:text-zinc-400">
+              <h3 className="mb-2 text-sm font-medium text-ink-muted">
                 {isLocal ? "Your Rack" : player.name}
               </h3>
               {isLocal && (
-                <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">
+                <p className="mb-2 text-xs text-ink-muted">
                   {hasPlacedOpeningToken
                     ? "Opening info token placed."
                     : isLocalPlayerActivePlacer

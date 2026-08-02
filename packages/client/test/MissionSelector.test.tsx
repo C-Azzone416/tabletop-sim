@@ -9,7 +9,7 @@ describe("MissionSelector", () => {
     expect(screen.getByRole("button", { name: /Mission 1/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Mission 8/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Mission 3/ }).className).toContain(
-      "border-blue-500",
+      "bg-accent/10",
     );
   });
 

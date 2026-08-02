@@ -23,7 +23,7 @@ export function ValidationTracker({
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <h3 className="text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+      <h3 className="text-sm font-medium uppercase tracking-wide text-ink-muted">
         Validated
       </h3>
       <div className="flex flex-wrap gap-x-3 gap-y-2">
@@ -43,10 +43,13 @@ export function ValidationTracker({
                 <div
                   key={key}
                   title={`${group.color} ${value}`}
-                  className={`flex h-10 w-10 items-center justify-center rounded-lg border-2 font-bold transition-all ${
+                  className={`flex h-10 w-10 items-center justify-center rounded-cab border-2 font-bold transition-all ${
+                    // #153: validation is green throughout — this game's success
+                    // color and its p4 seat color are the same green, so reuse
+                    // the seat token pair for guaranteed-readable fill contrast.
                     validated
-                      ? "border-green-600 bg-green-600 text-white dark:border-green-500 dark:bg-green-500"
-                      : "border-green-500 bg-white text-green-600 dark:border-green-600 dark:bg-zinc-800 dark:text-green-400"
+                      ? "border-p4 bg-p4 text-p4-ink"
+                      : "border-p4 bg-game-table text-p4"
                   }`}
                 >
                   {value}

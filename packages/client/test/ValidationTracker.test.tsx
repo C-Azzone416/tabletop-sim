@@ -8,8 +8,8 @@ describe("ValidationTracker (#153)", () => {
     resetIds();
     render(<ValidationTracker validationTokens={[]} missionNumber={1} />);
     const tile = screen.getByText("3");
-    expect(tile.className).toContain("border-green-500");
-    expect(tile.className).not.toContain("bg-green-600");
+    expect(tile.className).toContain("border-p4");
+    expect(tile.className).not.toContain("bg-p4 ");
     expect(tile.className).not.toContain("bg-blue");
   });
 
@@ -22,11 +22,11 @@ describe("ValidationTracker (#153)", () => {
       />,
     );
     const validatedTile = screen.getByText("3");
-    expect(validatedTile.className).toContain("bg-green-600");
+    expect(validatedTile.className).toContain("bg-p4 ");
 
     const pendingTile = screen.getByText("4");
-    expect(pendingTile.className).not.toContain("bg-green-600");
-    expect(pendingTile.className).toContain("border-green-500");
+    expect(pendingTile.className).not.toContain("bg-p4 ");
+    expect(pendingTile.className).toContain("border-p4");
   });
 
   it("never uses blue styling, even for blue wires", () => {

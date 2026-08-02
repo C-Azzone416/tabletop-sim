@@ -109,15 +109,15 @@ export default function Home() {
     return (
       <div className="relative flex min-h-screen flex-col items-center overflow-hidden font-sans">
         <GameRoomScene />
-        <div className="absolute inset-0 bg-amber-900/10" />
+        <div className="absolute inset-0 bg-ink/10" />
 
         <main className="relative z-10 mt-28 w-full max-w-sm px-6 sm:mt-36">
-          <div className="rounded-2xl border border-stone-300/50 bg-stone-50/80 px-6 py-6 shadow-2xl backdrop-blur-sm dark:bg-stone-900/70">
+          <div className="rounded-cab border-2 border-outline bg-surface-raised/80 px-6 py-6 shadow-print-lg backdrop-blur-sm">
             <div className="text-center">
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+              <h1 className="text-2xl font-bold tracking-tight text-ink">
                 Tabletop Simulator
               </h1>
-              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              <p className="mt-1 text-sm text-ink-muted">
                 Gather your friends. Roll the dice.
               </p>
             </div>
@@ -125,7 +125,7 @@ export default function Home() {
             {!expanded ? (
               <button
                 onClick={() => setExpanded(true)}
-                className="mt-5 w-full rounded-lg bg-teal-700 px-4 py-3 font-medium text-white transition-colors hover:bg-teal-800"
+                className="press mt-5 w-full min-h-11 rounded-cab border-2 border-outline bg-accent px-4 py-3 font-bold text-accent-ink shadow-print-sm"
               >
                 Join
               </button>
@@ -140,14 +140,14 @@ export default function Home() {
                     placeholder="Choose your name"
                     maxLength={20}
                     autoFocus
-                    className="w-full rounded-lg border border-stone-300 bg-white/60 px-4 py-3 text-stone-900 placeholder-stone-400 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600 dark:border-stone-600 dark:bg-stone-800/40 dark:text-stone-100 dark:placeholder-stone-500"
+                    className="w-full rounded-cab border-2 border-outline bg-surface px-4 py-3 text-ink placeholder-ink-muted focus:outline-none"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={!name.trim() || signInLoading}
-                  className="w-full rounded-lg bg-teal-700 px-4 py-3 font-medium text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="press w-full min-h-11 rounded-cab border-2 border-outline bg-accent px-4 py-3 font-bold text-accent-ink shadow-print-sm disabled:opacity-50"
                 >
                   {signInLoading ? "Joining..." : "Enter the Room"}
                 </button>
@@ -162,27 +162,27 @@ export default function Home() {
 
   // Authenticated — show game lobby
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-zinc-950">
+    <div className="flex min-h-screen items-center justify-center bg-surface font-sans">
       <main className="w-full max-w-md px-6">
         <div className="text-center mb-10">
-          <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+          <h1 className="text-4xl font-bold tracking-tight text-ink">
             Tabletop Simulator
           </h1>
-          <p className="mt-2 text-zinc-500 dark:text-zinc-400">
+          <p className="mt-2 text-ink-muted">
             Cut the right wires. Save the day.
           </p>
         </div>
 
-        <div className="mb-6 flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800">
-          <span className="text-sm text-zinc-600 dark:text-zinc-400">
+        <div className="mb-6 flex items-center justify-between rounded-cab border-2 border-outline bg-surface-raised px-4 py-3">
+          <span className="text-sm text-ink-muted">
             Playing as{" "}
-            <span className="font-medium text-zinc-900 dark:text-zinc-100">
+            <span className="font-medium text-ink">
               {playerName}
             </span>
           </span>
           <button
             onClick={() => signOut({ callbackUrl: "/" })}
-            className="text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+            className="text-sm text-ink-muted hover:text-ink"
           >
             Change name
           </button>
@@ -196,17 +196,17 @@ export default function Home() {
           <button
             onClick={handleCreate}
             disabled={mode !== "idle"}
-            className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="press w-full min-h-11 rounded-cab border-2 border-outline bg-accent px-4 py-3 font-bold text-accent-ink shadow-print-sm disabled:opacity-50"
           >
             {mode === "creating" ? "Creating..." : "Create New Game"}
           </button>
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-zinc-300 dark:border-zinc-700" />
+              <div className="w-full border-t border-line-soft" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="bg-zinc-50 px-4 text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+              <span className="bg-surface px-4 text-ink-muted">
                 or join an existing game
               </span>
             </div>
@@ -219,19 +219,19 @@ export default function Home() {
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               placeholder="Enter code"
               maxLength={6}
-              className="flex-1 rounded-lg border border-zinc-300 bg-white px-4 py-3 font-mono text-center uppercase tracking-widest text-zinc-900 placeholder-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500"
+              className="flex-1 rounded-cab border-2 border-outline bg-surface-raised px-4 py-3 font-mono text-center uppercase tracking-widest text-ink placeholder-ink-muted focus:outline-none"
             />
             <button
               onClick={handleJoin}
               disabled={!joinCode.trim() || mode !== "idle"}
-              className="rounded-lg bg-zinc-800 px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-700 dark:hover:bg-zinc-600"
+              className="press min-h-11 rounded-cab border-2 border-outline bg-surface-raised px-6 py-3 font-bold text-ink shadow-print-sm disabled:opacity-50"
             >
               {mode === "joining" ? "Joining..." : "Join"}
             </button>
           </div>
 
           {status === "connecting" && (
-            <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="text-center text-sm text-ink-muted">
               Connecting to server...
             </p>
           )}

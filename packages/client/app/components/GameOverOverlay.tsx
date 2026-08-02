@@ -35,9 +35,20 @@ export function GameOverOverlay({
     onNextMission(mission);
   };
 
+  // Button variants per DESIGN-APPENDIX.md §7/§16 — no green/success button
+  // exists in the platform's fixed vocabulary (primary/secondary/yellow/
+  // danger/ghost), so affirmative CTAs map to primary and the loss-state
+  // retry maps to yellow rather than inventing a new button color.
+  const primaryBtn =
+    "press min-h-11 rounded-cab border-2 border-outline bg-accent px-6 py-3 font-bold text-accent-ink shadow-print-sm disabled:cursor-not-allowed disabled:opacity-50";
+  const yellowBtn =
+    "press min-h-11 rounded-cab border-2 border-outline bg-warning px-6 py-3 font-bold text-warning-ink shadow-print-sm disabled:cursor-not-allowed disabled:opacity-50";
+  const secondaryBtn =
+    "press min-h-11 rounded-cab border-2 border-outline bg-surface-raised px-6 py-3 text-sm font-bold text-ink shadow-print-sm";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="mx-4 w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-xl dark:bg-zinc-800">
+      <div className="mx-4 w-full max-w-sm rounded-cab border-2 border-outline bg-surface-raised p-8 text-center shadow-print-md">
         {result === "won" ? (
           <div className="text-5xl">🎉</div>
         ) : (
@@ -45,20 +56,18 @@ export function GameOverOverlay({
         )}
         <h2
           className={`mt-4 text-2xl font-bold ${
-            result === "won"
-              ? "text-green-600 dark:text-green-400"
-              : "text-red-600 dark:text-red-400"
+            result === "won" ? "text-success" : "text-danger"
           }`}
         >
           {result === "won" ? "Mission Complete!" : "Mission Failed"}
         </h2>
-        <p className="mt-2 text-zinc-600 dark:text-zinc-400">{reason}</p>
+        <p className="mt-2 text-ink-muted">{reason}</p>
 
         {isCaptain ? (
           <div className="mt-6 flex flex-col gap-3">
             {isPicking ? (
               <div className="text-left">
-                <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-muted">
                   Select Mission
                 </h3>
                 <MissionSelector
@@ -69,7 +78,7 @@ export function GameOverOverlay({
                 <button
                   onClick={() => handleStartMission(selectedMission)}
                   disabled={isStarting}
-                  className="mt-3 w-full rounded-full bg-green-600 px-6 py-3 font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`mt-3 w-full ${primaryBtn}`}
                 >
                   {isStarting ? "Starting..." : `Start Mission ${selectedMission}`}
                 </button>
@@ -81,11 +90,7 @@ export function GameOverOverlay({
                     handleStartMission(result === "won" ? nextMissionUp : currentMission)
                   }
                   disabled={isStarting}
-                  className={`rounded-full px-6 py-3 font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    result === "won"
-                      ? "bg-green-600 hover:bg-green-700"
-                      : "bg-amber-600 hover:bg-amber-700"
-                  }`}
+                  className={result === "won" ? primaryBtn : yellowBtn}
                 >
                   {isStarting
                     ? "Starting..."
@@ -96,7 +101,7 @@ export function GameOverOverlay({
                 <button
                   onClick={() => setIsPicking(true)}
                   disabled={isStarting}
-                  className="text-sm font-medium text-zinc-500 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400"
+                  className="text-sm font-medium text-ink-muted underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Pick a Different Mission
                 </button>
@@ -104,15 +109,12 @@ export function GameOverOverlay({
             )}
           </div>
         ) : (
-          <p className="mt-6 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-6 text-sm text-ink-muted">
             Waiting for the captain to choose the next mission...
           </p>
         )}
 
-        <button
-          onClick={() => router.push("/")}
-          className="mt-4 rounded-full bg-zinc-100 px-6 py-3 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
-        >
+        <button onClick={() => router.push("/")} className={`mt-4 w-full ${secondaryBtn}`}>
           Back to Home
         </button>
       </div>
@@ -151,7 +153,7 @@ function BombExplosion() {
         }
       `}</style>
       <div
-        className="bomb-shockwave-ring absolute h-16 w-16 rounded-full bg-red-500/40"
+        className="bomb-shockwave-ring absolute h-16 w-16 rounded-full bg-danger/40"
         aria-hidden="true"
       />
       <div className="bomb-emoji text-5xl">💥</div>

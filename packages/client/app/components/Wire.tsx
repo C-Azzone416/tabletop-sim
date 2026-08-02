@@ -16,14 +16,19 @@ interface WireProps {
 // your own rack, since the redacted broadcast (#187) means the client can no
 // longer assume it always has real color data to paint with. The color
 // signal moves entirely to the numeral instead.
+//
+// This game's blue/yellow/red object palette is the platform's p2/p3/p1 seat
+// colors (see DESIGN.md's brand palette) — the game-interior token layer's
+// closed inventory is table/rack/accent/seat colors, so wire identity reuses
+// seat tokens rather than introducing new ones.
 function valueColorClass(color: WireType["color"]): string {
-  if (color === "blue") return "text-blue-700 dark:text-blue-300";
-  if (color === "yellow") return "text-yellow-700 dark:text-yellow-400";
-  if (color === "red") return "text-red-700 dark:text-red-400";
+  if (color === "blue") return "text-p2";
+  if (color === "yellow") return "text-p3";
+  if (color === "red") return "text-p1";
   // null — shouldn't be reachable when a value is actually being displayed,
   // since color and value are redacted together (#187); kept as a safe
   // fallback rather than asserting.
-  return "text-zinc-900 dark:text-zinc-100";
+  return "text-ink";
 }
 
 // #190 (Caroline's ruling): yellow/red DO show their decimal as a tinted
@@ -86,20 +91,19 @@ export function Wire({
           isYellowIndicator
             ? `
           flex h-16 w-16 shrink-0 items-center justify-center
-          rounded-full border-2 border-yellow-500 bg-yellow-50 shadow-sm
-          transition-all dark:border-yellow-400 dark:bg-yellow-950
-          ${isSelected ? "ring-2 ring-yellow-300 dark:ring-yellow-700" : ""}
-          ${isSelectable && !isSelected ? "ring-1 ring-yellow-200 dark:ring-yellow-800" : ""}
-          ${onSelect ? "cursor-pointer hover:border-yellow-600 hover:ring-2 hover:ring-yellow-300 dark:hover:border-yellow-300 dark:hover:ring-yellow-700" : "cursor-default"}
+          rounded-full border-2 border-p3 bg-p3/10 shadow-print-sm
+          transition-all press
+          ${isSelected ? "ring-2 ring-p3/40" : ""}
+          ${isSelectable && !isSelected ? "ring-1 ring-p3/20" : ""}
+          ${onSelect ? "cursor-pointer hover:ring-2 hover:ring-p3/40" : "cursor-default"}
         `
             : `
           flex h-16 w-16 shrink-0 items-center justify-center
-          rounded-full border-2 border-blue-500 bg-blue-50 text-lg font-bold
-          text-blue-700 shadow-sm transition-all
-          dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300
-          ${isSelected ? "ring-2 ring-blue-300 dark:ring-blue-700" : ""}
-          ${isSelectable && !isSelected ? "ring-1 ring-blue-200 dark:ring-blue-800" : ""}
-          ${onSelect ? "cursor-pointer hover:border-blue-600 hover:ring-2 hover:ring-blue-300 dark:hover:border-blue-300 dark:hover:ring-blue-700" : "cursor-default"}
+          rounded-full border-2 border-p2 bg-p2/10 text-lg font-bold
+          text-p2 shadow-print-sm transition-all press
+          ${isSelected ? "ring-2 ring-p2/40" : ""}
+          ${isSelectable && !isSelected ? "ring-1 ring-p2/20" : ""}
+          ${onSelect ? "cursor-pointer hover:ring-2 hover:ring-p2/40" : "cursor-default"}
         `
         }
       >
@@ -117,22 +121,22 @@ export function Wire({
   const isRevealed = wire.status === "revealed";
   let borderClass: string;
   if (isCut) {
-    borderClass = "border-zinc-300 dark:border-zinc-700";
+    borderClass = "border-outline/30";
   } else if (isRevealed) {
-    borderClass = "border-amber-400 dark:border-amber-600";
+    borderClass = "border-warning";
   } else if (isSelected) {
-    borderClass = "border-blue-500 ring-2 ring-blue-300 dark:ring-blue-700";
+    borderClass = "border-p2 ring-2 ring-p2/40";
   } else {
-    borderClass = "border-zinc-300 dark:border-zinc-600";
+    borderClass = "border-outline/40";
   }
   // #173's dim-grey cut treatment stays as the one bg exception to #188's
   // uniform neutral — it signals "resolved," not color. Revealed gets its
-  // own light amber tint, between untouched-hidden and cut.
+  // own light warning tint, between untouched-hidden and cut.
   const bgClass = isCut
-    ? "bg-zinc-100 dark:bg-zinc-800"
+    ? "bg-outline/10"
     : isRevealed
-      ? "bg-amber-50 dark:bg-amber-950"
-      : "bg-white dark:bg-zinc-900";
+      ? "bg-warning/10"
+      : "bg-game-table";
   const valueTextClass = valueColorClass(wire.color);
 
   return (
@@ -145,10 +149,10 @@ export function Wire({
       data-wire-value={showValue && displayValue !== null ? displayValue : undefined}
       className={`
         relative flex flex-col items-center justify-center
-        h-16 w-12 rounded-lg border-2 transition-all
+        h-16 w-12 rounded-piece border-2 transition-all shadow-print-sm
         ${borderClass} ${bgClass}
-        ${isSelectable && !isSelected ? "ring-1 ring-blue-200 dark:ring-blue-800" : ""}
-        ${!isCut && onSelect ? "cursor-pointer hover:border-blue-400 hover:ring-2 hover:ring-blue-300 dark:hover:ring-blue-700" : "cursor-default"}
+        ${isSelectable && !isSelected ? "ring-1 ring-p2/20" : ""}
+        ${!isCut && onSelect ? "cursor-pointer press hover:ring-2 hover:ring-p2/40" : "cursor-default"}
       `}
     >
       {showValue && displayValue !== null && (
