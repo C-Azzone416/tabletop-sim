@@ -28,4 +28,8 @@ jobs:
         # vars.* (not secrets.*) — a server URL and an origin string aren't
         # sensitive. Gracefully skips (exit 0) if unconfigured, same pattern
         # as the old E2E_STAGING_CONFIGURED gate.
-        run: npx tsx scripts/staging-smoke-check.ts "${{ vars.STAGING_SERVER_URL }}" "${{ vars.STAGING_ORIGIN }}"
+        #
+        # #262 — secrets.STAGING_API_ACCESS_KEY lets this check get past
+        # #252's access gate (once API_ACCESS_KEY is configured on staging)
+        # to actually observe the #98/#121 invariants it exists to verify.
+        run: npx tsx scripts/staging-smoke-check.ts "${{ vars.STAGING_SERVER_URL }}" "${{ vars.STAGING_ORIGIN }}" "${{ secrets.STAGING_API_ACCESS_KEY }}"

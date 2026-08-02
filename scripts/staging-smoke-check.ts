@@ -26,13 +26,23 @@
  * (zippy-weasel, PR #125 review). Once the server has answered /health once,
  * it's warm — the /dev/seed route/CORS checks after that stay fail-fast.
  *
- * Usage: npx tsx scripts/staging-smoke-check.ts <serverUrl> <stagingOrigin>
+ * #262 — same secret-gate interaction as prod-smoke-check.ts: #252's
+ * shared-secret preHandler hook now sits in front of every /dev/* route
+ * including on staging, so once API_ACCESS_KEY is configured there, an
+ * unauthenticated probe gets 401 before this check can observe whether the
+ * #98/#121 invariants it exists for are actually holding — and that 401
+ * would previously be misread as "dev routes are not registered," the
+ * opposite failure mode from what #122 was about. The apiAccessKey param
+ * lets this check authenticate; a 401 is now its own distinct failure,
+ * separate from the real "routes not registered" (404) case.
+ *
+ * Usage: npx tsx scripts/staging-smoke-check.ts <serverUrl> <stagingOrigin> [apiAccessKey]
  */
 
-const [serverUrl, stagingOrigin] = process.argv.slice(2);
+const [serverUrl, stagingOrigin, apiAccessKey] = process.argv.slice(2);
 
 if (!serverUrl || !stagingOrigin) {
-  console.log('Usage: npx tsx scripts/staging-smoke-check.ts <serverUrl> <stagingOrigin>');
+  console.log('Usage: npx tsx scripts/staging-smoke-check.ts <serverUrl> <stagingOrigin> [apiAccessKey]');
   console.log('Not configured — skipping (no staging URL/origin provided).');
   process.exit(0);
 }
@@ -74,9 +84,25 @@ async function run(): Promise<void> {
 
   const seedRes = await fetch(`${serverUrl}/dev/seed`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: stagingOrigin },
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: stagingOrigin,
+      ...(apiAccessKey ? { 'x-api-key': apiAccessKey } : {}),
+    },
     body: JSON.stringify({}),
   });
+
+  if (seedRes.status === 401) {
+    console.error(
+      apiAccessKey
+        ? `FAIL: POST ${serverUrl}/dev/seed returned 401 even with this check's API key.\n` +
+          `  Check that this check's apiAccessKey secret matches staging's configured API_ACCESS_KEY.`
+        : `FAIL: POST ${serverUrl}/dev/seed returned 401 (#252's access gate rejected the unauthenticated probe).\n` +
+          `  This check has no apiAccessKey configured, so it cannot get past that gate to verify dev routes ` +
+          `are registered and CORS is correct. This is NOT the same failure as "routes not registered" — see #262.`
+    );
+    process.exit(1);
+  }
 
   if (seedRes.status === 404) {
     console.error(
@@ -107,7 +133,10 @@ async function run(): Promise<void> {
 
   const cleanupRes = await fetch(`${serverUrl}/dev/cleanup`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(apiAccessKey ? { 'x-api-key': apiAccessKey } : {}),
+    },
     body: JSON.stringify({ joinCode: seeded.joinCode }),
   });
   if (!cleanupRes.ok) {
@@ -127,8 +156,18 @@ async function run(): Promise<void> {
 // hit a missing column on a live session.
 async function checkMigrationsCurrent(): Promise<void> {
   const res = await fetch(`${serverUrl}/dev/migrations-status`, {
-    headers: { Origin: stagingOrigin },
+    headers: {
+      Origin: stagingOrigin,
+      ...(apiAccessKey ? { 'x-api-key': apiAccessKey } : {}),
+    },
   });
+  if (res.status === 401) {
+    console.error(
+      `FAIL: GET ${serverUrl}/dev/migrations-status returned 401 — #252's access gate rejected this check.\n` +
+      `  ${apiAccessKey ? "Check that this check's apiAccessKey secret matches staging's configured API_ACCESS_KEY." : 'This check has no apiAccessKey configured.'}`
+    );
+    process.exit(1);
+  }
   if (!res.ok) {
     console.error(`FAIL: GET ${serverUrl}/dev/migrations-status returned ${res.status} — could not verify schema currency.`);
     process.exit(1);
