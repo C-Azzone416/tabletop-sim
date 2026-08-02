@@ -109,11 +109,17 @@ The brand question "one look, or a look per game?" is unresolved (§17.2). The t
 | Layer | Tokens | Changes per game? |
 |---|---|---|
 | **Platform frame** — chrome the player learns once | `--surface`, `--surface-raised`, `--ink`, `--ink-muted`, `--outline`, `--line-soft`, `--shadow-ink`, `--accent` | Never |
-| **Game interior** — the play surface | `--game-table`, `--game-rack`, `--game-rack-ink`, `--game-rack-border`, `--game-accent`, `--game-accent-ink`, and the five seat colors | Possibly |
+| **Game interior** — the play surface | `--game-table`, `--game-rack`, `--game-rack-ink`, `--game-rack-border`, `--game-accent`, `--game-accent-ink`, `--game-concealed`, `--game-concealed-ink`, the game's own object colors (see below), and the five seat colors | Possibly |
 
 The game layer defaults to Cabinet's values, so today the product is visually uniform. A second title overrides only the game layer, scoped to `[data-game="<slug>"]` on the table wrapper. If the brand answer turns out to be total uniformity, the layer simply never gets overridden and costs nothing.
 
 **Rule:** buttons, toasts, modals, lobby, and navigation always use platform tokens. Only the board, rack, pieces, and seat colors may use game tokens. A game may not restyle a dialog.
+
+**Game object colors (added 2026-08-02, Caroline's ruling).** A game whose rules are *spoken in colour* — "cut the yellow wire" — owns tokens for those objects: for this game, `--wire-blue`, `--wire-yellow`, `--wire-red`. Earlier revisions declared the game-interior inventory closed to table/rack/accent/seat colors, which forced rule-bearing object colors to borrow seat tokens. That coupling is the defect: `Wire.tsx` mapped a yellow wire to `--p3`, so a wire could not be re-tinted without re-tinting seat 3, and the "yellow means yours" rack collision (#245) could not be resolved without moving both at once.
+
+**Test for whether an object earns its own token:** the rules refer to it by colour, and a player can be *wrong* about it. Wires qualify; a rack tint does not.
+
+**Constraint that survives the split:** object colors must stay distinguishable from the seat palette, from `--game-concealed`, and from each other — colour still may not be the only signal (see *Player seats* below), and the redaction boundary (#187) means the client may not have colour data at all for a concealed piece.
 
 ### Player seats
 
