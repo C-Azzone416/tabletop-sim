@@ -17,13 +17,21 @@ import { broadcastGameState } from './ws/state-broadcaster.js';
 export async function buildApp() {
   // #82 — wire value/colour must never reach a log line, even by accident:
   // the whole game mechanic is hidden information (#187), and a log is just
-  // another place the server can disclose state it isn't supposed to. These
-  // paths scrub at the logger regardless of what a future log call includes,
-  // rather than relying on every author remembering not to log them.
+  // another place the server can disclose state it isn't supposed to. Pino
+  // redact paths match exact depth, not arbitrary nesting, so this covers
+  // these field names at the top level and one level of nesting (e.g. a
+  // future `log.info({ result: { value } })`) — it is not a blanket
+  // guarantee against every possible shape. Authors still need to not log
+  // full wire/candidate objects; this is a backstop for the common cases,
+  // not a substitute for that discipline.
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
-      redact: ['req.url', 'value', 'color', 'guessedValue', 'wireValue', 'wireColor'],
+      redact: [
+        'req.url',
+        'value', 'color', 'guessedValue', 'wireValue', 'wireColor',
+        '*.value', '*.color', '*.guessedValue', '*.wireValue', '*.wireColor',
+      ],
     },
   });
 
