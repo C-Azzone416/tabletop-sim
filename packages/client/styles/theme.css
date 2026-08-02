@@ -26,8 +26,14 @@
    1. RUNTIME VALUES
    Plain custom properties so they can flip at runtime. @theme inline below
    points the utilities at these, so a single class on <html> reskins the app.
+
+   Both this block and the DARK block below live in @layer base: unlayered
+   CSS always beats layered CSS regardless of media-query match or source
+   order, so if only one side were layered its declarations could never win
+   the cascade against the other.
    ------------------------------------------------------------------------- */
 
+@layer base {
 :root {
   color-scheme: light dark;
 
@@ -96,6 +102,7 @@
   --p3: #FFC53D; --p3-ink: #10233F;
   --p4: #2E9E5B; --p4-ink: #FFFFFF;
   --p5: #7B4CC4; --p5-ink: #FFFFFF;
+}
 }
 
 /*
