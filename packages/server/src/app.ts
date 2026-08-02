@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
@@ -29,6 +30,19 @@ function getProfileAllowlist(): Set<string> | null {
   if (!raw) return null;
   const names = raw.split(',').map(n => n.trim().toLowerCase()).filter(Boolean);
   return names.length > 0 ? new Set(names) : null;
+}
+
+// #259 — weasel's FINAL review of #252 flagged the naive `===` secret
+// comparison as timing-leaky (short-circuits on the first differing byte).
+// Hashing both sides to a fixed-size SHA-256 digest before comparing means
+// timingSafeEqual is always called on two equal-length (32-byte) buffers —
+// no length guard is needed at all, so there's nothing left to leak: unlike
+// comparing the raw strings, this reveals nothing about the candidate's
+// length OR content, only ever "matches" or "doesn't."
+function secretsMatch(candidate: string, expected: string): boolean {
+  const candidateDigest = createHash('sha256').update(candidate).digest();
+  const expectedDigest = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(candidateDigest, expectedDigest);
 }
 
 export async function buildApp() {
@@ -102,7 +116,7 @@ export async function buildApp() {
     const headerKey = request.headers['x-api-key'];
     const queryKey = (request.query as Record<string, unknown> | undefined)?.apiKey;
     const provided = typeof headerKey === 'string' ? headerKey : typeof queryKey === 'string' ? queryKey : null;
-    if (provided !== apiAccessKey) {
+    if (provided === null || !secretsMatch(provided, apiAccessKey)) {
       return reply.status(401).send({ error: 'Unauthorized' });
     }
   });
