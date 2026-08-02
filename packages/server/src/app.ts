@@ -15,7 +15,17 @@ import { authenticateUpgrade, authenticateProfile } from './ws/auth.js';
 import { broadcastGameState } from './ws/state-broadcaster.js';
 
 export async function buildApp() {
-  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.url'] } });
+  // #82 — wire value/colour must never reach a log line, even by accident:
+  // the whole game mechanic is hidden information (#187), and a log is just
+  // another place the server can disclose state it isn't supposed to. These
+  // paths scrub at the logger regardless of what a future log call includes,
+  // rather than relying on every author remembering not to log them.
+  const app = Fastify({
+    logger: {
+      level: process.env.LOG_LEVEL ?? 'info',
+      redact: ['req.url', 'value', 'color', 'guessedValue', 'wireValue', 'wireColor'],
+    },
+  });
 
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
@@ -191,6 +201,7 @@ export async function buildApp() {
           const game = await gamesDb.getGameById(player.gameId);
           if (game) {
             registerConnection(socket, player.id, game.id);
+            app.log.info({ gameId: game.id, playerId: player.id }, '[WS /ws] player reconnected');
             const players = await playersDb.getPlayersByGameId(game.id);
             await broadcastGameState(game.id, game, players);
           }
