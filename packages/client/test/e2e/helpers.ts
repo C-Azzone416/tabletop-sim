@@ -61,29 +61,55 @@ export async function seedGame(
 
 /**
  * Seeds an active game positioned one correct solo cut from victory (server
- * PR #128's /dev/seed-near-win): finds a matching non-red hidden wire pair,
- * reassigns both to Dev, cuts every other hidden wire, and hands Dev the
- * turn. Lets checklist item 7 (mission win) be driven by a single real
- * solo_cut instead of an unverified multi-identity turn-ordered solver.
+ * PR #128's /dev/seed-near-win): finds a matching hidden wire pair in scope,
+ * reassigns it to Dev, cuts every other hidden wire, and hands Dev the turn.
+ * Lets checklist item 7 (mission win) be driven by a single real solo_cut
+ * instead of an unverified multi-identity turn-ordered solver.
+ *
+ * #256/#253 item 4: pass `{ color: "yellow" }` to position a colour-scoped
+ * near-win instead of the default value-matched blue pair. `mission` is
+ * left off the request entirely when unset (not defaulted to 1 here) so the
+ * server's own yellow-aware default (mission 3, the first with any yellow
+ * wires) applies — sending `mission: 1` alongside `color: "yellow"` would
+ * always fail, since mission 1 has none.
  */
-export async function seedNearWinGame(mission = 1): Promise<SeedResult> {
+export async function seedNearWinGame(
+  mission?: number,
+  options: { color?: "blue" | "yellow" } = {},
+): Promise<SeedResult> {
   const ctx = await request.newContext({ baseURL: API_URL });
-  const res = await ctx.post("/dev/seed-near-win", { data: { mission } });
+  const data: Record<string, unknown> = {};
+  if (mission !== undefined) data.mission = mission;
+  if (options.color) data.color = options.color;
+  const res = await ctx.post("/dev/seed-near-win", { data });
   if (!res.ok()) throw new Error(`Seed-near-win failed: ${res.status()}`);
   return res.json();
 }
 
 /**
- * Seeds an active game where Dev deterministically holds all 4 copies of
- * one value (server PR /dev/seed-solo-cut-legal, #165) — the only way a
- * solo cut is legal per #150's hold-all-remaining rule. Mission 1 splits
- * each value's 4 copies across 4 players, so a random /dev/seed deal gives
- * this by chance with <1% probability; this replaces the old 5-attempt
- * retry+skip loop that mostly skipped instead of exercising the scenario.
+ * Seeds an active game where Dev deterministically holds every wire in a
+ * legal solo-cut scope (server PR /dev/seed-solo-cut-legal, #165) — the
+ * only way a solo cut is legal per #150's hold-all-remaining rule. Mission
+ * 1 splits each value's 4 copies across 4 players, so a random /dev/seed
+ * deal gives this by chance with <1% probability; this replaces the old
+ * 5-attempt retry+skip loop that mostly skipped instead of exercising the
+ * scenario.
+ *
+ * #256/#253 item 2: pass `{ color: "yellow" }` for the colour-scoped
+ * variant — Dev ends up holding every hidden yellow wire in the game
+ * (any values), matching #190 Phase B's "must hold all remaining hidden
+ * yellow" legality rather than a value match. Same mission-default note as
+ * seedNearWinGame above.
  */
-export async function seedSoloCutLegalGame(mission = 1): Promise<SoloCutLegalSeedResult> {
+export async function seedSoloCutLegalGame(
+  mission?: number,
+  options: { color?: "blue" | "yellow" } = {},
+): Promise<SoloCutLegalSeedResult> {
   const ctx = await request.newContext({ baseURL: API_URL });
-  const res = await ctx.post("/dev/seed-solo-cut-legal", { data: { mission } });
+  const data: Record<string, unknown> = {};
+  if (mission !== undefined) data.mission = mission;
+  if (options.color) data.color = options.color;
+  const res = await ctx.post("/dev/seed-solo-cut-legal", { data });
   if (!res.ok()) throw new Error(`Seed-solo-cut-legal failed: ${res.status()}`);
   return res.json();
 }

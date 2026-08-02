@@ -208,3 +208,19 @@ test("continue playing: captain wins then starts the next mission, same join cod
     await cleanupGame(seed.joinCode);
   }
 });
+
+// ── Test: Mission win via a yellow colour-scoped solo-cut (BLOCKED) ────────
+//
+// #253 gap-list item 4: a winning cut that's a yellow colour-scoped
+// solo-cut (mission 5-8), confirming checkWinCondition correctly counts a
+// colour-scoped cut set toward "all wires cut" — not just a value-matched
+// blue pair. #256 added `seedNearWinGame(mission, { color: "yellow" })`
+// server-side for exactly this. It's still unreachable through the real
+// UI: same root cause as wire-cutting.spec.ts's skipped yellow solo-cut
+// test (#265) — GameBoard.tsx's solo-cut selection only recognizes a
+// value-matched pair and never constructs the 'YELLOW' sentinel
+// executeSoloCut needs for a colour-scoped cut, so "Confirm Solo Cut" can
+// never enable for a yellow-only selection regardless of how the game was
+// seeded. See #265 for the full reproduction and suggested client scope.
+
+test.skip("mission win via a yellow colour-scoped solo-cut — BLOCKED on #265 (no client UI path for a colour-scoped solo cut)", () => {});
