@@ -847,6 +847,65 @@ describe("routes", () => {
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Seed failed" });
     });
+
+    // #256 — yellow is colour-scoped (#190 Phase B): any hidden yellow
+    // wire(s), not a value match, and legal even with just one (today's
+    // placeholder count).
+    it("with color: 'yellow', reassigns a hidden yellow wire to Dev, cuts everything else, defaults mission to 3", async () => {
+      const { devPlayer } = setUpSeedMocks();
+
+      const yellowWire = makeWire({ id: "w1", playerId: "p2", color: "yellow", value: "11.1", status: "hidden" });
+      const blueWire = makeWire({ id: "w2", playerId: "p2", color: "blue", value: "3", status: "hidden" });
+      mockWiresDb.getWiresByGameId.mockResolvedValue([yellowWire, blueWire]);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([]);
+      mockWiresDb.updateWirePlayer.mockImplementation(async (id, playerId, rackPosition) =>
+        makeWire({ id, playerId, color: "yellow", value: "11.1", rackPosition, status: "hidden" }));
+      mockWiresDb.updateWireStatus.mockImplementation(async (id, status) => makeWire({ id, status }));
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-near-win", payload: { color: "yellow" } });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ nearWinValue: "YELLOW", nearWinColor: "yellow" });
+      expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 3);
+      expect(mockWiresDb.updateWirePlayer).toHaveBeenCalledTimes(1);
+      expect(mockWiresDb.updateWirePlayer).toHaveBeenCalledWith("w1", "p1", expect.any(Number));
+      expect(mockWiresDb.updateWireStatus).toHaveBeenCalledWith("w2", "cut");
+      expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", devPlayer.id);
+    });
+
+    it("with color: 'yellow' and an explicit mission, uses that mission instead of the yellow default", async () => {
+      setUpSeedMocks();
+      mockWiresDb.getWiresByGameId.mockResolvedValue([
+        makeWire({ id: "w1", playerId: "p2", color: "yellow", value: "11.1", status: "hidden" }),
+      ]);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([]);
+      mockWiresDb.updateWirePlayer.mockImplementation(async (id, playerId, rackPosition) =>
+        makeWire({ id, playerId, color: "yellow", value: "11.1", rackPosition, status: "hidden" }));
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-near-win", payload: { color: "yellow", mission: 6 } });
+
+      expect(res.statusCode).toBe(200);
+      expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 6);
+    });
+
+    it("returns 500 with color: 'yellow' when no hidden yellow wire exists", async () => {
+      setUpSeedMocks();
+      mockWiresDb.getWiresByGameId.mockResolvedValue([
+        makeWire({ id: "w1", playerId: "p2", color: "blue", value: "3", status: "hidden" }),
+      ]);
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-near-win", payload: { color: "yellow" } });
+
+      expect(res.statusCode).toBe(500);
+      expect(mockWiresDb.updateWirePlayer).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 for an invalid color", async () => {
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-near-win", payload: { color: "purple" } });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: "color must be 'blue' or 'yellow'" });
+    });
   });
 
   describe("POST /dev/seed-solo-cut-legal", () => {
@@ -970,6 +1029,63 @@ describe("routes", () => {
       const res = await seedApp.inject({ method: "POST", url: "/dev/seed-solo-cut-legal" });
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Seed failed" });
+    });
+
+    // #256 — colour-scoped legality: reassigns every hidden yellow wire
+    // (not a value match) to Dev, regardless of how many exist.
+    it("with color: 'yellow', reassigns every hidden yellow wire to Dev and defaults mission to 3", async () => {
+      setUpSeedMocks();
+      const yellowA = makeWire({ id: "w1", playerId: "p2", color: "yellow", value: "11.1", status: "hidden" });
+      const yellowB = makeWire({ id: "w2", playerId: "p2", color: "yellow", value: "5.5", status: "hidden" });
+      const blueWire = makeWire({ id: "w3", playerId: "p1", color: "blue", value: "3", status: "hidden" });
+      mockWiresDb.getWiresByGameId.mockResolvedValue([yellowA, yellowB, blueWire]);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([]);
+      mockWiresDb.updateWirePlayer.mockImplementation(async (id, playerId, rackPosition) =>
+        makeWire({ id, playerId, color: "yellow", rackPosition, status: "hidden" }));
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-solo-cut-legal", payload: { color: "yellow" } });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ soloCutValue: "YELLOW", soloCutColor: "yellow" });
+      expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 3);
+      expect(mockWiresDb.updateWirePlayer).toHaveBeenCalledTimes(2);
+      expect(mockWiresDb.updateWirePlayer).toHaveBeenCalledWith("w1", "p1", expect.any(Number));
+      expect(mockWiresDb.updateWirePlayer).toHaveBeenCalledWith("w2", "p1", expect.any(Number));
+      expect(mockWiresDb.updateWirePlayer).not.toHaveBeenCalledWith("w3", expect.anything(), expect.anything());
+    });
+
+    it("with color: 'yellow' and an explicit mission, uses that mission instead of the yellow default", async () => {
+      setUpSeedMocks();
+      mockWiresDb.getWiresByGameId.mockResolvedValue([
+        makeWire({ id: "w1", playerId: "p2", color: "yellow", value: "11.1", status: "hidden" }),
+      ]);
+      mockWiresDb.getWiresByPlayerId.mockResolvedValue([]);
+      mockWiresDb.updateWirePlayer.mockImplementation(async (id, playerId, rackPosition) =>
+        makeWire({ id, playerId, color: "yellow", rackPosition, status: "hidden" }));
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-solo-cut-legal", payload: { color: "yellow", mission: 6 } });
+
+      expect(res.statusCode).toBe(200);
+      expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p1", 6);
+    });
+
+    it("returns 500 with color: 'yellow' when no hidden yellow wire exists", async () => {
+      setUpSeedMocks();
+      mockWiresDb.getWiresByGameId.mockResolvedValue([
+        makeWire({ id: "w1", playerId: "p2", color: "blue", value: "3", status: "hidden" }),
+      ]);
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-solo-cut-legal", payload: { color: "yellow" } });
+
+      expect(res.statusCode).toBe(500);
+      expect(mockWiresDb.updateWirePlayer).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 for an invalid color", async () => {
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed-solo-cut-legal", payload: { color: "purple" } });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: "color must be 'blue' or 'yellow'" });
     });
   });
 
