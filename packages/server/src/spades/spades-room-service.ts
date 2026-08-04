@@ -29,13 +29,14 @@ async function inRoomQueue<T>(gameId: string, work: () => Promise<T>): Promise<T
   const previous = roomQueues.get(gameId) ?? Promise.resolve();
   let release!: () => void;
   const current = new Promise<void>((resolve) => { release = resolve; });
-  roomQueues.set(gameId, previous.then(() => current));
+  const tail = previous.then(() => current);
+  roomQueues.set(gameId, tail);
   await previous;
   try {
     return await work();
   } finally {
     release();
-    if (roomQueues.get(gameId) === current) roomQueues.delete(gameId);
+    if (roomQueues.get(gameId) === tail) roomQueues.delete(gameId);
   }
 }
 
