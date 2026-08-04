@@ -1,4 +1,4 @@
-import type { CardInstance, StandardSuit } from '../cards/card-engine';
+import type { CardInstance, StandardSuit } from '../cards/card-engine.js';
 
 export const SPADES_SEATS = ['north', 'east', 'south', 'west'] as const;
 export type SpadesSeat = (typeof SPADES_SEATS)[number];
@@ -92,6 +92,7 @@ export interface SpadesGameState {
   readonly blindNilChoices: PartialSeatMap<boolean>;
   readonly bids: PartialSeatMap<SpadesBid>;
   readonly currentTrick: TrickState;
+  readonly completedTricks: readonly CompletedTrick[];
   readonly tricksWon: SeatMap<number>;
   readonly scores: Record<SpadesTeam, TeamScore>;
   readonly spadesBroken: boolean;
@@ -117,6 +118,7 @@ export interface SpadesPlayerView {
   readonly blindNilChoicesMade: number;
   readonly bids: PartialSeatMap<SpadesBid>;
   readonly currentTrick: TrickState;
+  readonly completedTricks: readonly CompletedTrick[];
   readonly tricksWon: SeatMap<number>;
   readonly scores: Record<SpadesTeam, TeamScore>;
   readonly spadesBroken: boolean;
