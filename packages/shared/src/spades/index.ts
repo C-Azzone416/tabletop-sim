@@ -5,3 +5,4 @@ export * from './names.js';
 export * from './bots.js';
 export * from './seating.js';
 export * from './game.js';
+export * from './bot-runner.js';
