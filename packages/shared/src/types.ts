@@ -1,4 +1,4 @@
-import type { BotDifficulty, SpadesBid, SpadesPlayerView, SpadesSeat, TargetScore } from './spades/types.js';
+import type { BotDifficulty, SpadesBid, SpadesPlayerView, SpadesSeat, TargetScore } from './spades/types';
 
 // Game state types
 
