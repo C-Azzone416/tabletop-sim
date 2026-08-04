@@ -72,6 +72,19 @@ the host starts the game. Every seat receives 13 cards.
 5. Round scoring
 6. New round or final result
 
+### Winning score options
+
+The host chooses the target score before starting the game:
+
+| Game length | Target score | Purpose |
+| --- | ---: | --- |
+| Quick Game | 250 | Shorter session |
+| Standard Game | 500 | Default Spades game |
+| Long Game | 750 | Extended session |
+
+The selected target score is part of the Spades game configuration. It does
+not change the deck, deal, partnerships, or per-round scoring rules.
+
 ### Planned Spades rule layer
 
 The Spades engine will own:
@@ -107,7 +120,6 @@ this branch. Caroline's `main` branch is not part of this work.
 
 Before Spades scoring is implemented, settle:
 
-- target score
 - bag penalty threshold
 - nil value and failed-nil penalty
 - whether blind nil is included
