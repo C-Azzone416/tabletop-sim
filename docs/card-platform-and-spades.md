@@ -63,6 +63,18 @@ Seats and partnerships:
 The lobby accepts one to four humans. Empty seats are filled by bots when
 the host starts the game. Every seat receives 13 cards.
 
+### Bot and generated names
+
+Every computer-controlled player and every automatically generated guest
+identity receives a random, family-friendly first name that is similar in
+feel to the first names of characters from Disney animated movies. Names must
+be unique within the current room. Human-entered names are never replaced.
+
+The curated name pool uses original or common first-name variants rather than
+full character names, titles, movie names, copied dialogue, or character
+artwork. Name generation belongs to the player/game platform and never to the
+reusable card module.
+
 ### Planned round state
 
 1. Lobby and seat assignment
