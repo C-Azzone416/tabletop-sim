@@ -1,12 +1,12 @@
-import { chooseBotBid, chooseBotBlindNil, chooseBotCard } from './bots.js';
+import { chooseBotBid, chooseBotBlindNil, chooseBotCard } from './bots';
 import {
   getLegalCardsForCurrentSeat,
   playCard,
   submitBid,
   submitBlindNilChoice,
-} from './game.js';
-import { teamForSeat } from './rules.js';
-import { SPADES_SEATS, type SpadesGameState, type SpadesSeat } from './types.js';
+} from './game';
+import { teamForSeat } from './rules';
+import { SPADES_SEATS, type SpadesGameState, type SpadesSeat } from './types';
 
 export const BOT_DELAY_MIN_MS = 600;
 export const BOT_DELAY_MAX_MS = 1200;
