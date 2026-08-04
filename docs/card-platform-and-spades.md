@@ -212,6 +212,14 @@ None of those rules will be added to the reusable card module.
 
 ## Existing platform pieces to retain
 
+### Active-game disconnects
+
+When a human disconnects during an active Spades game, play pauses immediately
+for a 60-second reconnect grace period. Returning with the same player identity
+during that window cancels the pending takeover and resumes play. If the full
+window expires, a bot takes control of that seat so the remaining table can
+continue. Multiple disconnected humans receive independent deadlines.
+
 The current repository already provides useful game-platform infrastructure:
 
 - player profiles
