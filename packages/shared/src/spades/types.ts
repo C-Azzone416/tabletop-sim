@@ -92,7 +92,8 @@ export interface SpadesGameState {
   readonly blindNilChoices: PartialSeatMap<boolean>;
   readonly bids: PartialSeatMap<SpadesBid>;
   readonly currentTrick: TrickState;
-  readonly completedTricks: readonly CompletedTrick[];
+  /** Optional for compatibility with games saved before book history was added. */
+  readonly completedTricks?: readonly CompletedTrick[];
   readonly tricksWon: SeatMap<number>;
   readonly scores: Record<SpadesTeam, TeamScore>;
   readonly spadesBroken: boolean;
@@ -118,7 +119,7 @@ export interface SpadesPlayerView {
   readonly blindNilChoicesMade: number;
   readonly bids: PartialSeatMap<SpadesBid>;
   readonly currentTrick: TrickState;
-  readonly completedTricks: readonly CompletedTrick[];
+  readonly completedTricks?: readonly CompletedTrick[];
   readonly tricksWon: SeatMap<number>;
   readonly scores: Record<SpadesTeam, TeamScore>;
   readonly spadesBroken: boolean;
