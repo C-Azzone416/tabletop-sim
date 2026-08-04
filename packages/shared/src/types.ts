@@ -1,5 +1,6 @@
 // Game state types
 
+export type GameType = 'wire-game' | 'spades';
 export type GameStatus = 'waiting' | 'setup' | 'active' | 'won' | 'lost';
 export type WireColor = 'blue' | 'yellow' | 'red';
 export type WireStatus = 'hidden' | 'cut' | 'revealed';
@@ -8,6 +9,7 @@ export type TurnResult = 'success' | 'fail' | 'explosion';
 
 export interface Game {
   id: string;
+  gameType: GameType;
   mission: number;
   status: GameStatus;
   captainId: string | null;
@@ -82,7 +84,7 @@ export interface Turn {
 // WebSocket message types
 
 export type ClientMessage =
-  | { type: 'create_game'; playerName: string }
+  | { type: 'create_game'; playerName: string; gameType: GameType }
   | { type: 'join_game'; joinCode: string; playerName: string }
   | { type: 'start_game'; mission?: number }
   | { type: 'place_info_token'; wireId: string }
