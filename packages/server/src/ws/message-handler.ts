@@ -30,9 +30,16 @@ function validateMessage(parsed: unknown): ClientMessage | null {
   const msg = parsed as Record<string, unknown>;
 
   switch (msg.type) {
-    case 'create_game':
+    case 'create_game': {
       if (!isValidName(msg.playerName)) return null;
-      return { type: 'create_game', playerName: msg.playerName };
+      const gameType = msg.gameType === 'spades' || msg.gameType === 'wire-game'
+        ? msg.gameType
+        : msg.gameType === undefined
+          ? 'wire-game'
+          : null;
+      if (!gameType) return null;
+      return { type: 'create_game', playerName: msg.playerName, gameType };
+    }
     case 'join_game':
       if (!isNonEmptyString(msg.joinCode) || !isValidName(msg.playerName)) return null;
       return { type: 'join_game', joinCode: msg.joinCode, playerName: msg.playerName };
@@ -109,7 +116,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
   try {
     switch (msg.type) {
       case 'create_game':
-        await handleCreateGame(socket, msg.playerName);
+        await handleCreateGame(socket, msg.playerName, msg.gameType);
         break;
       case 'join_game':
         await handleJoinGame(socket, msg.joinCode, msg.playerName);
@@ -179,9 +186,16 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
   }
 }
 
-async function handleCreateGame(socket: WebSocket, _playerName: string): Promise<void> {
+async function handleCreateGame(
+  socket: WebSocket,
+  _playerName: string,
+  gameType: 'wire-game' | 'spades',
+): Promise<void> {
   const user = getAuthenticatedUser(socket);
-  const { game, player } = await withTimeout(engine.createGame(user.name, user.profileId), 'createGame');
+  const { game, player } = await withTimeout(
+    engine.createGame(user.name, user.profileId, gameType),
+    'createGame',
+  );
   connManager.registerConnection(socket, player.id, game.id);
 
   const response: ServerMessage = { type: 'game_created', game, player };
