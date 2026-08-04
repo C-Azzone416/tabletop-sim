@@ -85,6 +85,21 @@ The host chooses the target score before starting the game:
 The selected target score is part of the Spades game configuration. It does
 not change the deck, deal, partnerships, or per-round scoring rules.
 
+### Nil and blind nil
+
+Both nil and blind nil are included in Spades v1:
+
+| Bid | Success | Failure |
+| --- | ---: | ---: |
+| Nil | +100 | -100 |
+| Blind nil | +200 | -200 |
+
+A nil bidder is trying to take zero tricks. A blind-nil bid must be declared
+before that player views their hand. The bidder's partner still makes a normal
+bid. Nil bonuses and penalties are added to the partnership's ordinary hand
+score; tricks taken by a failed nil bidder still count toward the partnership's
+trick total and may create bags.
+
 ### Planned Spades rule layer
 
 The Spades engine will own:
@@ -121,8 +136,6 @@ this branch. Caroline's `main` branch is not part of this work.
 Before Spades scoring is implemented, settle:
 
 - bag penalty threshold
-- nil value and failed-nil penalty
-- whether blind nil is included
 - whether sandbagging or special house rules are enabled
 - bot difficulty levels
 - whether players choose seats or are assigned automatically
