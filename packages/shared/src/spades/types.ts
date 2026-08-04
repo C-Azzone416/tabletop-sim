@@ -5,6 +5,7 @@ export type SpadesSeat = (typeof SPADES_SEATS)[number];
 export type SpadesTeam = 'north-south' | 'east-west';
 export type BotDifficulty = 'easy' | 'normal' | 'hard';
 export type TargetScore = 250 | 500 | 750;
+export type SpadesPhase = 'blind-nil' | 'bidding' | 'playing' | 'finished';
 
 export type SpadesBid =
   | { readonly kind: 'normal'; readonly tricks: number }
@@ -74,6 +75,52 @@ export interface SeatedSpadesPlayer extends HumanLobbyPlayer {
   readonly team: SpadesTeam;
   readonly isBot: boolean;
   readonly difficulty?: BotDifficulty;
+}
+
+export type SeatMap<T> = Record<SpadesSeat, T>;
+export type PartialSeatMap<T> = Partial<Record<SpadesSeat, T>>;
+
+export interface SpadesGameState {
+  readonly phase: SpadesPhase;
+  readonly targetScore: TargetScore;
+  readonly handNumber: number;
+  readonly players: readonly SeatedSpadesPlayer[];
+  readonly dealer: SpadesSeat;
+  readonly currentSeat: SpadesSeat | null;
+  readonly handsRevealed: boolean;
+  readonly hands: SeatMap<readonly CardInstance[]>;
+  readonly blindNilChoices: PartialSeatMap<boolean>;
+  readonly bids: PartialSeatMap<SpadesBid>;
+  readonly currentTrick: TrickState;
+  readonly tricksWon: SeatMap<number>;
+  readonly scores: Record<SpadesTeam, TeamScore>;
+  readonly spadesBroken: boolean;
+  readonly winner: SpadesTeam | null;
+}
+
+export interface StartSpadesGameOptions {
+  readonly humans: readonly HumanLobbyPlayer[];
+  readonly botDifficulties?: readonly BotDifficulty[];
+  readonly targetScore: TargetScore;
+  readonly random?: () => number;
+}
+
+export interface SpadesPlayerView {
+  readonly phase: SpadesPhase;
+  readonly targetScore: TargetScore;
+  readonly handNumber: number;
+  readonly players: readonly SeatedSpadesPlayer[];
+  readonly dealer: SpadesSeat;
+  readonly currentSeat: SpadesSeat | null;
+  readonly hand: readonly CardInstance[];
+  readonly opponentHandCounts: Readonly<Record<SpadesSeat, number>>;
+  readonly blindNilChoicesMade: number;
+  readonly bids: PartialSeatMap<SpadesBid>;
+  readonly currentTrick: TrickState;
+  readonly tricksWon: SeatMap<number>;
+  readonly scores: Record<SpadesTeam, TeamScore>;
+  readonly spadesBroken: boolean;
+  readonly winner: SpadesTeam | null;
 }
 
 export interface LegalPlayResult {
