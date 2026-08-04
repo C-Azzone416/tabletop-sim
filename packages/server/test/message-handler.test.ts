@@ -119,6 +119,16 @@ describe("message-handler", () => {
       expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
     });
 
+    it("rejects an unknown game type", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({
+        type: "create_game",
+        playerName: "Alice",
+        gameType: "chess",
+      }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+    });
+
     it("rejects join_game with missing joinCode", async () => {
       const ws = mockSocket();
       await handleMessage(ws, JSON.stringify({ type: "join_game", playerName: "Bob" }));
@@ -181,6 +191,23 @@ describe("message-handler", () => {
   });
 
   describe("create_game", () => {
+    it("passes a selected Spades room type to the engine", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", captainId: "p1", gameType: "spades" });
+      const player = makePlayer({ id: "p1", name: "Alice" });
+
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+      mockEngine.createGame.mockResolvedValue({ game, player });
+
+      await handleMessage(ws, JSON.stringify({
+        type: "create_game",
+        playerName: "Alice",
+        gameType: "spades",
+      }));
+
+      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "prof-1", "spades");
+    });
+
     it("creates a game and sends game_created response", async () => {
       const ws = mockSocket();
       const game = makeGame({ id: "g1", captainId: "p1" });
@@ -191,7 +218,7 @@ describe("message-handler", () => {
 
       await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice" }));
 
-      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "prof-1");
+      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "prof-1", "wire-game");
       expect(mockConnManager.registerConnection).toHaveBeenCalledWith(ws, "p1", "g1");
       const sent = lastSent(ws) as { type: string; game: unknown; player: unknown };
       expect(sent.type).toBe("game_created");
