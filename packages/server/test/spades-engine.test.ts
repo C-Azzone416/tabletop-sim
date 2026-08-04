@@ -8,17 +8,23 @@ import {
 } from '@tabletop/shared';
 import {
   assignSpadesSeats,
+  buildSpadesPlayerView,
   chooseBotBid,
   chooseBotBlindNil,
   chooseBotCard,
   determineWinner,
   generateThemedNames,
+  getLegalCardsForCurrentSeat,
   getLegalPlays,
   isValidBid,
   nextSeat,
   playBreaksSpades,
   resolveTrick,
   scoreHand,
+  startSpadesGame,
+  submitBid,
+  submitBlindNilChoice,
+  playCard,
   teamForSeat,
   validatePlay,
   type SpadesBid,
@@ -100,6 +106,7 @@ describe('legal card play', () => {
     const empty = { leader: 'north' as const, plays: [] };
     expect(validatePlay([spade, heart], spade, empty, false)).toEqual({ legal: false, reason: 'spades-not-broken' });
     expect(validatePlay([spade], spade, empty, false)).toEqual({ legal: true });
+    expect(playBreaksSpades({ seat: 'north', card: spade }, empty)).toBe(true);
   });
 });
 
@@ -258,5 +265,66 @@ describe('bot and name foundations', () => {
     expect(new Set(seated.map((player) => player.seat)).size).toBe(4);
     expect(seated.filter((player) => player.isBot).map((player) => player.difficulty).sort()).toEqual(['easy', 'hard', 'normal']);
     expect(seated.find((player) => player.id === 'human:ben')?.difficulty).toBeUndefined();
+  });
+});
+
+describe('headless game state machine', () => {
+  const start = () => startSpadesGame({
+    humans: [{ id: 'human:ben', name: 'Ben' }],
+    botDifficulties: ['easy', 'normal', 'hard'],
+    targetScore: 250,
+    random: () => 0.25,
+  });
+
+  it('keeps every hand private until all blind-nil choices are locked', () => {
+    let state = start();
+    expect(state.phase).toBe('blind-nil');
+    expect(buildSpadesPlayerView(state, 'north').hand).toEqual([]);
+    state = submitBlindNilChoice(state, 'north', true);
+    expect(state.phase).toBe('blind-nil');
+    expect(buildSpadesPlayerView(state, 'east').bids).toEqual({});
+    state = submitBlindNilChoice(state, 'east', false);
+    state = submitBlindNilChoice(state, 'south', false);
+    state = submitBlindNilChoice(state, 'west', false);
+    expect(state.phase).toBe('bidding');
+    expect(state.bids.north).toEqual({ kind: 'blind-nil' });
+    expect(buildSpadesPlayerView(state, 'north').hand).toHaveLength(13);
+    expect(buildSpadesPlayerView(state, 'north').opponentHandCounts.east).toBe(13);
+  });
+
+  it('transitions from private choices through clockwise bidding into play', () => {
+    let state = start();
+    for (const seat of ['north', 'east', 'south', 'west'] as const) {
+      state = submitBlindNilChoice(state, seat, false);
+    }
+    expect(state.phase).toBe('bidding');
+    for (let index = 0; index < 4; index += 1) {
+      const seat = state.currentSeat!;
+      state = submitBid(state, seat, { kind: 'normal', tricks: 2 });
+    }
+    expect(state.phase).toBe('playing');
+    expect(state.currentSeat).toBe(state.currentTrick.leader);
+    expect(getLegalCardsForCurrentSeat(state).length).toBeGreaterThan(0);
+  });
+
+  it('plays and scores a complete hand without exposing illegal choices', () => {
+    let state = start();
+    for (const seat of ['north', 'east', 'south', 'west'] as const) {
+      state = submitBlindNilChoice(state, seat, false);
+    }
+    while (state.phase === 'bidding') {
+      state = submitBid(state, state.currentSeat!, { kind: 'normal', tricks: 1 });
+    }
+    const startingHandNumber = state.handNumber;
+    let plays = 0;
+    while (state.phase === 'playing' && plays < 52) {
+      const legal = getLegalCardsForCurrentSeat(state);
+      expect(legal.length).toBeGreaterThan(0);
+      state = playCard(state, state.currentSeat!, legal[0]!.id, () => 0.75);
+      plays += 1;
+    }
+    expect(plays).toBe(52);
+    expect(state.handNumber === startingHandNumber + 1 || state.phase === 'finished').toBe(true);
+    expect(state.scores['north-south'].score !== 0 || state.scores['east-west'].score !== 0).toBe(true);
   });
 });
