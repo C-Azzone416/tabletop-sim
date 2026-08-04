@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { GameSelector } from '../client/app/components/GameSelector';
+import { GameSelector } from '../app/components/GameSelector';
 
 describe('GameSelector', () => {
   it('keeps both games available and marks the selected game', () => {
