@@ -83,7 +83,7 @@ export function getLegalPlays(
 
 export function playBreaksSpades(play: TrickPlay, trick: TrickState): boolean {
   const leadSuit = trick.plays[0]?.card.suit;
-  return play.card.suit === 'spades' && leadSuit !== undefined && leadSuit !== 'spades';
+  return play.card.suit === 'spades' && leadSuit !== 'spades';
 }
 
 function beats(
