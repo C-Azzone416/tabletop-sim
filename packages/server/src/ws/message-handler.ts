@@ -5,6 +5,7 @@ import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
 import * as connManager from './connection-manager.js';
 import { broadcastGameState, buildPlayerView } from './state-broadcaster.js';
+import { applyOnlineSpadesAction, startOnlineSpades } from '../spades/spades-room-service.js';
 
 type ActionLogger = { info: (data: object) => void };
 type ActionResult = 'success' | 'fail' | 'explosion' | 'won';
@@ -50,6 +51,30 @@ function validateMessage(parsed: unknown): ClientMessage | null {
       }
       return { type: 'start_game', mission: mission ?? 1 };
     }
+    case 'start_spades': {
+      if (msg.targetScore !== 250 && msg.targetScore !== 500 && msg.targetScore !== 750) return null;
+      if (!Array.isArray(msg.botDifficulties) || !msg.botDifficulties.every(
+        (difficulty) => difficulty === 'easy' || difficulty === 'normal' || difficulty === 'hard'
+      )) return null;
+      return { type: 'start_spades', targetScore: msg.targetScore, botDifficulties: msg.botDifficulties };
+    }
+    case 'spades_blind_nil':
+      if (typeof msg.blindNil !== 'boolean') return null;
+      return { type: 'spades_blind_nil', blindNil: msg.blindNil };
+    case 'spades_bid': {
+      const bid = msg.bid as Record<string, unknown> | undefined;
+      if (!bid || (bid.kind !== 'nil' && bid.kind !== 'normal')) return null;
+      if (bid.kind === 'normal' && (
+        typeof bid.tricks !== 'number' || !Number.isInteger(bid.tricks) || bid.tricks < 1 || bid.tricks > 13
+      )) return null;
+      return {
+        type: 'spades_bid',
+        bid: bid.kind === 'nil' ? { kind: 'nil' } : { kind: 'normal', tricks: bid.tricks as number },
+      };
+    }
+    case 'spades_play':
+      if (!isNonEmptyString(msg.cardId)) return null;
+      return { type: 'spades_play', cardId: msg.cardId };
     case 'place_info_token':
       if (!isNonEmptyString(msg.wireId)) return null;
       return { type: 'place_info_token', wireId: msg.wireId };
@@ -124,6 +149,33 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       case 'start_game':
         await handleStartGame(socket, msg.mission ?? 1);
         break;
+      case 'start_spades': {
+        const info = connManager.getConnectionInfo(socket);
+        if (!info) throw new Error('Not connected to a game');
+        await startOnlineSpades(info.gameId, info.playerId, msg.targetScore, msg.botDifficulties);
+        break;
+      }
+      case 'spades_blind_nil': {
+        const info = connManager.getConnectionInfo(socket);
+        if (!info) throw new Error('Not connected to a game');
+        await applyOnlineSpadesAction(info.gameId, info.playerId, {
+          type: 'blind-nil',
+          blindNil: msg.blindNil,
+        });
+        break;
+      }
+      case 'spades_bid': {
+        const info = connManager.getConnectionInfo(socket);
+        if (!info) throw new Error('Not connected to a game');
+        await applyOnlineSpadesAction(info.gameId, info.playerId, { type: 'bid', bid: msg.bid });
+        break;
+      }
+      case 'spades_play': {
+        const info = connManager.getConnectionInfo(socket);
+        if (!info) throw new Error('Not connected to a game');
+        await applyOnlineSpadesAction(info.gameId, info.playerId, { type: 'play', cardId: msg.cardId });
+        break;
+      }
       case 'place_info_token':
         await handlePlaceInfoToken(socket, msg.wireId);
         break;
@@ -168,7 +220,14 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Game is not active', 'Not authenticated', 'Player not found',
       'Reveal reds not available in this mission',
       'Game is not in setup phase', 'Can only place info token on your own wire', 'Info token already placed',
-      'Game is not in waiting phase',
+      'Game is not in waiting phase', 'This room is not a Spades game',
+      'Spades game has not started', 'Spades supports 1 to 4 human players',
+      'Choose one difficulty for each computer seat', 'Player is not seated in this Spades game',
+      'Game paused while a player reconnects', 'blind-nil choices are closed',
+      'blind-nil choice already locked', 'the game is not accepting bids',
+      "it is not this seat's turn to bid", 'this seat already has a bid',
+      'the game is not accepting card plays', "it is not this seat's turn to play",
+      "card is not in this seat's hand", 'card-not-in-hand', 'must-follow-suit', 'spades-not-broken',
       'Dual cut already pending', 'Cannot target your own wire with dual cut',
       'No pending dual cut', 'Not your wire to respond to',
       'Not your turn to complete dual cut', 'Target wire is not revealed',
