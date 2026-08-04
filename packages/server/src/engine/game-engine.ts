@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { MISSION_CONFIGS } from '@tabletop/shared';
-import type { Game, Player, Wire, Turn, WireColor } from '@tabletop/shared';
+import type { Game, GameType, Player, Wire, Turn, WireColor } from '@tabletop/shared';
 import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
 import * as wiresDb from '../db/wires.js';
@@ -17,9 +17,13 @@ function generateJoinCode(): string {
   return code;
 }
 
-export async function createGame(playerName: string, profileId?: string): Promise<{ game: Game; player: Player }> {
+export async function createGame(
+  playerName: string,
+  profileId?: string,
+  gameType: GameType = 'wire-game',
+): Promise<{ game: Game; player: Player }> {
   const joinCode = generateJoinCode();
-  const game = await gamesDb.createGame(joinCode);
+  const game = await gamesDb.createGame(joinCode, 1, gameType);
   const player = await playersDb.createPlayer(game.id, playerName, 0, profileId);
   const updatedGame = await gamesDb.updateGameCaptain(game.id, player.id);
   return { game: updatedGame, player };
