@@ -6,8 +6,8 @@ import {
   type SpadesTeam,
   type TargetScore,
   type TeamScore,
-} from './types.js';
-import { seatsForTeam } from './rules.js';
+} from './types';
+import { seatsForTeam } from './rules';
 
 function nilValue(bid: SpadesBid): number {
   if (bid.kind === 'nil') return 100;
