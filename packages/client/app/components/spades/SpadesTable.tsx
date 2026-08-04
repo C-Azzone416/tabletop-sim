@@ -160,6 +160,7 @@ export function SpadesTable(props: SpadesTableProps) {
       : [],
   );
   const sortedHand = sortHand(view.hand);
+  const completedTricks = view.completedTricks ?? [];
 
   return (
     <main className="min-h-screen bg-emerald-950 px-2 py-3 text-white sm:px-6 sm:py-5">
@@ -198,13 +199,13 @@ export function SpadesTable(props: SpadesTableProps) {
 
       <details aria-label="Previous books" className="mx-auto mt-4 max-w-6xl rounded-2xl border border-emerald-700 bg-emerald-900/70 px-4 py-3">
         <summary className="cursor-pointer font-semibold text-emerald-100">
-          Previous books ({view.completedTricks.length})
+          Previous books ({completedTricks.length})
         </summary>
-        {view.completedTricks.length === 0 ? (
+        {completedTricks.length === 0 ? (
           <p className="mt-3 text-sm text-emerald-300">No completed books yet.</p>
         ) : (
           <ol className="mt-3 grid gap-3 sm:grid-cols-2">
-            {view.completedTricks.map((trick, index) => {
+            {completedTricks.map((trick, index) => {
               const winner = view.players.find((player) => player.seat === trick.winner);
               return (
                 <li key={`${view.handNumber}-${index}`} className="rounded-xl bg-black/20 p-3">
