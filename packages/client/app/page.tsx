@@ -203,6 +203,16 @@ export default function Home() {
             {mode === "creating" ? "Creating..." : "Create New Game"}
           </button>
 
+          {selectedGame === "spades" && (
+            <button
+              onClick={() => router.push("/spades/hot-seat")}
+              disabled={mode !== "idle"}
+              className="w-full rounded-lg border-2 border-emerald-700 px-4 py-3 font-medium text-emerald-800 transition-colors hover:bg-emerald-50 disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-950"
+            >
+              Play Hot Seat on This Device
+            </button>
+          )}
+
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-zinc-300 dark:border-zinc-700" />
