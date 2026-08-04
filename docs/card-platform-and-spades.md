@@ -101,6 +101,11 @@ Different bots in the same room may use different difficulty levels. Normal is
 the default for every bot that the host does not configure. Difficulty changes
 decision quality only: bots never inspect hidden opponent or partner cards.
 
+Every automated blind-nil choice, bid, and card play waits for a randomized
+600–1200 millisecond pause. Consecutive bot seats advance automatically after
+their individual pauses, and the runner stops as soon as human input is needed.
+The delay is presentation pacing only and does not change decision quality.
+
 ### Responsive table layout
 
 The card table uses a responsive hybrid layout. The viewing player is always
