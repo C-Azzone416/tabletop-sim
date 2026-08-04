@@ -104,7 +104,11 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
         ...state,
         game: msg.game,
         players: msg.players,
-        localPlayer: msg.players.find((player) => player.id === state.localPlayer?.id) ?? state.localPlayer,
+        localPlayer: msg.players.find(
+          (player) => player.id === msg.view.players.find(
+            (seated) => seated.seat === msg.viewingSeat
+          )?.id
+        ) ?? state.localPlayer,
         spadesView: msg.view,
         spadesSeat: msg.viewingSeat,
         spadesPausedUntil: msg.pausedUntil ?? null,
