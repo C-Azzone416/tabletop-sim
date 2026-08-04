@@ -220,7 +220,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Game is not active', 'Not authenticated', 'Player not found',
       'Reveal reds not available in this mission',
       'Game is not in setup phase', 'Can only place info token on your own wire', 'Info token already placed',
-      'Game is not in waiting phase', 'This room is not a Spades game',
+      'Game is not in waiting phase', 'Use the Spades start controls', 'This room is not a Spades game',
       'Spades game has not started', 'Spades supports 1 to 4 human players',
       'Choose one difficulty for each computer seat', 'Player is not seated in this Spades game',
       'Game paused while a player reconnects', 'blind-nil choices are closed',
@@ -281,6 +281,8 @@ async function handleStartGame(socket: WebSocket, mission: number): Promise<void
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
+  const room = await gamesDb.getGameById(info.gameId);
+  if (room?.gameType === 'spades') throw new Error('Use the Spades start controls');
   const { game, players, wires } = await withTimeout(engine.startGame(info.gameId, info.playerId, mission), 'startGame');
 
   // Send game_started with per-player wire views
