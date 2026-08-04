@@ -177,9 +177,22 @@ describe("Home (app/page.tsx)", () => {
         expect(mockSend).toHaveBeenCalledWith({
           type: "create_game",
           playerName: "Alice",
+          gameType: "spades",
         });
         expect(mockConnect).toHaveBeenCalled();
         expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
+      });
+
+      it("can preserve and create the existing wire game", () => {
+        render(<Home />);
+        fireEvent.click(screen.getByRole("button", { name: /Wire Game/ }));
+        fireEvent.click(screen.getByRole("button", { name: "Create New Game" }));
+
+        expect(mockSend).toHaveBeenCalledWith({
+          type: "create_game",
+          playerName: "Alice",
+          gameType: "wire-game",
+        });
       });
 
       it("disables the Join button once creating", () => {
