@@ -109,6 +109,12 @@ partnership loses 100 points; 10 bags are removed and any remainder carries
 forward. For example, moving from 9 bags to 12 applies the penalty and leaves
 2 bags.
 
+### Dealer and opening lead
+
+The dealer position rotates clockwise after every hand. The player immediately
+to the dealer's left leads the first trick. Holding the 2 of clubs does not
+override seat order or determine the opening leader.
+
 ### Planned Spades rule layer
 
 The Spades engine will own:
