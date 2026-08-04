@@ -130,6 +130,13 @@ bid. Nil bonuses and penalties are added to the partnership's ordinary hand
 score; tricks taken by a failed nil bidder still count toward the partnership's
 trick total and may create bags.
 
+At the start of each hand, all four seats privately and simultaneously choose
+either Blind Nil or View Hand. No hand is revealed and no individual choice is
+shown until every seat has locked a choice. Once all four choices are locked,
+each player may privately view their own hand and clockwise bidding begins.
+Players who selected blind nil already have their bid recorded and are skipped
+during normal bidding.
+
 ### Books and bags
 
 A partnership that makes its combined bid scores 10 points for each bid trick.
