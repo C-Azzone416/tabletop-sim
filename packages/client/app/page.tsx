@@ -59,10 +59,21 @@ export default function Home() {
 
   const handleCreate = () => {
     if (!playerName) return;
+
+    // The Vercel branch preview currently shares the deployed wire-game
+    // backend. Sending a Spades create message there can return a wire-game
+    // room, which makes both selector choices open the same interface.
+    // Route Spades to its self-contained playable table until the independent
+    // Spades backend preview is connected.
+    if (selectedGame === "spades") {
+      router.push("/spades/hot-seat");
+      return;
+    }
+
     setMode("creating");
     setActionError("");
     startActionTimeout();
-    send({ type: "create_game", playerName, gameType: selectedGame });
+    send({ type: "create_game", playerName, gameType: "wire-game" });
     connect();
   };
 
@@ -200,18 +211,12 @@ export default function Home() {
             disabled={mode !== "idle"}
             className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {mode === "creating" ? "Creating..." : "Create New Game"}
+            {mode === "creating"
+              ? "Creating..."
+              : selectedGame === "spades"
+                ? "Start Spades"
+                : "Create Wire Game"}
           </button>
-
-          {selectedGame === "spades" && (
-            <button
-              onClick={() => router.push("/spades/hot-seat")}
-              disabled={mode !== "idle"}
-              className="w-full rounded-lg border-2 border-emerald-700 px-4 py-3 font-medium text-emerald-800 transition-colors hover:bg-emerald-50 disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-950"
-            >
-              Play Hot Seat on This Device
-            </button>
-          )}
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
