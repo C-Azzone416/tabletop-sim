@@ -3,6 +3,10 @@
 This document defines the boundary between the reusable card platform and
 individual games. It applies to work on `ben-game-sandbox`.
 
+Current branch status: the reusable card foundation and Spades v1 rules are
+being defined here; the playable Spades rules engine, bots, and table interface
+remain implementation work.
+
 ## Core rule: a standard deck never changes
 
 The canonical deck is always:
