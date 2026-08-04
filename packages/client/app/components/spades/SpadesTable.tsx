@@ -12,6 +12,7 @@ import {
 interface SpadesTableProps {
   view: SpadesPlayerView;
   viewingSeat: SpadesSeat;
+  concealHand?: boolean;
   onBlindNilChoice: (blindNil: boolean) => void;
   onBid: (bid: Exclude<SpadesBid, { kind: 'blind-nil' }>) => void;
   onPlayCard: (cardId: string) => void;
@@ -21,6 +22,18 @@ type TablePosition = 'bottom' | 'left' | 'top' | 'right';
 
 const SUIT_SYMBOL = { clubs: '♣', diamonds: '♦', hearts: '♥', spades: '♠' } as const;
 const SUIT_LABEL = { clubs: 'Clubs', diamonds: 'Diamonds', hearts: 'Hearts', spades: 'Spades' } as const;
+const SUIT_ORDER = { spades: 0, hearts: 1, diamonds: 2, clubs: 3 } as const;
+const RANK_ORDER = {
+  ace: 0, king: 1, queen: 2, jack: 3, '10': 4, '9': 5, '8': 6,
+  '7': 7, '6': 8, '5': 9, '4': 10, '3': 11, '2': 12,
+} as const;
+
+function sortHand(cards: readonly CardInstance[]): CardInstance[] {
+  return [...cards].sort((left, right) => (
+    SUIT_ORDER[left.suit] - SUIT_ORDER[right.suit]
+    || RANK_ORDER[left.rank] - RANK_ORDER[right.rank]
+  ));
+}
 
 function seatsFromViewer(viewingSeat: SpadesSeat): Record<TablePosition, SpadesSeat> {
   const left = nextSeat(viewingSeat);
@@ -139,13 +152,14 @@ function PhaseControls({ view, viewingSeat, onBlindNilChoice, onBid }: Omit<Spad
 }
 
 export function SpadesTable(props: SpadesTableProps) {
-  const { view, viewingSeat, onPlayCard } = props;
+  const { view, viewingSeat, concealHand = false, onPlayCard } = props;
   const seats = seatsFromViewer(viewingSeat);
   const legalIds = new Set(
-    view.phase === 'playing' && view.currentSeat === viewingSeat
+    !concealHand && view.phase === 'playing' && view.currentSeat === viewingSeat
       ? getLegalPlays(view.hand, view.currentTrick, view.spadesBroken).map((card) => card.id)
       : [],
   );
+  const sortedHand = sortHand(view.hand);
 
   return (
     <main className="min-h-screen bg-emerald-950 px-2 py-3 text-white sm:px-6 sm:py-5">
@@ -182,7 +196,37 @@ export function SpadesTable(props: SpadesTableProps) {
         <div className="col-start-3 row-start-2"><PlayerSeat position="right" seat={seats.right} view={view} /></div>
       </div>
 
-      <section aria-label="Your hand" data-position="bottom" className="sticky bottom-0 mx-auto -mt-2 max-w-6xl rounded-t-3xl border border-emerald-700 bg-emerald-950/95 px-2 pb-3 pt-3 backdrop-blur sm:static sm:mt-4 sm:rounded-3xl sm:p-4">
+      <details aria-label="Previous books" className="mx-auto mt-4 max-w-6xl rounded-2xl border border-emerald-700 bg-emerald-900/70 px-4 py-3">
+        <summary className="cursor-pointer font-semibold text-emerald-100">
+          Previous books ({view.completedTricks.length})
+        </summary>
+        {view.completedTricks.length === 0 ? (
+          <p className="mt-3 text-sm text-emerald-300">No completed books yet.</p>
+        ) : (
+          <ol className="mt-3 grid gap-3 sm:grid-cols-2">
+            {view.completedTricks.map((trick, index) => {
+              const winner = view.players.find((player) => player.seat === trick.winner);
+              return (
+                <li key={`${view.handNumber}-${index}`} className="rounded-xl bg-black/20 p-3">
+                  <p className="mb-2 text-sm font-semibold">Book {index + 1} · {winner?.name ?? trick.winner} won</p>
+                  <div className="flex flex-wrap gap-2">
+                    {trick.plays.map((play) => (
+                      <span key={play.card.id} className="rounded-md bg-white px-2 py-1 text-sm text-zinc-950">
+                        <span className={play.card.suit === 'hearts' || play.card.suit === 'diamonds' ? 'text-red-600' : ''}>
+                          {rankLabel(play.card)} {SUIT_SYMBOL[play.card.suit]}
+                        </span>{' '}
+                        <small className="text-zinc-500">{view.players.find((player) => player.seat === play.seat)?.name ?? play.seat}</small>
+                      </span>
+                    ))}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </details>
+
+      {!concealHand && <section aria-label="Your hand" data-position="bottom" className="sticky bottom-0 mx-auto -mt-2 max-w-6xl rounded-t-3xl border border-emerald-700 bg-emerald-950/95 px-2 pb-3 pt-3 backdrop-blur sm:static sm:mt-4 sm:rounded-3xl sm:p-4">
         <div className="mb-2 flex items-center justify-between text-sm">
           <strong>{view.players.find((player) => player.seat === viewingSeat)?.name ?? 'You'} · {viewingSeat}</strong>
           <span>Bid {bidLabel(view.bids[viewingSeat])} · {view.tricksWon[viewingSeat]} tricks</span>
@@ -190,12 +234,12 @@ export function SpadesTable(props: SpadesTableProps) {
         <PhaseControls {...props} />
         {view.phase !== 'blind-nil' && (
           <div className="mt-3 flex gap-1 overflow-x-auto px-1 pb-2 sm:justify-center sm:gap-2" data-testid="player-hand">
-            {view.hand.map((card) => (
+            {sortedHand.map((card) => (
               <PlayingCard key={card.id} card={card} playable={legalIds.has(card.id)} onPlay={() => onPlayCard(card.id)} />
             ))}
           </div>
         )}
-      </section>
+      </section>}
     </main>
   );
 }
