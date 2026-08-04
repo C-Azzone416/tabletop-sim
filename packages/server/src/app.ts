@@ -9,9 +9,13 @@ import * as wiresDb from './db/wires.js';
 import { getMigrationsStatus } from './db/migrations.js';
 import * as engine from './engine/game-engine.js';
 import { handleMessage } from './ws/message-handler.js';
-import { removeConnection, setAuthenticatedUser, registerConnection } from './ws/connection-manager.js';
+import { getConnectionInfo, removeConnection, setAuthenticatedUser, registerConnection } from './ws/connection-manager.js';
 import { authenticateUpgrade } from './ws/auth.js';
 import { broadcastGameState } from './ws/state-broadcaster.js';
+import {
+  noteOnlineSpadesDisconnect,
+  noteOnlineSpadesReconnect,
+} from './spades/spades-room-service.js';
 
 export async function buildApp() {
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.url'] } });
@@ -114,13 +118,21 @@ export async function buildApp() {
       await handleMessage(socket, raw.toString(), app.log);
     });
 
-    socket.on('close', () => {
+    const removeAndPause = () => {
+      const info = getConnectionInfo(socket);
       removeConnection(socket);
-    });
+      if (info) {
+        void noteOnlineSpadesDisconnect(info.gameId, info.playerId).catch((err) => {
+          app.log.error({ err }, '[WS /ws] Spades disconnect error');
+        });
+      }
+    };
+
+    socket.on('close', removeAndPause);
 
     socket.on('error', (err: Error) => {
       app.log.error(err, 'WebSocket error');
-      removeConnection(socket);
+      removeAndPause();
     });
 
     try {
@@ -141,7 +153,11 @@ export async function buildApp() {
           if (game) {
             registerConnection(socket, player.id, game.id);
             const players = await playersDb.getPlayersByGameId(game.id);
-            await broadcastGameState(game.id, game, players);
+            if (game.gameType === 'spades' && game.status === 'active') {
+              await noteOnlineSpadesReconnect(game.id, player.id);
+            } else {
+              await broadcastGameState(game.id, game, players);
+            }
           }
         }
       } catch (err) {
