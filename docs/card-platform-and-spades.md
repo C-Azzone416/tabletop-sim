@@ -105,7 +105,7 @@ trick total and may create bags.
 The Spades engine will own:
 
 - legal bids
-- nil and optional blind-nil rules
+- nil and blind-nil bid validation and scoring
 - opening lead and follow-suit validation
 - when spades become broken
 - trick winner calculation
