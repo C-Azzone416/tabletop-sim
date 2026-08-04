@@ -12,6 +12,7 @@ export function resetIds() {
 export function makeGame(overrides: Partial<Game> = {}): Game {
   return {
     id: nextId(),
+    gameType: "wire-game",
     mission: 1,
     status: "waiting",
     captainId: null,
