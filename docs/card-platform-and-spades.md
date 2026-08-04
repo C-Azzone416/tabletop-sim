@@ -93,6 +93,16 @@ Different bots in the same room may use different difficulty levels. Normal is
 the default for every bot that the host does not configure. Difficulty changes
 decision quality only: bots never inspect hidden opponent or partner cards.
 
+### Responsive table layout
+
+The card table uses a responsive hybrid layout. The viewing player is always
+oriented at the bottom with a full-size, horizontally scrollable hand. Their
+partner remains visible in a compact seat at the top, with opponents in compact
+left and right seats. Desktop layouts add spacing and larger cards without
+changing those relative positions. On phones, the player's hand stays usable
+and may remain attached to the bottom edge while the three other seats compress;
+gameplay does not require landscape orientation.
+
 ### Planned round state
 
 1. Lobby and seat assignment
