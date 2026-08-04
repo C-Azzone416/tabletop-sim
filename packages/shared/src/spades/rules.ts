@@ -1,4 +1,4 @@
-import type { CardInstance, StandardRank, StandardSuit } from '../cards/card-engine.js';
+import type { CardInstance, StandardRank, StandardSuit } from '../cards/card-engine';
 import {
   SPADES_SEATS,
   type CompletedTrick,
@@ -8,7 +8,7 @@ import {
   type SpadesTeam,
   type TrickPlay,
   type TrickState,
-} from './types.js';
+} from './types';
 
 const RANK_STRENGTH: Readonly<Record<StandardRank, number>> = {
   '2': 2,
