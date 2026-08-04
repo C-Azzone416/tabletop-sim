@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { CardInstance, SpadesPlayerView } from '@tabletop/shared';
-import { SpadesTable } from '../client/app/components/spades/SpadesTable';
+import { SpadesTable } from '../app/components/spades/SpadesTable';
 
 const cards: CardInstance[] = [
   { id: 'club-2', deckIndex: 0, suit: 'clubs', rank: '2' },
