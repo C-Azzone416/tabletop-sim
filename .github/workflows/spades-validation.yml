@@ -1,0 +1,27 @@
+name: Spades validation
+
+on:
+  pull_request:
+    paths:
+      - "packages/shared/**"
+      - "packages/server/**"
+      - "packages/client/**"
+      - "db/migrations/**"
+      - ".github/workflows/spades-validation.yml"
+  push:
+    branches:
+      - ben-game-sandbox
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
