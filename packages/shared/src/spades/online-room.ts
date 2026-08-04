@@ -1,11 +1,11 @@
-import { playCard, submitBid, submitBlindNilChoice } from './game.js';
+import { playCard, submitBid, submitBlindNilChoice } from './game';
 import type {
   SpadesBid,
   SpadesGameState,
   SpadesPlayerView,
   SpadesSeat,
-} from './types.js';
-import { buildSpadesPlayerView } from './game.js';
+} from './types';
+import { buildSpadesPlayerView } from './game';
 
 export type SpadesPlayerAction =
   | { readonly type: 'blind-nil'; readonly blindNil: boolean }
