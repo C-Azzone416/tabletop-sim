@@ -115,6 +115,14 @@ The dealer position rotates clockwise after every hand. The player immediately
 to the dealer's left leads the first trick. Holding the 2 of clubs does not
 override seat order or determine the opening leader.
 
+### Following suit and breaking spades
+
+Players must follow the suit led whenever they hold a card of that suit. If
+they cannot follow suit, they may play any card, including a spade. The first
+spade played while unable to follow suit breaks spades for the hand. A player
+cannot lead spades before they are broken unless every card remaining in their
+hand is a spade.
+
 ### Planned Spades rule layer
 
 The Spades engine will own:
