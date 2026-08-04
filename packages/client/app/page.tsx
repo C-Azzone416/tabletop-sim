@@ -7,11 +7,14 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { useGameState } from "./hooks/useGameState";
 import { GameRoomScene } from "./components/GameRoomScene";
 import { ErrorToast } from "./components/ErrorToast";
+import { GameSelector } from "./components/GameSelector";
+import type { GameType } from "@tabletop/shared";
 
 export default function Home() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
   const [joinCode, setJoinCode] = useState("");
+  const [selectedGame, setSelectedGame] = useState<GameType>("spades");
   const [mode, setMode] = useState<"idle" | "creating" | "joining">("idle");
   const [name, setName] = useState("");
   const [signInError, setSignInError] = useState("");
@@ -59,7 +62,7 @@ export default function Home() {
     setMode("creating");
     setActionError("");
     startActionTimeout();
-    send({ type: "create_game", playerName });
+    send({ type: "create_game", playerName, gameType: selectedGame });
     connect();
   };
 
@@ -186,6 +189,12 @@ export default function Home() {
         </div>
 
         <div className="space-y-6">
+          <GameSelector
+            selected={selectedGame}
+            onSelect={setSelectedGame}
+            disabled={mode !== "idle"}
+          />
+
           <button
             onClick={handleCreate}
             disabled={mode !== "idle"}
