@@ -75,6 +75,24 @@ full character names, titles, movie names, copied dialogue, or character
 artwork. Name generation belongs to the player/game platform and never to the
 reusable card module.
 
+### Automatic seats and bot difficulty
+
+Seats are assigned automatically when the host starts the game; Spades v1 has
+no manual seat picker. Human players are assigned among North, East, South,
+and West, and every unoccupied seat is filled by a bot.
+
+The host configures each bot independently:
+
+| Difficulty | Intended behavior |
+| --- | --- |
+| Easy | Makes legal but simple bids and plays |
+| Normal | Uses practical hand-strength and trick-taking heuristics |
+| Hard | Uses stronger bidding, card-counting, and partnership heuristics |
+
+Different bots in the same room may use different difficulty levels. Normal is
+the default for every bot that the host does not configure. Difficulty changes
+decision quality only: bots never inspect hidden opponent or partner cards.
+
 ### Planned round state
 
 1. Lobby and seat assignment
@@ -135,6 +153,18 @@ spade played while unable to follow suit breaks spades for the hand. A player
 cannot lead spades before they are broken unless every card remaining in their
 hand is a spade.
 
+### Remaining standard scoring and game-end rules
+
+Spades v1 uses conventional rules with no additional house-rule layer:
+
+- normal bids are whole numbers from 1 through 13; a bid of 0 is nil
+- a partnership that misses its contract loses 10 points for each bid trick
+- team scores may go below zero
+- every hand finishes before the winning score is checked
+- when both teams reach the target, the higher score wins
+- a tied score at or above the target causes another complete hand
+- blind nil is available each hand but must be declared before viewing cards
+
 ### Planned Spades rule layer
 
 The Spades engine will own:
@@ -166,13 +196,9 @@ The current repository already provides useful game-platform infrastructure:
 The wire-game-specific state and interface will be replaced incrementally on
 this branch. Caroline's `main` branch is not part of this work.
 
-## Decisions still to make
+## Alpha decisions locked
 
-Before Spades scoring is implemented, settle:
-
-- whether sandbagging or special house rules are enabled
-- bot difficulty levels
-- whether players choose seats or are assigned automatically
-
-These are configuration decisions in the Spades layer, not changes to the
-standard deck.
+The core Spades v1 rules, score targets, seating behavior, bot difficulty
+model, and absence of additional house rules are settled. Implementation can
+proceed without further product decisions; later playtesting may still expose
+balance or usability adjustments.
