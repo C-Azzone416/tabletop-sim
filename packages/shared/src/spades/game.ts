@@ -1,6 +1,6 @@
-import { createStandardShoe, dealCards, shuffleCards, type CardInstance } from '../cards/card-engine';
-import { assignSpadesSeats } from './seating';
-import { determineWinner, scoreHand } from './scoring';
+import { createStandardShoe, dealCards, shuffleCards, type CardInstance } from '../cards/card-engine.js';
+import { assignSpadesSeats } from './seating.js';
+import { determineWinner, scoreHand } from './scoring.js';
 import {
   getLegalPlays,
   isValidBid,
@@ -8,7 +8,7 @@ import {
   playBreaksSpades,
   resolveTrick,
   validatePlay,
-} from './rules';
+} from './rules.js';
 import {
   SPADES_SEATS,
   type PartialSeatMap,
@@ -19,7 +19,7 @@ import {
   type SpadesSeat,
   type StartSpadesGameOptions,
   type TeamScore,
-} from './types';
+} from './types.js';
 
 const emptyScores = (): Record<'north-south' | 'east-west', TeamScore> => ({
   'north-south': { score: 0, bags: 0 },
@@ -69,6 +69,7 @@ function beginHand(
     blindNilChoices: {},
     bids: {},
     currentTrick: { leader: first, plays: [] },
+    completedTricks: [],
     tricksWon: emptyTricks(),
     scores: state.scores,
     spadesBroken: false,
@@ -214,6 +215,7 @@ export function playCard(
     spadesBroken,
     currentSeat: completed.winner,
     currentTrick: { leader: completed.winner, plays: [] },
+    completedTricks: [...state.completedTricks, completed],
   };
   const noCardsRemain = SPADES_SEATS.every((candidate) => hands[candidate].length === 0);
   return noCardsRemain ? completeHand(afterTrick, random) : afterTrick;
@@ -250,6 +252,7 @@ export function buildSpadesPlayerView(
     blindNilChoicesMade: Object.keys(state.blindNilChoices).length,
     bids,
     currentTrick: state.currentTrick,
+    completedTricks: state.completedTricks,
     tricksWon: state.tricksWon,
     scores: state.scores,
     spadesBroken: state.spadesBroken,
