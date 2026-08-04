@@ -1,11 +1,11 @@
-import type { CardInstance, StandardSuit } from '../cards/card-engine.js';
-import { currentTrickWinner, getLegalPlays, rankStrength } from './rules.js';
+import type { CardInstance, StandardSuit } from '../cards/card-engine';
+import { currentTrickWinner, getLegalPlays, rankStrength } from './rules';
 import type {
   BotBidContext,
   BotBlindNilContext,
   BotPlayContext,
   SpadesBid,
-} from './types.js';
+} from './types';
 
 function clampBid(value: number): number {
   return Math.max(1, Math.min(13, Math.round(value)));
