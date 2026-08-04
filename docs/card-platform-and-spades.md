@@ -100,6 +100,15 @@ bid. Nil bonuses and penalties are added to the partnership's ordinary hand
 score; tricks taken by a failed nil bidder still count toward the partnership's
 trick total and may create bags.
 
+### Books and bags
+
+A partnership that makes its combined bid scores 10 points for each bid trick.
+Each overtrick scores 1 additional point and adds one bag to the partnership's
+running bag total. Every time the accumulated total reaches 10 bags, the
+partnership loses 100 points; 10 bags are removed and any remainder carries
+forward. For example, moving from 9 bags to 12 applies the penalty and leaves
+2 bags.
+
 ### Planned Spades rule layer
 
 The Spades engine will own:
@@ -135,7 +144,6 @@ this branch. Caroline's `main` branch is not part of this work.
 
 Before Spades scoring is implemented, settle:
 
-- bag penalty threshold
 - whether sandbagging or special house rules are enabled
 - bot difficulty levels
 - whether players choose seats or are assigned automatically
