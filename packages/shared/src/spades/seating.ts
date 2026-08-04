@@ -1,7 +1,7 @@
-import { shuffleCards } from '../cards/card-engine.js';
-import { generateThemedNames } from './names.js';
-import { SPADES_SEATS, type BotDifficulty, type HumanLobbyPlayer, type SeatedSpadesPlayer } from './types.js';
-import { teamForSeat } from './rules.js';
+import { shuffleCards } from '../cards/card-engine';
+import { generateThemedNames } from './names';
+import { SPADES_SEATS, type BotDifficulty, type HumanLobbyPlayer, type SeatedSpadesPlayer } from './types';
+import { teamForSeat } from './rules';
 
 export interface AssignSeatsOptions {
   readonly humans: readonly HumanLobbyPlayer[];
