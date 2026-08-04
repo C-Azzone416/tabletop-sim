@@ -1,3 +1,5 @@
+import type { BotDifficulty, SpadesBid, SpadesPlayerView, SpadesSeat, TargetScore } from './spades/types.js';
+
 // Game state types
 
 export type GameType = 'wire-game' | 'spades';
@@ -87,6 +89,10 @@ export type ClientMessage =
   | { type: 'create_game'; playerName: string; gameType: GameType }
   | { type: 'join_game'; joinCode: string; playerName: string }
   | { type: 'start_game'; mission?: number }
+  | { type: 'start_spades'; targetScore: TargetScore; botDifficulties: BotDifficulty[] }
+  | { type: 'spades_blind_nil'; blindNil: boolean }
+  | { type: 'spades_bid'; bid: Exclude<SpadesBid, { kind: 'blind-nil' }> }
+  | { type: 'spades_play'; cardId: string }
   | { type: 'place_info_token'; wireId: string }
   | { type: 'propose_dual_cut'; targetWireId: string; guessedValue: string }
   | { type: 'respond_dual_cut'; accepted: boolean }
@@ -101,6 +107,7 @@ export type ServerMessage =
   | { type: 'game_created'; game: Game; player: Player }
   | { type: 'joined_game'; game: Game; player: Player; players: Player[] }
   | { type: 'game_started'; game: Game; players: Player[]; wires: Wire[] }
+  | { type: 'spades_state'; game: Game; players: Player[]; view: SpadesPlayerView; viewingSeat: SpadesSeat; pausedUntil?: string }
   | { type: 'setup_complete'; game: Game }
   | { type: 'game_state'; game: Game; players: Player[]; wires: Wire[]; infoTokens: InfoToken[]; validationTokens: ValidationToken[]; localPlayerId: string }
   | { type: 'player_joined'; player: Player }
