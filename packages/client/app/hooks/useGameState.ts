@@ -8,6 +8,8 @@ import type {
   InfoToken,
   ValidationToken,
   ServerMessage,
+  SpadesPlayerView,
+  SpadesSeat,
 } from "@tabletop/shared";
 
 export interface GameState {
@@ -21,6 +23,9 @@ export interface GameState {
   pendingDualCut: Extract<ServerMessage, { type: "dual_cut_proposed" }> | null;
   pendingDualCutCorrect: Extract<ServerMessage, { type: "dual_cut_correct" }> | null;
   gameOverReason: string | null;
+  spadesView: SpadesPlayerView | null;
+  spadesSeat: SpadesSeat | null;
+  spadesPausedUntil: string | null;
   error: string | null;
 }
 
@@ -35,6 +40,9 @@ const initialState: GameState = {
   pendingDualCut: null,
   pendingDualCutCorrect: null,
   gameOverReason: null,
+  spadesView: null,
+  spadesSeat: null,
+  spadesPausedUntil: null,
   error: null,
 };
 
@@ -89,6 +97,18 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
         game: msg.game,
         players: msg.players,
         wires: msg.wires,
+      };
+
+    case "spades_state":
+      return {
+        ...state,
+        game: msg.game,
+        players: msg.players,
+        localPlayer: msg.players.find((player) => player.id === state.localPlayer?.id) ?? state.localPlayer,
+        spadesView: msg.view,
+        spadesSeat: msg.viewingSeat,
+        spadesPausedUntil: msg.pausedUntil ?? null,
+        error: null,
       };
 
     case "setup_complete":
