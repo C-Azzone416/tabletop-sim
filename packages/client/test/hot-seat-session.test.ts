@@ -4,7 +4,7 @@ import {
   confirmHotSeat,
   createHotSeatSession,
   hotSeatBlindNil,
-} from '../client/app/spades/hot-seat-session';
+} from '../app/spades/hot-seat-session';
 
 const instantBots = { random: () => 0, sleep: async () => {} };
 
