@@ -215,7 +215,7 @@ export function playCard(
     spadesBroken,
     currentSeat: completed.winner,
     currentTrick: { leader: completed.winner, plays: [] },
-    completedTricks: [...state.completedTricks, completed],
+    completedTricks: [...(state.completedTricks ?? []), completed],
   };
   const noCardsRemain = SPADES_SEATS.every((candidate) => hands[candidate].length === 0);
   return noCardsRemain ? completeHand(afterTrick, random) : afterTrick;
@@ -252,7 +252,7 @@ export function buildSpadesPlayerView(
     blindNilChoicesMade: Object.keys(state.blindNilChoices).length,
     bids,
     currentTrick: state.currentTrick,
-    completedTricks: state.completedTricks,
+    completedTricks: state.completedTricks ?? [],
     tricksWon: state.tricksWon,
     scores: state.scores,
     spadesBroken: state.spadesBroken,
