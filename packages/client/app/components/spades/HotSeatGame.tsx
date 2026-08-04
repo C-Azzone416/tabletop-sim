@@ -51,11 +51,19 @@ export function HotSeatGame({ initialSession, botOptions = {} }: HotSeatGameProp
 
   if (session.confirmedSeat !== activeSeat) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-emerald-950 p-6 text-white">
-        <section className="w-full max-w-md rounded-3xl border border-emerald-700 bg-emerald-900 p-8 text-center shadow-2xl">
+      <div className="relative min-h-screen bg-emerald-950">
+        <SpadesTable
+          view={view}
+          viewingSeat={activeSeat}
+          concealHand
+          onBlindNilChoice={() => undefined}
+          onBid={() => undefined}
+          onPlayCard={() => undefined}
+        />
+        <section aria-label="Pass the device" className="fixed inset-x-3 bottom-4 z-10 mx-auto w-auto max-w-md rounded-3xl border border-emerald-600 bg-emerald-950/95 p-5 text-center text-white shadow-2xl backdrop-blur sm:bottom-8 sm:p-6">
           <p className="text-sm uppercase tracking-widest text-emerald-200">Pass the device</p>
-          <h1 className="mt-3 text-3xl font-black">{activePlayer?.name ?? activeSeat}</h1>
-          <p className="mt-3 text-emerald-100">Other players should look away before this seat continues.</p>
+          <h1 className="mt-2 text-2xl font-black">{activePlayer?.name ?? activeSeat}</h1>
+          <p className="mt-2 text-sm text-emerald-100">The table stays visible. Other players should look away before the hand is revealed.</p>
           <button
             type="button"
             disabled={busy}
@@ -65,7 +73,7 @@ export function HotSeatGame({ initialSession, botOptions = {} }: HotSeatGameProp
             I am {activePlayer?.name ?? activeSeat}
           </button>
         </section>
-      </main>
+      </div>
     );
   }
 
