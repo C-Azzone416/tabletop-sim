@@ -44,6 +44,14 @@ card behavior:
 It deliberately does not know about Spades, Poker, Go Fish, Pitch, or any
 other game's rules. This keeps it safe to reuse in future builds.
 
+## Multi-game entry
+
+The existing wire game remains available. After signing in, a player chooses
+Spades or the Wire Game before creating a room. The choice is stored on the
+room and travels with its join code, so invited players only enter the code;
+they do not need to select or guess which game the host created. Existing
+rooms and older clients default safely to the Wire Game.
+
 ## Spades v1
 
 Spades uses exactly one standard 52-card deck and always has four seats.
