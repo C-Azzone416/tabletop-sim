@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   getLegalPlays,
   nextSeat,
@@ -7,6 +8,7 @@ import {
   type SpadesBid,
   type SpadesPlayerView,
   type SpadesSeat,
+  type SpadesTeam,
 } from '@tabletop/shared';
 
 interface SpadesTableProps {
@@ -27,6 +29,41 @@ const RANK_ORDER = {
   ace: 0, king: 1, queen: 2, jack: 3, '10': 4, '9': 5, '8': 6,
   '7': 7, '6': 8, '5': 9, '4': 10, '3': 11, '2': 12,
 } as const;
+
+const TEAM_SEATS: Record<SpadesTeam, readonly SpadesSeat[]> = {
+  'north-south': ['north', 'south'],
+  'east-west': ['east', 'west'],
+};
+
+function teamBidLabel(view: SpadesPlayerView, team: SpadesTeam): string {
+  const bids = TEAM_SEATS[team]
+    .map((seat) => view.bids[seat])
+    .filter((bid): bid is SpadesBid => Boolean(bid));
+  const normalBid = bids.reduce(
+    (total, bid) => total + (bid.kind === 'normal' ? bid.tricks : 0),
+    0,
+  );
+  const specialBids = bids
+    .filter((bid) => bid.kind !== 'normal')
+    .map((bid) => bid.kind === 'blind-nil' ? 'Blind Nil' : 'Nil');
+  if (bids.length === 0) return '—';
+  return [normalBid > 0 ? String(normalBid) : '', ...specialBids]
+    .filter(Boolean)
+    .join(' + ');
+}
+
+function teamTricks(view: SpadesPlayerView, team: SpadesTeam): number {
+  return TEAM_SEATS[team].reduce((total, seat) => total + view.tricksWon[seat], 0);
+}
+
+function pendingBags(view: SpadesPlayerView, team: SpadesTeam): number {
+  if (view.phase !== 'playing') return 0;
+  const contract = TEAM_SEATS[team].reduce((total, seat) => {
+    const bid = view.bids[seat];
+    return total + (bid?.kind === 'normal' ? bid.tricks : 0);
+  }, 0);
+  return Math.max(0, teamTricks(view, team) - contract);
+}
 
 function sortHand(cards: readonly CardInstance[]): CardInstance[] {
   return [...cards].sort((left, right) => (
@@ -161,18 +198,83 @@ export function SpadesTable(props: SpadesTableProps) {
   );
   const sortedHand = sortHand(view.hand);
   const completedTricks = view.completedTricks ?? [];
+  const [reviewedTrickIndex, setReviewedTrickIndex] = useState<number | null>(null);
+  const [olderReviewConfirmed, setOlderReviewConfirmed] = useState(false);
+  const latestTrickIndex = completedTricks.length - 1;
+  const reviewedTrick = reviewedTrickIndex === null
+    ? undefined
+    : completedTricks[reviewedTrickIndex];
+
+  const openLastWonTrick = () => {
+    if (latestTrickIndex < 0) return;
+    setOlderReviewConfirmed(false);
+    setReviewedTrickIndex(latestTrickIndex);
+  };
+
+  const closeTrickReview = () => {
+    setOlderReviewConfirmed(false);
+    setReviewedTrickIndex(null);
+  };
+
+  const reviewOlderTrick = () => {
+    if (reviewedTrickIndex === null || reviewedTrickIndex <= 0) return;
+    if (
+      reviewedTrickIndex === latestTrickIndex
+      && !olderReviewConfirmed
+      && !window.confirm(
+        'You are leaving the last won trick to review earlier tricks. Continue?',
+      )
+    ) {
+      return;
+    }
+    setOlderReviewConfirmed(true);
+    setReviewedTrickIndex(reviewedTrickIndex - 1);
+  };
 
   return (
     <main className="min-h-screen bg-emerald-950 px-2 py-3 text-white sm:px-6 sm:py-5">
-      <header className="mx-auto mb-3 flex max-w-6xl items-center justify-between gap-3 text-sm">
-        <div>
-          <h1 className="text-lg font-black tracking-wide sm:text-2xl">Spades</h1>
-          <p className="text-emerald-200">Hand {view.handNumber} · Playing to {view.targetScore}</p>
+      <header className="sticky top-0 z-30 mx-auto mb-3 max-w-6xl rounded-2xl border border-emerald-800 bg-emerald-950/95 p-3 text-sm shadow-xl backdrop-blur">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-black tracking-wide sm:text-2xl">Spades</h1>
+            <p className="text-emerald-200">Hand {view.handNumber} · Playing to {view.targetScore}</p>
+          </div>
+          <button
+            type="button"
+            disabled={completedTricks.length === 0}
+            onClick={openLastWonTrick}
+            className="rounded-lg border border-amber-300/70 px-3 py-2 font-semibold text-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Last won trick{completedTricks.length > 0 ? ` (${completedTricks.length})` : ''}
+          </button>
         </div>
-        <div className="flex gap-3 rounded-xl bg-black/25 px-3 py-2 text-center">
-          <span><strong className="block">{view.scores['north-south'].score}</strong>N/S</span>
-          <span><strong className="block">{view.scores['east-west'].score}</strong>E/W</span>
-        </div>
+        <section aria-label="Live scoreboard" className="mt-3 grid grid-cols-2 gap-2">
+          {([
+            ['north-south', 'N/S'],
+            ['east-west', 'E/W'],
+          ] as const).map(([team, label]) => {
+            const currentPendingBags = pendingBags(view, team);
+            return (
+              <div key={team} className="rounded-xl bg-black/30 px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <strong>{label}</strong>
+                  <strong className="text-lg">{view.scores[team].score}</strong>
+                </div>
+                <div className="mt-1 grid grid-cols-3 gap-1 text-center text-[11px] text-emerald-100 sm:text-xs">
+                  <span><strong className="block text-white">{teamBidLabel(view, team)}</strong>Bid</span>
+                  <span><strong className="block text-white">{teamTricks(view, team)}</strong>Tricks</span>
+                  <span>
+                    <strong className="block text-white">
+                      {view.scores[team].bags}
+                      {currentPendingBags > 0 ? ` +${currentPendingBags}` : ''}
+                    </strong>
+                    Bags
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </section>
       </header>
 
       <div className="mx-auto grid min-h-[55vh] max-w-6xl grid-cols-[minmax(4.5rem,0.7fr)_minmax(9rem,2fr)_minmax(4.5rem,0.7fr)] grid-rows-[auto_1fr] items-center gap-2 rounded-[2rem] border border-emerald-700/70 bg-emerald-900/70 p-2 shadow-inner sm:min-h-[62vh] sm:gap-5 sm:p-6">
@@ -197,35 +299,76 @@ export function SpadesTable(props: SpadesTableProps) {
         <div className="col-start-3 row-start-2"><PlayerSeat position="right" seat={seats.right} view={view} /></div>
       </div>
 
-      <details aria-label="Previous books" className="mx-auto mt-4 max-w-6xl rounded-2xl border border-emerald-700 bg-emerald-900/70 px-4 py-3">
-        <summary className="cursor-pointer font-semibold text-emerald-100">
-          Previous books ({completedTricks.length})
-        </summary>
-        {completedTricks.length === 0 ? (
-          <p className="mt-3 text-sm text-emerald-300">No completed books yet.</p>
-        ) : (
-          <ol className="mt-3 grid gap-3 sm:grid-cols-2">
-            {completedTricks.map((trick, index) => {
-              const winner = view.players.find((player) => player.seat === trick.winner);
-              return (
-                <li key={`${view.handNumber}-${index}`} className="rounded-xl bg-black/20 p-3">
-                  <p className="mb-2 text-sm font-semibold">Book {index + 1} · {winner?.name ?? trick.winner} won</p>
-                  <div className="flex flex-wrap gap-2">
-                    {trick.plays.map((play) => (
-                      <span key={play.card.id} className="rounded-md bg-white px-2 py-1 text-sm text-zinc-950">
-                        <span className={play.card.suit === 'hearts' || play.card.suit === 'diamonds' ? 'text-red-600' : ''}>
-                          {rankLabel(play.card)} {SUIT_SYMBOL[play.card.suit]}
-                        </span>{' '}
-                        <small className="text-zinc-500">{view.players.find((player) => player.seat === play.seat)?.name ?? play.seat}</small>
-                      </span>
-                    ))}
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        )}
-      </details>
+      {reviewedTrick && reviewedTrickIndex !== null && (
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-label="Trick review"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+        >
+          <div className="w-full max-w-lg rounded-3xl border border-emerald-600 bg-emerald-950 p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-emerald-300">
+                  {reviewedTrickIndex === latestTrickIndex
+                    ? 'Last won trick'
+                    : 'Earlier trick'}
+                </p>
+                <h2 className="mt-1 text-xl font-black">
+                  Trick {reviewedTrickIndex + 1} of {completedTricks.length}
+                </h2>
+                <p className="mt-1 text-sm text-emerald-100">
+                  {view.players.find((player) => player.seat === reviewedTrick.winner)?.name
+                    ?? reviewedTrick.winner} won
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeTrickReview}
+                className="rounded-lg border border-emerald-600 px-3 py-2 font-semibold"
+              >
+                Back to live
+              </button>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {reviewedTrick.plays.map((play) => (
+                <div key={play.card.id} className="rounded-xl bg-white px-3 py-4 text-center text-zinc-950 shadow">
+                  <strong className={`text-xl ${
+                    play.card.suit === 'hearts' || play.card.suit === 'diamonds'
+                      ? 'text-red-600'
+                      : ''
+                  }`}>
+                    {rankLabel(play.card)} {SUIT_SYMBOL[play.card.suit]}
+                  </strong>
+                  <small className="mt-2 block text-zinc-500">
+                    {view.players.find((player) => player.seat === play.seat)?.name ?? play.seat}
+                  </small>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                disabled={reviewedTrickIndex === 0}
+                onClick={reviewOlderTrick}
+                className="rounded-lg bg-emerald-800 px-4 py-2 font-semibold disabled:opacity-40"
+              >
+                Earlier trick
+              </button>
+              <button
+                type="button"
+                disabled={reviewedTrickIndex === latestTrickIndex}
+                onClick={() => setReviewedTrickIndex(reviewedTrickIndex + 1)}
+                className="rounded-lg bg-emerald-800 px-4 py-2 font-semibold disabled:opacity-40"
+              >
+                Newer trick
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {!concealHand && <section aria-label="Your hand" data-position="bottom" className="sticky bottom-0 mx-auto -mt-2 max-w-6xl rounded-t-3xl border border-emerald-700 bg-emerald-950/95 px-2 pb-3 pt-3 backdrop-blur sm:static sm:mt-4 sm:rounded-3xl sm:p-4">
         <div className="mb-2 flex items-center justify-between text-sm">
