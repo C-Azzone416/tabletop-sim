@@ -1,6 +1,6 @@
-import { createStandardShoe, dealCards, shuffleCards, type CardInstance } from '../cards/card-engine.js';
-import { assignSpadesSeats } from './seating.js';
-import { determineWinner, scoreHand } from './scoring.js';
+import { createStandardShoe, dealCards, shuffleCards, type CardInstance } from '../cards/card-engine';
+import { assignSpadesSeats } from './seating';
+import { determineWinner, scoreHand } from './scoring';
 import {
   getLegalPlays,
   isValidBid,
@@ -8,7 +8,7 @@ import {
   playBreaksSpades,
   resolveTrick,
   validatePlay,
-} from './rules.js';
+} from './rules';
 import {
   SPADES_SEATS,
   type PartialSeatMap,
@@ -19,7 +19,7 @@ import {
   type SpadesSeat,
   type StartSpadesGameOptions,
   type TeamScore,
-} from './types.js';
+} from './types';
 
 const emptyScores = (): Record<'north-south' | 'east-west', TeamScore> => ({
   'north-south': { score: 0, bags: 0 },
