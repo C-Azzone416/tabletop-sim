@@ -1,4 +1,4 @@
-import type { CardInstance, StandardSuit } from '../cards/card-engine.js';
+import type { CardInstance, StandardSuit } from '../cards/card-engine';
 
 export const SPADES_SEATS = ['north', 'east', 'south', 'west'] as const;
 export type SpadesSeat = (typeof SPADES_SEATS)[number];
