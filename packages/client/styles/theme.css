@@ -107,6 +107,16 @@
   --game-concealed: #7B4CC4;
   --game-concealed-ink: #FFFFFF;
 
+  /* revealed-but-not-cut wire border (Caroline's ruling, both halves on
+     #281): ONE common colour for every revealed wire, regardless of its
+     own hue — hue means wire-identity or revealed-state, never both at
+     once. Per DESIGN-APPENDIX §3's exclusivity rule it must sit off the
+     wire palette, off --game-concealed, and off the seat palette; every
+     brand hue is already claimed by a wire or a seat (red/sky/sun/grass/
+     grape = p1-p5), same wall #245 hit for the rack, so this is a new
+     off-brand hex rather than a reused one. */
+  --game-revealed: #1B7F79;
+
   /* wire colours (Caroline's ruling, 2026-08-02) — the game's rule-bearing
      object vocabulary, owned separately from the seat palette it used to
      borrow. Wire.tsx previously mapped yellow -> --p3, which welded wire
@@ -174,6 +184,7 @@
     --game-accent-ink: #0E1B2E;
     --game-concealed: #A177E8;
     --game-concealed-ink: #0E1B2E;
+    --game-revealed: #35A79E;
 
     --wire-blue: #4FC3F0;
     --wire-yellow: #FFC53D;
@@ -220,6 +231,7 @@
       --game-accent-ink: #0E1B2E;
       --game-concealed: #A177E8;
       --game-concealed-ink: #0E1B2E;
+      --game-revealed: #35A79E;
 
       --wire-blue: #4FC3F0;
       --wire-yellow: #FFC53D;
@@ -272,6 +284,7 @@
   --color-game-accent-ink: var(--game-accent-ink);
   --color-game-concealed: var(--game-concealed);
   --color-game-concealed-ink: var(--game-concealed-ink);
+  --color-game-revealed: var(--game-revealed);
 
   /* wire colours — text-wire-blue, border-wire-yellow, ring-wire-red … */
   --color-wire-blue: var(--wire-blue);

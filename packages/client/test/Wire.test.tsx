@@ -446,8 +446,10 @@ describe("Wire (#156)", () => {
 
       expect(revealedClasses).not.toBe(hiddenClasses);
       expect(revealedClasses).not.toBe(cutClasses);
-      expect(revealedClasses).toContain("bg-warning/10");
-      expect(revealedClasses).toContain("border-warning");
+      // #281: revealed gets its own token, off the wire palette — not
+      // --warning, which is byte-identical to --wire-yellow.
+      expect(revealedClasses).toContain("bg-game-revealed/10");
+      expect(revealedClasses).toContain("border-game-revealed");
     });
 
     it("is not disabled or grey like a cut wire", () => {
@@ -459,6 +461,60 @@ describe("Wire (#156)", () => {
       const button = container.querySelector("button")!;
       expect(button.className).not.toContain("bg-outline/10");
       expect(button).not.toBeDisabled();
+    });
+  });
+
+  // #281 (Caroline's ruling, both halves): hue means wire-identity or
+  // revealed-state, never selection. Selected/selectable/hover amplify the
+  // wire's own hue rather than painting on a separate one.
+  describe("selection amplifies the wire's own hue (#281)", () => {
+    it("selected uses the wire's own colour, not --info", () => {
+      resetIds();
+      const wire = makeWire({ status: "hidden", color: "red", value: "5" });
+      const { container } = render(
+        <Wire wire={wire} isLocal isSelected infoTokens={[]} />,
+      );
+      const className = container.querySelector("button")!.className;
+      expect(className).toContain("border-wire-red");
+      expect(className).not.toContain("border-info");
+      expect(className).not.toContain("ring-info");
+    });
+
+    it("selectable (not selected) rings the wire's own colour at a lighter weight than selected", () => {
+      resetIds();
+      const wire = makeWire({ status: "hidden", color: "yellow", value: "5" });
+      const { container } = render(
+        <Wire wire={wire} isLocal isSelected={false} isSelectable infoTokens={[]} />,
+      );
+      const className = container.querySelector("button")!.className;
+      expect(className).toContain("ring-1 ring-wire-yellow/25");
+      expect(className).not.toContain("border-wire-yellow");
+    });
+
+    it("falls back to a neutral amplification when the wire's colour is redacted", () => {
+      // An opponent's still-hidden wire targeted for a dual-cut guess: color
+      // is null on the client (#187), so there's no hue to amplify.
+      resetIds();
+      const wire = makeWire({ status: "hidden", color: null, value: null });
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected infoTokens={[]} />,
+      );
+      const className = container.querySelector("button")!.className;
+      expect(className).toContain("border-outline");
+      expect(className).toContain("ring-outline");
+      expect(className).not.toMatch(/border-wire-|ring-wire-/);
+    });
+
+    it("revealed + selected together: revealed keeps the shared border, selection only adds a ring in the wire's own hue", () => {
+      resetIds();
+      const wire = makeWire({ status: "revealed", color: "red", value: "5" });
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected infoTokens={[]} />,
+      );
+      const className = container.querySelector("button")!.className;
+      expect(className).toContain("border-game-revealed");
+      expect(className).toContain("ring-2 ring-wire-red/50");
+      expect(className).not.toContain("border-wire-red");
     });
   });
 

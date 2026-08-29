@@ -51,8 +51,11 @@ const SCHEMES: Array<[string, string]> = [
   ["dark (prefers-color-scheme)", ":root:not(.light) {"],
 ];
 
-// Tokens that mean "this is yours" / "this is the game's chrome". None of them
-// is a wire, so none of them may wear a wire's colour.
+// Tokens that mean "this is yours" / "this is the game's chrome" / "this
+// wire is revealed". None of them is a wire, so none of them may wear a
+// wire's colour — #281 adds --game-revealed on the same guard: revealed is
+// a state common to every wire regardless of hue, so a hue leaking in here
+// would silently re-tie "revealed" to one specific wire colour again.
 const NON_WIRE_TOKENS = [
   "--surface-rack",
   "--rack-ink",
@@ -60,6 +63,7 @@ const NON_WIRE_TOKENS = [
   "--game-rack",
   "--game-rack-ink",
   "--game-rack-border",
+  "--game-revealed",
 ];
 
 const WIRE_TOKENS = ["--wire-blue", "--wire-yellow", "--wire-red"];
