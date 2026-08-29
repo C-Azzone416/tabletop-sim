@@ -18,10 +18,11 @@ export const ACTION_TIMEOUT_MESSAGE = "Server did not respond. Please try again.
 /**
  * The 10s action timeout that app/page.tsx owns inline today.
  *
- * This is the shared version referenced by PR #323's deliberately isolated
- * copy at app/play/host/useActionTimeout.ts: same signature, same return
- * shape, same semantics, so adopting it is a re-point of one import plus a
- * file deletion. Most screens should reach for usePlayAction() instead —
+ * This is the shared version PR #323's deliberately isolated copy at
+ * app/play/host/useActionTimeout.ts was flagged for: that file is deleted
+ * in this change set and /play/host now runs on usePlayAction(), so there
+ * is one lifecycle rather than two. Most screens should reach for
+ * usePlayAction() rather than this hook directly —
  * this hook is the primitive underneath it, exported for anything that needs
  * the timer without the rest of the WebSocket lifecycle.
  */

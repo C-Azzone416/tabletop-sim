@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import PlayChoice from "../app/play/page";
-import HostGameStub from "../app/play/host/page";
 import JoinGameStub from "../app/play/join/page";
 
 const mockReplace = vi.fn();
@@ -108,28 +107,24 @@ describe("/play — the Host / Join choice", () => {
   });
 });
 
-describe("/play/host and /play/join stubs", () => {
+// /play/host is no longer a stub: #316 (PR #323) shipped the real
+// game-selection screen there, covered by test/HostSelection.test.tsx.
+describe("/play/join stub", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setSession(SIGNED_IN, "authenticated");
   });
 
-  it.each([
-    ["host", HostGameStub, "Host New Game"],
-    ["join", JoinGameStub, "Join Game"],
-  ])("renders the %s target with ← Back to /play", (_name, Stub, heading) => {
-    render(<Stub />);
+  it("renders the join target with ← Back to /play", () => {
+    render(<JoinGameStub />);
 
-    expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Join Game" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /← Back/ })).toHaveAttribute("href", "/play");
   });
 
-  it.each([
-    ["host", HostGameStub],
-    ["join", JoinGameStub],
-  ])("applies the same session condition as /play on the %s target", (_name, Stub) => {
+  it("applies the same session condition as /play", () => {
     setSession(null, "unauthenticated");
-    const { container } = render(<Stub />);
+    const { container } = render(<JoinGameStub />);
 
     expect(mockReplace).toHaveBeenCalledWith("/");
     expect(container).toBeEmptyDOMElement();

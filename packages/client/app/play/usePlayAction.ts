@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import type { ClientMessage } from "@tabletop/shared";
+import type { ClientMessage, GameId } from "@tabletop/shared";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useGameState } from "../hooks/useGameState";
 import { useActionTimeout, ACTION_TIMEOUT_MESSAGE } from "./useActionTimeout";
@@ -71,7 +71,14 @@ export function usePlayAction() {
     return true;
   };
 
-  const createGame = () => startAction("creating", { type: "create_game", playerName });
+  /**
+   * `gameType` is required of the caller, deliberately: #313 (PR #325) makes
+   * it a required field on `create_game`, and a missing one must stay a
+   * rejectable error on the server. No client-side default — not even
+   * "wire-game" — or that rejection is quietly undercut.
+   */
+  const createGame = (gameType: GameId) =>
+    startAction("creating", { type: "create_game", playerName, gameType });
 
   const joinGame = (joinCode: string) => {
     const code = joinCode.trim().toUpperCase();

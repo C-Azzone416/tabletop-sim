@@ -1,58 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import type { GameRegistryEntry } from "@tabletop/shared";
-import { useWebSocket } from "../../hooks/useWebSocket";
-import { useGameState } from "../../hooks/useGameState";
 import { GameSelectionGrid } from "../../components/GameSelectionGrid";
 import { ErrorToast } from "../../components/ErrorToast";
-import { useActionTimeout } from "./useActionTimeout";
+import { usePlayAction, usePlaySessionGuard } from "../usePlayAction";
 
+/**
+ * #316's game-selection screen (PR #323), re-pointed at the shared /play
+ * action lifecycle in #315 as that PR's description anticipated. The local
+ * app/play/host/useActionTimeout.ts and the inline mode/error/WebSocket
+ * wiring are gone; usePlayAction carries the same behaviour for every
+ * /play screen. Markup is unchanged.
+ */
 export default function HostSelection() {
-  const router = useRouter();
-  const { data: session, status: sessionStatus } = useSession();
-  const [mode, setMode] = useState<"idle" | "creating">("idle");
-  const [actionError, setActionError] = useState("");
+  const guard = usePlaySessionGuard();
+  const { mode, isBusy, errorMessage, dismissError, createGame } = usePlayAction();
 
-  const playerName = session?.user?.name ?? "";
-  const profileId = session?.user?.id ?? "";
-
-  const { state, handleMessage, clearError } = useGameState();
-  const actionTimeout = useActionTimeout(() => {
-    setMode("idle");
-    setActionError("Server did not respond. Please try again.");
-  });
-  const { connect, send } = useWebSocket(
-    (message) => {
-      handleMessage(message);
-      if (message.type === "game_created") {
-        router.push(`/game/${message.game.joinCode}`);
-      } else if (message.type === "error") {
-        setMode("idle");
-        actionTimeout.clear();
-      }
-    },
-    profileId,
-    playerName,
-  );
-
+  // The registry entry the player picked carries the gameType; nothing
+  // defaults it (see createGame's note and #313).
   const handleSelect = (game: GameRegistryEntry) => {
-    if (mode !== "idle" || !playerName) return;
-    setMode("creating");
-    setActionError("");
-    actionTimeout.start();
-    send({ type: "create_game", playerName, gameType: game.id });
-    connect();
+    createGame(game.id);
   };
 
-  if (sessionStatus === "loading") {
-    return null;
-  }
-
-  if (!session?.user) {
-    router.replace("/");
+  if (guard !== "ready") {
     return null;
   }
 
@@ -68,15 +38,9 @@ export default function HostSelection() {
           </p>
         </div>
 
-        <GameSelectionGrid onSelect={handleSelect} disabled={mode !== "idle"} />
+        <GameSelectionGrid onSelect={handleSelect} disabled={isBusy} />
       </main>
-      <ErrorToast
-        message={actionError || state.error}
-        onDismiss={() => {
-          setActionError("");
-          clearError();
-        }}
-      />
+      <ErrorToast message={errorMessage} onDismiss={dismissError} />
     </div>
   );
 }
