@@ -348,6 +348,77 @@ describe("Wire (#156)", () => {
     });
   });
 
+  // #267: the pending-info-token branch used to hardcode blue for every
+  // non-'YELLOW' value, mis-styling real yellow/red decimal reveals (e.g.
+  // via the dev "Reveal All Tokens" tool). Color must derive from the
+  // token's own value (its decimal suffix), not wire.color — which is
+  // redacted to null for an opponent's still-hidden wire even once a
+  // pending token reveals its numeric value.
+  describe("pending-token color derived from the value's decimal suffix (#267)", () => {
+    it("styles a real yellow decimal value (.1 suffix) yellow, with its number shown", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null, color: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "4.1" })];
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).toContain("border-wire-yellow");
+      expect(button.className).not.toContain("border-wire-blue");
+      expect(screen.getByText("4.1").className).toContain("text-wire-yellow");
+    });
+
+    it("styles a real red decimal value (.5 suffix) red, with its number shown", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null, color: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "3.5" })];
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).toContain("border-wire-red");
+      expect(button.className).not.toContain("border-wire-blue");
+      expect(screen.getByText("3.5").className).toContain("text-wire-red");
+    });
+
+    it("still styles a whole-number value blue, with its number shown", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null, color: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "8" })];
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).toContain("border-wire-blue");
+      expect(screen.getByText("8").className).toContain("text-wire-blue");
+    });
+
+    it("colors correctly for an opponent's hidden wire even though wire.color is redacted to null (#267's core case)", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null, color: null });
+      expect(wire.color).toBeNull();
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "1.1" })];
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).toContain("border-wire-yellow");
+      expect(screen.getByText("1.1").className).toContain("text-wire-yellow");
+    });
+
+    it("keeps the 'YELLOW' sentinel's outline-only, no-number treatment unchanged", () => {
+      resetIds();
+      const wire = makeWire({ id: "w1", status: "hidden", value: null, color: null });
+      const infoTokens = [makeInfoToken({ wireId: "w1", value: "YELLOW" })];
+      const { container } = render(
+        <Wire wire={wire} isLocal={false} isSelected={false} infoTokens={infoTokens} />,
+      );
+      const button = container.querySelector("button")!;
+      expect(button.className).toContain("border-wire-yellow");
+      expect(button.textContent).toBe("");
+    });
+  });
+
   // #190: "revealed" (reveal_reds, or the interim half of a dual-cut) is
   // distinct from both untouched-hidden and cut — it must not fall through
   // to plain hidden styling.
