@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import PlayChoice from "../app/play/page";
-import JoinGameStub from "../app/play/join/page";
 
 const mockReplace = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -107,26 +106,7 @@ describe("/play — the Host / Join choice", () => {
   });
 });
 
-// /play/host is no longer a stub: #316 (PR #323) shipped the real
-// game-selection screen there, covered by test/HostSelection.test.tsx.
-describe("/play/join stub", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    setSession(SIGNED_IN, "authenticated");
-  });
-
-  it("renders the join target with ← Back to /play", () => {
-    render(<JoinGameStub />);
-
-    expect(screen.getByRole("heading", { name: "Join Game" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /← Back/ })).toHaveAttribute("href", "/play");
-  });
-
-  it("applies the same session condition as /play", () => {
-    setSession(null, "unauthenticated");
-    const { container } = render(<JoinGameStub />);
-
-    expect(mockReplace).toHaveBeenCalledWith("/");
-    expect(container).toBeEmptyDOMElement();
-  });
-});
+// Neither /play/host nor /play/join is a stub any more: #316 (PR #323) and
+// #317 (PR #327) shipped the real screens, covered by HostSelection.test.tsx
+// and JoinByCode.test.tsx. Both now run on the shared /play action
+// lifecycle, exercised in usePlayAction.test.tsx.
