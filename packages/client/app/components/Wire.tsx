@@ -32,6 +32,30 @@ function valueColorClass(color: WireType["color"]): string {
   return "text-ink";
 }
 
+// Literal class strings per color, not interpolated — Tailwind's build-time
+// scanner matches class names as literal substrings of the source, so a
+// template-interpolated `border-wire-${color}` would never get generated.
+const PENDING_TOKEN_RING_CLASSES: Record<"blue" | "yellow" | "red", string> = {
+  blue: "border-wire-blue bg-wire-blue/10 text-wire-blue",
+  yellow: "border-wire-yellow bg-wire-yellow/10 text-wire-yellow",
+  red: "border-wire-red bg-wire-red/10 text-wire-red",
+};
+const PENDING_TOKEN_SELECTED_RING_CLASSES: Record<"blue" | "yellow" | "red", string> = {
+  blue: "ring-2 ring-wire-blue/40",
+  yellow: "ring-2 ring-wire-yellow/40",
+  red: "ring-2 ring-wire-red/40",
+};
+const PENDING_TOKEN_SELECTABLE_RING_CLASSES: Record<"blue" | "yellow" | "red", string> = {
+  blue: "ring-1 ring-wire-blue/20",
+  yellow: "ring-1 ring-wire-yellow/20",
+  red: "ring-1 ring-wire-red/20",
+};
+const PENDING_TOKEN_HOVER_RING_CLASSES: Record<"blue" | "yellow" | "red", string> = {
+  blue: "cursor-pointer hover:ring-2 hover:ring-wire-blue/40",
+  yellow: "cursor-pointer hover:ring-2 hover:ring-wire-yellow/40",
+  red: "cursor-pointer hover:ring-2 hover:ring-wire-red/40",
+};
+
 // #190 (Caroline's ruling): yellow/red DO show their decimal as a tinted
 // numeral on the owner's own rack, same as blue shows its number — the
 // physical tiles have the decimal printed on them, and the rulebook's "no
@@ -79,6 +103,18 @@ export function Wire({
   // same circular chip language as the numbered blue token, no number shown.
   if (hasPendingInfoToken) {
     const isYellowIndicator = infoToken.value === "YELLOW";
+    // Info tokens don't redact color — the value's decimal suffix already
+    // encodes it (WIRE_MASTER_SET convention: .1=yellow, .5=red, whole=blue)
+    // — so styling derives from the token value rather than wire.color,
+    // which stays redacted to null for an opponent's still-hidden wire even
+    // once a token reveals its value.
+    const tokenColor: "blue" | "yellow" | "red" = isYellowIndicator
+      ? "yellow"
+      : infoToken.value.endsWith(".1")
+        ? "yellow"
+        : infoToken.value.endsWith(".5")
+          ? "red"
+          : "blue";
     return (
       <button
         onClick={onSelect}
@@ -88,25 +124,15 @@ export function Wire({
         data-wire-position={wire.rackPosition}
         data-wire-status={wire.status}
         data-wire-value={displayValue ?? undefined}
-        className={
-          isYellowIndicator
-            ? `
+        className={`
           flex h-16 w-16 shrink-0 items-center justify-center
-          rounded-full border-2 border-wire-yellow bg-wire-yellow/10 shadow-print-sm
+          rounded-full border-2 ${PENDING_TOKEN_RING_CLASSES[tokenColor]}
+          text-lg font-bold shadow-print-sm
           transition-all press
-          ${isSelected ? "ring-2 ring-wire-yellow/40" : ""}
-          ${isSelectable && !isSelected ? "ring-1 ring-wire-yellow/20" : ""}
-          ${onSelect ? "cursor-pointer hover:ring-2 hover:ring-wire-yellow/40" : "cursor-default"}
-        `
-            : `
-          flex h-16 w-16 shrink-0 items-center justify-center
-          rounded-full border-2 border-wire-blue bg-wire-blue/10 text-lg font-bold
-          text-wire-blue shadow-print-sm transition-all press
-          ${isSelected ? "ring-2 ring-wire-blue/40" : ""}
-          ${isSelectable && !isSelected ? "ring-1 ring-wire-blue/20" : ""}
-          ${onSelect ? "cursor-pointer hover:ring-2 hover:ring-wire-blue/40" : "cursor-default"}
-        `
-        }
+          ${isSelected ? PENDING_TOKEN_SELECTED_RING_CLASSES[tokenColor] : ""}
+          ${isSelectable && !isSelected ? PENDING_TOKEN_SELECTABLE_RING_CLASSES[tokenColor] : ""}
+          ${onSelect ? PENDING_TOKEN_HOVER_RING_CLASSES[tokenColor] : "cursor-default"}
+        `}
       >
         {isYellowIndicator ? null : displayValue}
       </button>
