@@ -1,5 +1,5 @@
 import { sql } from './client.js';
-import type { Game, GameStatus } from '@tabletop/shared';
+import type { Game, GameId, GameStatus } from '@tabletop/shared';
 
 // #170 amendment — provenance marker, deliberately NOT on the shared Game
 // type / game_state broadcasts: it exists only to let endGame() skip
@@ -7,10 +7,10 @@ import type { Game, GameStatus } from '@tabletop/shared';
 // needs it today.
 export type GameCreatedVia = 'lobby' | 'dev_seed';
 
-export async function createGame(joinCode: string, mission: number = 1, createdVia: GameCreatedVia = 'lobby'): Promise<Game> {
+export async function createGame(joinCode: string, gameType: GameId, mission: number = 1, createdVia: GameCreatedVia = 'lobby'): Promise<Game> {
   const rows = await sql`
-    INSERT INTO games (join_code, mission, created_via)
-    VALUES (${joinCode}, ${mission}, ${createdVia})
+    INSERT INTO games (join_code, game_type, mission, created_via)
+    VALUES (${joinCode}, ${gameType}, ${mission}, ${createdVia})
     RETURNING *
   `;
   return mapGame(rows[0]);
@@ -137,6 +137,7 @@ export async function updateDetonatorMax(id: string, max: number): Promise<Game>
 function mapGame(row: Record<string, unknown>): Game {
   return {
     id: row.id as string,
+    gameType: row.game_type as GameId,
     mission: row.mission as number,
     status: row.status as GameStatus,
     captainId: row.captain_id as string | null,

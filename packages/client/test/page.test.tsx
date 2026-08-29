@@ -187,6 +187,7 @@ describe("Home (app/page.tsx)", () => {
         expect(mockSend).toHaveBeenCalledWith({
           type: "create_game",
           playerName: "Alice",
+          gameType: "wire-game",
         });
         expect(mockConnect).toHaveBeenCalled();
         expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();

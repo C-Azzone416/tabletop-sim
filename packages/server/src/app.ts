@@ -439,7 +439,7 @@ export async function buildApp() {
       const names = DEV_SEED_NAMES.slice(0, options.playerCount ?? DEV_SEED_NAMES.length);
 
       const devProfile = await getOrCreateProfile(names[0]);
-      const { game, player } = await engine.createGame(names[0], devProfile.id, 'dev_seed');
+      const { game, player } = await engine.createGame(names[0], 'wire-game', devProfile.id, 'dev_seed');
 
       const seatedPlayers = [player];
       const profilesByName = new Map([[names[0], devProfile]]);
