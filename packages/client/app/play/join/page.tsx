@@ -1,65 +1,43 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
-import { useWebSocket } from "../../hooks/useWebSocket";
-import { useGameState } from "../../hooks/useGameState";
 import { ErrorToast } from "../../components/ErrorToast";
 import { isValidJoinCodeFormat } from "../../lib/joinCode";
-import { useActionTimeout } from "./useActionTimeout";
+import { usePlayAction, usePlaySessionGuard } from "../usePlayAction";
 
+/**
+ * #317's join-by-code screen (PR #327), re-pointed at the shared /play
+ * action lifecycle in #315 as that PR anticipated. The local
+ * app/play/join/useActionTimeout.ts and the inline mode/error/WebSocket
+ * wiring are gone; usePlayAction carries the same behaviour for every
+ * /play screen. Markup is unchanged.
+ *
+ * The client-side format check stays local: it is a pre-flight that must
+ * NOT send or connect, so it never enters the action lifecycle at all. Its
+ * message shares the one ErrorToast, ahead of the lifecycle's message, as
+ * it did before.
+ */
 export default function JoinByCode() {
-  const router = useRouter();
-  const { data: session, status: sessionStatus } = useSession();
+  const guard = usePlaySessionGuard();
+  const { mode, isBusy, playerName, errorMessage, dismissError, joinGame } =
+    usePlayAction();
   const [joinCode, setJoinCode] = useState("");
-  const [mode, setMode] = useState<"idle" | "joining">("idle");
-  const [actionError, setActionError] = useState("");
-
-  const playerName = session?.user?.name ?? "";
-  const profileId = session?.user?.id ?? "";
-
-  const { state, handleMessage, clearError } = useGameState();
-  const actionTimeout = useActionTimeout(() => {
-    setMode("idle");
-    setActionError("Server did not respond. Please try again.");
-  });
-  const { connect, send } = useWebSocket(
-    (message) => {
-      handleMessage(message);
-      if (message.type === "joined_game") {
-        router.push(`/game/${message.game.joinCode}`);
-      } else if (message.type === "error") {
-        setMode("idle");
-        actionTimeout.clear();
-      }
-    },
-    profileId,
-    playerName,
-  );
+  const [formatError, setFormatError] = useState("");
 
   const handleJoin = () => {
     const code = joinCode.trim().toUpperCase();
-    if (mode !== "idle" || !playerName || !code) return;
+    if (isBusy || !playerName || !code) return;
 
     if (!isValidJoinCodeFormat(code)) {
-      setActionError("That code doesn't look right. Check it and try again.");
+      setFormatError("That code doesn't look right. Check it and try again.");
       return;
     }
 
-    setMode("joining");
-    setActionError("");
-    actionTimeout.start();
-    send({ type: "join_game", joinCode: code, playerName });
-    connect();
+    setFormatError("");
+    joinGame(code);
   };
 
-  if (sessionStatus === "loading") {
-    return null;
-  }
-
-  if (!session?.user) {
-    router.replace("/");
+  if (guard !== "ready") {
     return null;
   }
 
@@ -89,7 +67,7 @@ export default function JoinByCode() {
           <button
             type="button"
             onClick={handleJoin}
-            disabled={!joinCode.trim() || mode !== "idle"}
+            disabled={!joinCode.trim() || isBusy}
             className="press w-full min-h-11 rounded-cab border-2 border-outline bg-accent px-4 py-3 font-bold text-accent-ink shadow-print-sm disabled:opacity-50"
           >
             {mode === "joining" ? "Joining..." : "Join"}
@@ -97,10 +75,10 @@ export default function JoinByCode() {
         </div>
       </main>
       <ErrorToast
-        message={actionError || state.error}
+        message={formatError || errorMessage}
         onDismiss={() => {
-          setActionError("");
-          clearError();
+          setFormatError("");
+          dismissError();
         }}
       />
     </div>
