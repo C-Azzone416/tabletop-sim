@@ -1,7 +1,35 @@
-import { request, type Browser, type Page, type Locator } from "@playwright/test";
+import { request, expect, type Browser, type Page, type Locator } from "@playwright/test";
 
 export const API_URL = process.env.E2E_API_URL ?? "http://localhost:3001";
 export const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
+
+/**
+ * Drives the real credentials sign-in on the landing page (#309's room-entry
+ * flow needs a genuine session, not the /dev/seed backdoor every other E2E
+ * spec uses) — click Join, type a name, submit, and wait for the
+ * authenticated landing to render. Suffixes `name` with a short random tag
+ * so concurrent runs (this repo's shared-machine reality) never collide on
+ * the same profile.
+ *
+ * Returns the exact name used, since callers need it to assert on player
+ * lists elsewhere in the lobby.
+ */
+export async function signInAsNewPlayer(page: Page, name: string): Promise<string> {
+  const uniqueName = `${name}${Math.random().toString(36).slice(2, 7)}`;
+  await page.goto(BASE_URL);
+  await page.getByRole("button", { name: "Join" }).click();
+  await page.getByPlaceholder("Choose your name").fill(uniqueName);
+  await page.getByRole("button", { name: "Enter the Room" }).click();
+  await expect(page.getByText("Playing as")).toBeVisible({ timeout: 10_000 });
+  return uniqueName;
+}
+
+/** Extracts the 6-character join code from a /game/:joinCode URL. */
+export function joinCodeFromUrl(page: Page): string {
+  const match = page.url().match(/\/game\/([A-Z0-9]{6})/);
+  if (!match) throw new Error(`Could not find a join code in URL: ${page.url()}`);
+  return match[1];
+}
 
 export interface SeedPlayer {
   name: string;

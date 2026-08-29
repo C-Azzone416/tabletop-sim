@@ -19,7 +19,7 @@ import { usePlayAction, usePlaySessionGuard } from "../usePlayAction";
  */
 export default function JoinByCode() {
   const guard = usePlaySessionGuard();
-  const { mode, isBusy, playerName, errorMessage, dismissError, joinGame } =
+  const { mode, isBusy, playerName, connectionStatus, errorMessage, dismissError, joinGame } =
     usePlayAction();
   const [joinCode, setJoinCode] = useState("");
   const [formatError, setFormatError] = useState("");
@@ -72,6 +72,12 @@ export default function JoinByCode() {
           >
             {mode === "joining" ? "Joining..." : "Join"}
           </button>
+
+          {connectionStatus === "connecting" && (
+            <p className="text-center text-sm text-ink-muted">
+              Connecting to server...
+            </p>
+          )}
         </div>
       </main>
       <ErrorToast

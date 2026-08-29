@@ -11,10 +11,17 @@ import { usePlayAction, usePlaySessionGuard } from "../usePlayAction";
  * app/play/host/useActionTimeout.ts and the inline mode/error/WebSocket
  * wiring are gone; usePlayAction carries the same behaviour for every
  * /play screen. Markup is unchanged.
+ *
+ * #318's cutover-deletion audit found today's app/page.tsx also renders a
+ * "Connecting to server..." indicator off the raw WebSocket status, which
+ * usePlayAction exposes as connectionStatus but this screen wasn't yet
+ * reading. Relocated (not dropped): the 10s timeout/error toast covers the
+ * hang case, but the brief pre-connect window before that timeout is a real
+ * gap this indicator closes, same as it did on the page it's replacing.
  */
 export default function HostSelection() {
   const guard = usePlaySessionGuard();
-  const { mode, isBusy, errorMessage, dismissError, createGame } = usePlayAction();
+  const { mode, isBusy, connectionStatus, errorMessage, dismissError, createGame } = usePlayAction();
 
   // The registry entry the player picked carries the gameType; nothing
   // defaults it (see createGame's note and #313).
@@ -39,6 +46,12 @@ export default function HostSelection() {
         </div>
 
         <GameSelectionGrid onSelect={handleSelect} disabled={isBusy} />
+
+        {connectionStatus === "connecting" && (
+          <p className="mt-4 text-center text-sm text-ink-muted">
+            Connecting to server...
+          </p>
+        )}
       </main>
       <ErrorToast message={errorMessage} onDismiss={dismissError} />
     </div>

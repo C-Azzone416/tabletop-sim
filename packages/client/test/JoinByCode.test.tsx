@@ -16,10 +16,11 @@ vi.mock("next-auth/react", () => ({
 let capturedOnMessage: ((message: unknown) => void) | null = null;
 const mockConnect = vi.fn();
 const mockSend = vi.fn();
+let mockWsStatus: "connecting" | "connected" | "disconnected" = "disconnected";
 vi.mock("../app/hooks/useWebSocket", () => ({
   useWebSocket: (onMessage: (message: unknown) => void) => {
     capturedOnMessage = onMessage;
-    return { status: "disconnected", connect: mockConnect, send: mockSend };
+    return { status: mockWsStatus, connect: mockConnect, send: mockSend };
   },
 }));
 
@@ -51,6 +52,7 @@ describe("JoinByCode (app/play/join/page.tsx)", () => {
     vi.clearAllMocks();
     capturedOnMessage = null;
     mockGameStateError = null;
+    mockWsStatus = "disconnected";
   });
 
   afterEach(() => {
@@ -197,6 +199,12 @@ describe("JoinByCode (app/play/join/page.tsx)", () => {
         joinCode: "ABCDEF",
         playerName: "Alice",
       });
+    });
+
+    it("shows the connecting indicator when the WebSocket status is connecting (#318 relocation)", () => {
+      mockWsStatus = "connecting";
+      render(<JoinByCode />);
+      expect(screen.getByText("Connecting to server...")).toBeInTheDocument();
     });
   });
 });

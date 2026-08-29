@@ -16,10 +16,11 @@ vi.mock("next-auth/react", () => ({
 let capturedOnMessage: ((message: unknown) => void) | null = null;
 const mockConnect = vi.fn();
 const mockSend = vi.fn();
+let mockWsStatus: "connecting" | "connected" | "disconnected" = "disconnected";
 vi.mock("../app/hooks/useWebSocket", () => ({
   useWebSocket: (onMessage: (message: unknown) => void) => {
     capturedOnMessage = onMessage;
-    return { status: "disconnected", connect: mockConnect, send: mockSend };
+    return { status: mockWsStatus, connect: mockConnect, send: mockSend };
   },
 }));
 
@@ -45,6 +46,7 @@ describe("HostSelection (app/play/host/page.tsx)", () => {
     vi.clearAllMocks();
     capturedOnMessage = null;
     mockGameStateError = null;
+    mockWsStatus = "disconnected";
   });
 
   afterEach(() => {
@@ -120,6 +122,12 @@ describe("HostSelection (app/play/host/page.tsx)", () => {
 
       expect(mockHandleMessage).toHaveBeenCalled();
       expect(screen.getByText("Wire Game").closest("button")).not.toBeDisabled();
+    });
+
+    it("shows the connecting indicator when the WebSocket status is connecting (#318 relocation)", () => {
+      mockWsStatus = "connecting";
+      render(<HostSelection />);
+      expect(screen.getByText("Connecting to server...")).toBeInTheDocument();
     });
 
     it("shows a game-state error banner when present", () => {
