@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Home from "../app/page";
 
@@ -18,28 +18,6 @@ vi.mock("next-auth/react", () => ({
   signOut: (...args: unknown[]) => mockSignOut(...args),
 }));
 
-// Captures the onMessage callback passed into useWebSocket so tests can
-// drive it directly, matching how message routing actually happens.
-let capturedOnMessage: ((message: unknown) => void) | null = null;
-const mockConnect = vi.fn();
-const mockSend = vi.fn();
-let mockWsStatus: "connecting" | "connected" | "disconnected" = "disconnected";
-vi.mock("../app/hooks/useWebSocket", () => ({
-  useWebSocket: (onMessage: (message: unknown) => void) => {
-    capturedOnMessage = onMessage;
-    return { status: mockWsStatus, connect: mockConnect, send: mockSend };
-  },
-}));
-
-const mockHandleMessage = vi.fn();
-let mockGameStateError: string | null = null;
-vi.mock("../app/hooks/useGameState", () => ({
-  useGameState: () => ({
-    state: { error: mockGameStateError },
-    handleMessage: mockHandleMessage,
-  }),
-}));
-
 vi.mock("../app/hooks/useMissionOutcomes", () => ({
   useMissionOutcomes: () => ({}),
 }));
@@ -54,13 +32,6 @@ function setSession(user: { id: string; name: string } | null, status: string) {
 describe("Home (app/page.tsx)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    capturedOnMessage = null;
-    mockWsStatus = "disconnected";
-    mockGameStateError = null;
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   describe("session loading state", () => {
@@ -143,16 +114,15 @@ describe("Home (app/page.tsx)", () => {
     });
   });
 
-  describe("authenticated lobby", () => {
+  describe("authenticated landing", () => {
     beforeEach(() => {
       setSession({ id: "profile-1", name: "Alice" }, "authenticated");
     });
 
-    it("renders the lobby with the player's name", () => {
+    it("renders the landing with the player's name", () => {
       render(<Home />);
       expect(screen.getByText("Playing as")).toBeInTheDocument();
       expect(screen.getByText("Alice")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Create New Game" })).toBeInTheDocument();
     });
 
     it("renders the mission progress indicators (#170)", () => {
@@ -167,145 +137,16 @@ describe("Home (app/page.tsx)", () => {
       expect(mockSignOut).toHaveBeenCalledWith({ callbackUrl: "/" });
     });
 
-    it("shows the connecting indicator when ws status is connecting", () => {
-      mockWsStatus = "connecting";
+    it("routes to /play when Play is clicked (#318 cutover)", () => {
       render(<Home />);
-      expect(screen.getByText("Connecting to server...")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+      expect(mockPush).toHaveBeenCalledWith("/play");
     });
 
-    it("shows a game-state error banner when present", () => {
-      mockGameStateError = "Something went wrong";
+    it("no longer offers inline create/join controls", () => {
       render(<Home />);
-      expect(screen.getByText("Something went wrong")).toBeInTheDocument();
-    });
-
-    describe("create game", () => {
-      it("sends create_game, connects, and shows Creating state", () => {
-        render(<Home />);
-        fireEvent.click(screen.getByRole("button", { name: "Create New Game" }));
-
-        expect(mockSend).toHaveBeenCalledWith({
-          type: "create_game",
-          playerName: "Alice",
-          gameType: "wire-game",
-        });
-        expect(mockConnect).toHaveBeenCalled();
-        expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
-      });
-
-      it("disables the Join button once creating", () => {
-        render(<Home />);
-        fireEvent.change(screen.getByPlaceholderText("Enter code"), {
-          target: { value: "ABC123" },
-        });
-        fireEvent.click(screen.getByRole("button", { name: "Create New Game" }));
-        expect(screen.getByRole("button", { name: "Join" })).toBeDisabled();
-      });
-
-      it("reverts to idle with an error after a 10s server timeout", () => {
-        vi.useFakeTimers();
-        render(<Home />);
-        fireEvent.click(screen.getByRole("button", { name: "Create New Game" }));
-        expect(screen.getByRole("button", { name: "Creating..." })).toBeInTheDocument();
-
-        act(() => {
-          vi.advanceTimersByTime(10_000);
-        });
-
-        expect(screen.getByRole("button", { name: "Create New Game" })).not.toBeDisabled();
-        expect(
-          screen.getByText("Server did not respond. Please try again."),
-        ).toBeInTheDocument();
-      });
-
-      it("routes to the game page when a game_created message arrives", () => {
-        render(<Home />);
-        fireEvent.click(screen.getByRole("button", { name: "Create New Game" }));
-
-        act(() => {
-          capturedOnMessage?.({
-            type: "game_created",
-            game: { joinCode: "XYZ999" },
-            player: { id: "p1", name: "Alice" },
-          });
-        });
-
-        expect(mockHandleMessage).toHaveBeenCalled();
-        expect(mockPush).toHaveBeenCalledWith("/game/XYZ999");
-      });
-    });
-
-    describe("join game", () => {
-      it("disables the Join button when the code is empty", () => {
-        render(<Home />);
-        expect(screen.getByRole("button", { name: "Join" })).toBeDisabled();
-      });
-
-      it("enables the Join button once a code is entered, and uppercases it", () => {
-        render(<Home />);
-        const input = screen.getByPlaceholderText("Enter code") as HTMLInputElement;
-        fireEvent.change(input, { target: { value: "abc123" } });
-        expect(input.value).toBe("ABC123");
-        expect(screen.getByRole("button", { name: "Join" })).not.toBeDisabled();
-      });
-
-      it("sends join_game and connects on click", () => {
-        render(<Home />);
-        fireEvent.change(screen.getByPlaceholderText("Enter code"), {
-          target: { value: "abc123" },
-        });
-        fireEvent.click(screen.getByRole("button", { name: "Join" }));
-
-        expect(mockSend).toHaveBeenCalledWith({
-          type: "join_game",
-          joinCode: "ABC123",
-          playerName: "Alice",
-        });
-        expect(mockConnect).toHaveBeenCalled();
-        expect(screen.getByRole("button", { name: "Joining..." })).toBeDisabled();
-      });
-
-      it("disables the Create button once joining", () => {
-        render(<Home />);
-        fireEvent.change(screen.getByPlaceholderText("Enter code"), {
-          target: { value: "ABC123" },
-        });
-        fireEvent.click(screen.getByRole("button", { name: "Join" }));
-        expect(screen.getByRole("button", { name: "Create New Game" })).toBeDisabled();
-      });
-
-      it("routes to the game page when a joined_game message arrives", () => {
-        render(<Home />);
-        fireEvent.change(screen.getByPlaceholderText("Enter code"), {
-          target: { value: "ABC123" },
-        });
-        fireEvent.click(screen.getByRole("button", { name: "Join" }));
-
-        act(() => {
-          capturedOnMessage?.({
-            type: "joined_game",
-            game: { joinCode: "ABC123" },
-            player: { id: "p2", name: "Alice" },
-            players: [],
-          });
-        });
-
-        expect(mockPush).toHaveBeenCalledWith("/game/ABC123");
-      });
-    });
-
-    describe("server error routing", () => {
-      it("resets mode to idle when the server sends an error message", () => {
-        render(<Home />);
-        fireEvent.click(screen.getByRole("button", { name: "Create New Game" }));
-        expect(screen.getByRole("button", { name: "Creating..." })).toBeInTheDocument();
-
-        act(() => {
-          capturedOnMessage?.({ type: "error", message: "Game not found" });
-        });
-
-        expect(screen.getByRole("button", { name: "Create New Game" })).not.toBeDisabled();
-      });
+      expect(screen.queryByRole("button", { name: "Create New Game" })).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText("Enter code")).not.toBeInTheDocument();
     });
   });
 });
