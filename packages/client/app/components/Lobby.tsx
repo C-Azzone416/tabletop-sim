@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { Player } from "@tabletop/shared";
-import { MissionSelector } from "./MissionSelector";
+import { resolveLobbyConfigSlot } from "./lobbyConfig/registry";
+import type { LobbyStartArg } from "./lobbyConfig/types";
 
 interface LobbyProps {
   joinCode: string;
@@ -10,9 +11,14 @@ interface LobbyProps {
   localPlayerId: string;
   captainId: string | null;
   onReady: () => void;
-  onStartGame: (mission: number) => void;
+  onStartGame: (startArg: LobbyStartArg) => void;
   // #179: {1..highestUnlocked} are pickable for the captain.
   highestUnlocked: number;
+  /**
+   * The room's `game_type`, which picks the config panel (#319). Null until
+   * #313/#325 puts `gameType` in room state — see `resolveLobbyConfigSlot`.
+   */
+  gameType?: string | null;
 }
 
 export function Lobby({
@@ -23,6 +29,7 @@ export function Lobby({
   onReady,
   onStartGame,
   highestUnlocked,
+  gameType = null,
 }: LobbyProps) {
   const isCaptain = localPlayerId === captainId;
   const localPlayer = players.find((p) => p.id === localPlayerId);
@@ -30,13 +37,32 @@ export function Lobby({
   const allPlayersReady = players.every((p) => p.ready);
   const notReadyPlayerNames = players.filter((p) => !p.ready).map((p) => p.name);
   const canStart = players.length >= 1 && players.length <= 4 && allPlayersReady;
-  const [selectedMission, setSelectedMission] = useState(1);
   const [isStarting, setIsStarting] = useState(false);
+
+  // #319: the lobby holds the config value but never interprets it — the slot
+  // for the room's game type owns its shape, its panel, its start label and
+  // how it maps onto onStartGame. Adding a game must not touch this file.
+  const configContext = { highestUnlocked };
+  const slot = resolveLobbyConfigSlot(gameType);
+  const [config, setConfig] = useState<unknown>(() =>
+    slot.createDefaultConfig(configContext),
+  );
+  const [configGameId, setConfigGameId] = useState(slot.gameId);
+
+  // Reset the config when the slot changes rather than keeping one game's
+  // value under another game's panel. This fires in practice when gameType
+  // arrives after the first render (the room state has not loaded yet).
+  if (configGameId !== slot.gameId) {
+    setConfigGameId(slot.gameId);
+    setConfig(slot.createDefaultConfig(configContext));
+  }
+
+  const ConfigPanel = slot.Panel;
 
   const handleStartGame = () => {
     if (isStarting) return;
     setIsStarting(true);
-    onStartGame(selectedMission);
+    onStartGame(slot.toStartArg(config));
   };
 
   return (
@@ -92,15 +118,25 @@ export function Lobby({
         </ul>
       </div>
 
+      {/*
+        Captain-only, exactly as before #319. The config value is local to the
+        captain's client and is not replicated in room state, so a "read-only
+        for everyone else" view would show every non-captain a default rather
+        than the captain's actual choice. The slot API already carries
+        `canEdit` and each panel implements it, so once the config lives in
+        room state this becomes `<div>` unconditionally with
+        `canEdit={isCaptain}`.
+      */}
       {isCaptain && (
         <div className="w-full max-w-sm">
           <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-muted">
-            Select Mission
+            {slot.title}
           </h3>
-          <MissionSelector
-            selectedMission={selectedMission}
-            onSelectMission={setSelectedMission}
-            highestUnlocked={highestUnlocked}
+          <ConfigPanel
+            config={config}
+            onChange={setConfig}
+            canEdit={isCaptain}
+            context={configContext}
           />
         </div>
       )}
@@ -121,7 +157,7 @@ export function Lobby({
             disabled={!canStart || isStarting}
             className="press min-h-11 rounded-cab border-2 border-outline bg-accent px-8 py-3 font-bold text-accent-ink shadow-print-sm disabled:opacity-50"
           >
-            {isStarting ? "Starting..." : `Start Mission ${selectedMission}`}
+            {isStarting ? "Starting..." : slot.startLabel(config)}
           </button>
         )}
 
