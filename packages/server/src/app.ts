@@ -45,6 +45,30 @@ function secretsMatch(candidate: string, expected: string): boolean {
   return timingSafeEqual(candidateDigest, expectedDigest);
 }
 
+// #264 — POST /profiles has no request-cost check, so anyone already
+// holding the #252 shared secret can enumerate PROFILE_ALLOWLIST membership
+// (200/201 vs 403) at whatever speed the server allows. This route's blast
+// radius is "which first names are invited," not game state — a lightweight
+// self-contained limiter matches that severity; no new dependency for one
+// low-risk route. Fixed-window per key, in-memory. Never pruned: bounded by
+// the count of distinct callers this process ever sees, a non-issue at this
+// project's scale (an invite-only game for a handful of people), and adding
+// a sweep/interval would need its own shutdown handling for one Low-severity
+// route.
+function createRateLimiter(max: number, windowMs: number): (key: string) => boolean {
+  const hits = new Map<string, { count: number; windowStart: number }>();
+  return (key: string): boolean => {
+    const now = Date.now();
+    const entry = hits.get(key);
+    if (!entry || now - entry.windowStart >= windowMs) {
+      hits.set(key, { count: 1, windowStart: now });
+      return true;
+    }
+    entry.count += 1;
+    return entry.count <= max;
+  };
+}
+
 export async function buildApp() {
   const apiAccessKey = getAccessKey();
   const profileAllowlist = getProfileAllowlist();
@@ -78,6 +102,36 @@ export async function buildApp() {
         '*.nearWinValue', '*.nearWinColor', '*.soloCutValue', '*.soloCutColor',
       ],
     },
+    // #264/#279 — `trustProxy: true` was wrong: Fastify's `request.ip`
+    // getter (lib/request.js) with `true` trusts every entry in
+    // X-Forwarded-For and returns the FIRST (leftmost) one, which is
+    // exactly the entry a caller supplies themselves, unmodified, if
+    // nothing downstream strips it — toucan demonstrated live against the
+    // deployed environment that changing the header resets the rate-limit
+    // quota completely, so `true` made the limiter trust the one value an
+    // attacker fully controls.
+    //
+    // `trustProxy: 1` trusts exactly one hop: Fastify counts inward from
+    // `request.socket.remoteAddress` (always trusted, hop 0) and returns
+    // the address at the boundary once N (here 1) additional hops have been
+    // walked — i.e. the rightmost X-Forwarded-For entry. The open question
+    // this doesn't fully resolve: Render's own docs describe TWO layers in
+    // front of the app (Cloudflare's edge, then Render's load balancer —
+    // render.com/articles/how-render-handles-ddos-attacks), and if both
+    // independently append to XFF, the real client IP would be the
+    // SECOND-from-right entry, needing `trustProxy: 2`, not 1. Whether
+    // Render's LB actually appends its own hop distinctly from Cloudflare's,
+    // or passes Cloudflare's XFF through unmodified, isn't settled by
+    // public docs — see the write-up on #278/#264 for the sources checked
+    // and why 1 is being shipped now regardless (it fully closes the
+    // caller-controlled-leftmost-entry spoof either way; the open question
+    // is only whether it resolves to the exact client IP or a shared
+    // Cloudflare-edge IP one hop out from it — a precision gap, not a
+    // reopened spoof).
+    //
+    // Nothing sits between a local dev server and its caller, so this is a
+    // no-op locally either way.
+    trustProxy: 1,
   });
 
   const allowedOrigins = process.env.CORS_ORIGINS
@@ -132,7 +186,23 @@ export async function buildApp() {
     return reply.status(501).send({ error: 'Use WebSocket to create games' });
   });
 
-  app.post('/profiles', async (request, reply) => {
+  // #264 — 20 requests/minute per IP by default, overridable via env for
+  // whoever ends up tuning it against real traffic. Checked as its own
+  // preHandler, before the route body below ever reads `name` or touches
+  // profileAllowlist: whether a request gets 429'd depends only on how many
+  // requests this IP has made, never on what name it sent, so the limiter
+  // can't become a second oracle layered on top of the one #264 is about.
+  const profilesRateLimitMax = Number(process.env.PROFILES_RATE_LIMIT_MAX ?? 20);
+  const profilesRateLimitWindowMs = Number(process.env.PROFILES_RATE_LIMIT_WINDOW_MS ?? 60_000);
+  const allowProfilesRequest = createRateLimiter(profilesRateLimitMax, profilesRateLimitWindowMs);
+
+  app.post('/profiles', {
+    preHandler: async (request, reply) => {
+      if (!allowProfilesRequest(request.ip)) {
+        return reply.status(429).send({ error: 'Too many requests' });
+      }
+    },
+  }, async (request, reply) => {
     const { name } = request.body as { name: string };
     if (!name || typeof name !== 'string' || name.trim().length === 0 || name.trim().length > 20) {
       return reply.status(400).send({ error: 'name is required (1-20 chars)' });
