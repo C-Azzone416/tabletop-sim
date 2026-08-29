@@ -1,15 +1,22 @@
 name: Staging Smoke Check
 
-# Post-deploy check for the dev-tooling gate on staging (issue #122). PR #98's
-# fail-closed gate (ENABLE_DEV_SEED === 'true' && NODE_ENV !== 'production')
-# silently disabled /dev/* routes on staging for ~26 hours because Render
-# defaults Node services to NODE_ENV=production — nothing caught it until a
-# human noticed manually. This runs on a schedule (Render deploys aren't wired
-# to a GitHub Actions trigger) and via workflow_dispatch/repository_dispatch so
-# it can also be triggered on-demand or by a future deploy webhook.
+# Post-merge check for the dev-tooling gate on staging (issue #122, moved from
+# a schedule to a develop-push job by #345). PR #98's fail-closed gate
+# (ENABLE_DEV_SEED === 'true' && NODE_ENV !== 'production') silently disabled
+# /dev/* routes on staging for ~26 hours because Render defaults Node services
+# to NODE_ENV=production — nothing caught it until a human noticed manually.
+#
+# #345 — staging has no users, so a per-merge check loses almost no detection
+# latency versus a 30-minute poll while attaching the signal to an actual
+# change. This is its own job in its own workflow file (not folded into
+# ci.yml), so a staging outage/cold-start can never skip or fail the
+# build/test job — see #302 for the failure mode this must not reproduce.
+# workflow_dispatch/repository_dispatch stay for on-demand runs and a future
+# deploy trigger (#286).
 on:
-  schedule:
-    - cron: '*/30 * * * *'
+  push:
+    branches:
+      - develop
   workflow_dispatch: {}
   repository_dispatch:
     types: [staging-deployed]
