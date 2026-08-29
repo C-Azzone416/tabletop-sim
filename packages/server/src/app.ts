@@ -44,6 +44,30 @@ function secretsMatch(candidate: string, expected: string): boolean {
   return timingSafeEqual(candidateDigest, expectedDigest);
 }
 
+// #264 — POST /profiles has no request-cost check, so anyone already
+// holding the #252 shared secret can enumerate PROFILE_ALLOWLIST membership
+// (200/201 vs 403) at whatever speed the server allows. This route's blast
+// radius is "which first names are invited," not game state — a lightweight
+// self-contained limiter matches that severity; no new dependency for one
+// low-risk route. Fixed-window per key, in-memory. Never pruned: bounded by
+// the count of distinct callers this process ever sees, a non-issue at this
+// project's scale (an invite-only game for a handful of people), and adding
+// a sweep/interval would need its own shutdown handling for one Low-severity
+// route.
+function createRateLimiter(max: number, windowMs: number): (key: string) => boolean {
+  const hits = new Map<string, { count: number; windowStart: number }>();
+  return (key: string): boolean => {
+    const now = Date.now();
+    const entry = hits.get(key);
+    if (!entry || now - entry.windowStart >= windowMs) {
+      hits.set(key, { count: 1, windowStart: now });
+      return true;
+    }
+    entry.count += 1;
+    return entry.count <= max;
+  };
+}
+
 export async function buildApp() {
   const apiAccessKey = getAccessKey();
   const profileAllowlist = getProfileAllowlist();
@@ -57,7 +81,22 @@ export async function buildApp() {
     }
   }
 
-  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.url'] } });
+  // #264 — Render terminates TLS and proxies every request to this process,
+  // so without this, `request.ip` resolves to Render's internal proxy
+  // address for every request, not the real client — a per-IP rate limit
+  // built on that would rate-limit "everyone" as a single client instead of
+  // each caller individually.
+  //
+  // KNOWN ISSUE, NOT YET RESOLVED IN THIS PATCH: `trustProxy: true` (43ed460's
+  // original value) trusts the ENTIRE X-Forwarded-For chain and reads the
+  // FIRST (leftmost) entry — which is exactly the value a caller can supply
+  // themselves. #279 (c3b0df6, not in #305's four-commit cherry-pick list)
+  // fixes this to `trustProxy: 1`, confirmed live by toucan: with `true`, an
+  // attacker can fully reset their own rate-limit quota by changing the
+  // X-Forwarded-For header on each request, defeating #264 entirely. See the
+  // PR description / #305 thread — this needs a decision on whether #279
+  // should be a fifth cherry-pick before this patch is considered complete.
+  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.url'] }, trustProxy: true });
 
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
@@ -111,7 +150,23 @@ export async function buildApp() {
     return reply.status(501).send({ error: 'Use WebSocket to create games' });
   });
 
-  app.post('/profiles', async (request, reply) => {
+  // #264 — 20 requests/minute per IP by default, overridable via env for
+  // whoever ends up tuning it against real traffic. Checked as its own
+  // preHandler, before the route body below ever reads `name` or touches
+  // profileAllowlist: whether a request gets 429'd depends only on how many
+  // requests this IP has made, never on what name it sent, so the limiter
+  // can't become a second oracle layered on top of the one #264 is about.
+  const profilesRateLimitMax = Number(process.env.PROFILES_RATE_LIMIT_MAX ?? 20);
+  const profilesRateLimitWindowMs = Number(process.env.PROFILES_RATE_LIMIT_WINDOW_MS ?? 60_000);
+  const allowProfilesRequest = createRateLimiter(profilesRateLimitMax, profilesRateLimitWindowMs);
+
+  app.post('/profiles', {
+    preHandler: async (request, reply) => {
+      if (!allowProfilesRequest(request.ip)) {
+        return reply.status(429).send({ error: 'Too many requests' });
+      }
+    },
+  }, async (request, reply) => {
     const { name } = request.body as { name: string };
     if (!name || typeof name !== 'string' || name.trim().length === 0 || name.trim().length > 20) {
       return reply.status(400).send({ error: 'name is required (1-20 chars)' });

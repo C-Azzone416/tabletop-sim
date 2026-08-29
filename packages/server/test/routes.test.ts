@@ -209,6 +209,76 @@ describe("routes", () => {
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Internal server error" });
     });
+
+    // #264 — enumeration-via-status-code needs speed to be useful; a
+    // per-IP rate limit slows it down. Small max/window via env so these
+    // tests don't need 20 real requests to exercise the 429 path.
+    describe("rate limit (#264)", () => {
+      let limitedApp: FastifyInstance;
+
+      beforeEach(async () => {
+        process.env.PROFILES_RATE_LIMIT_MAX = "2";
+        process.env.PROFILES_RATE_LIMIT_WINDOW_MS = "60000";
+        limitedApp = await buildApp();
+      });
+
+      afterEach(async () => {
+        await limitedApp.close();
+        delete process.env.PROFILES_RATE_LIMIT_MAX;
+        delete process.env.PROFILES_RATE_LIMIT_WINDOW_MS;
+      });
+
+      it("allows requests up to the configured max", async () => {
+        mockProfilesDb.getProfileByName.mockResolvedValue(null);
+        mockProfilesDb.createProfile.mockImplementation(async (name: string) => makeProfile({ name }));
+
+        const first = await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Alice" } });
+        const second = await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Bob" } });
+
+        expect(first.statusCode).toBe(201);
+        expect(second.statusCode).toBe(201);
+      });
+
+      it("returns 429 once the same caller exceeds the configured max", async () => {
+        mockProfilesDb.getProfileByName.mockResolvedValue(null);
+        mockProfilesDb.createProfile.mockImplementation(async (name: string) => makeProfile({ name }));
+
+        await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Alice" } });
+        await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Bob" } });
+        const third = await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Carol" } });
+
+        expect(third.statusCode).toBe(429);
+        expect(third.json()).toEqual({ error: "Too many requests" });
+      });
+
+      // The limiter must never inspect the request body, or a 429 becomes
+      // a second oracle on top of the one #264 is about (fires differently
+      // depending on whether the name being probed would have been
+      // allowed). Confirmed here directly: the request that trips the
+      // limit is for a name that was never going to be allow-listed
+      // (profileAllowlist unset in this test's app, so every name is
+      // normally accepted) — it still gets a plain 429, not a 403, proving
+      // the limiter decided before the handler ever read `name`.
+      it("the 429 fires purely on request count, never on the name's own validity", async () => {
+        mockProfilesDb.getProfileByName.mockResolvedValue(null);
+        mockProfilesDb.createProfile.mockImplementation(async (name: string) => makeProfile({ name }));
+
+        await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Alice" } });
+        await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Bob" } });
+        const third = await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "AnyNameAtAll" } });
+
+        expect(third.statusCode).toBe(429);
+        expect(mockProfilesDb.getProfileByName).not.toHaveBeenCalledWith("AnyNameAtAll");
+      });
+
+      it("does not rate-limit other routes", async () => {
+        await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Alice" } });
+        await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Bob" } });
+
+        const health = await limitedApp.inject({ method: "GET", url: "/health" });
+        expect(health.statusCode).toBe(200);
+      });
+    });
   });
 
   describe("GET /profiles/:id", () => {
