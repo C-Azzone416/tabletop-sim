@@ -55,13 +55,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # #185 — hard gate against advisory drift (#175's post-triage state was
-      # 0 advisories, so this starts green). audit-level=high fails on
-      # high/critical; low/moderate stay visible in the job log without
-      # blocking, matching the triage's own severity split.
-      - name: Security audit (npm)
-        run: npm audit --audit-level=high
-
       - name: Apply migrations
         run: npx tsx db/migrate.ts "$DATABASE_URL"
 
@@ -103,3 +96,18 @@ jobs:
 
       - name: Check migrations
         run: npm run check:migrations
+
+      # #185 — hard gate against advisory drift (#175's post-triage state was
+      # 0 advisories, so this starts green). audit-level=high fails on
+      # high/critical; low/moderate stay visible in the job log without
+      # blocking, matching the triage's own severity split.
+      #
+      # #302 (Caroline's ruling, Option 2): moved from step 4 to last. ci.yml
+      # is one sequential job — a failure here used to skip the twelve steps
+      # after it, so a red `ci` from an audit failure and a red `ci` from
+      # "nothing ran" (#284) looked identical. Last means every other step
+      # still runs and reports before this can trip; the gate still blocks
+      # the merge either way; only its position moved. Not a job split —
+      # that's #307, filed and explicitly out of scope here.
+      - name: Security audit (npm)
+        run: npm audit --audit-level=high
