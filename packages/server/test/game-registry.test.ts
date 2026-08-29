@@ -28,4 +28,15 @@ describe("game registry", () => {
       expect(game.maxPlayers).toBeGreaterThanOrEqual(game.minPlayers);
     }
   });
+
+  it("is frozen at runtime, not just readonly at the type level (it's a security allowlist)", () => {
+    expect(Object.isFrozen(GAME_REGISTRY)).toBe(true);
+    for (const game of GAME_REGISTRY) {
+      expect(Object.isFrozen(game)).toBe(true);
+    }
+    expect(() => {
+      // @ts-expect-error — deliberately attempting a runtime mutation
+      GAME_REGISTRY[0].available = true;
+    }).toThrow(TypeError);
+  });
 });

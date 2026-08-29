@@ -18,24 +18,27 @@ export interface GameRegistryEntry {
   available: boolean;
 }
 
-export const GAME_REGISTRY: readonly GameRegistryEntry[] = [
-  {
+// Frozen at both levels (not just `readonly` at the type level, which erases
+// at compile time): #313 uses this as a security allowlist for create_game,
+// so it must not be mutable at runtime.
+export const GAME_REGISTRY: readonly GameRegistryEntry[] = Object.freeze([
+  Object.freeze({
     id: 'wire-game',
     displayName: 'Wire Game',
     description: 'Cut the right wires as a team before the detonator runs out.',
     minPlayers: 2,
     maxPlayers: 4,
     available: true,
-  },
-  {
+  }),
+  Object.freeze({
     id: 'spades',
     displayName: 'Spades',
     description: 'Classic trick-taking card game for four players in two partnerships.',
     minPlayers: 4,
     maxPlayers: 4,
     available: false,
-  },
-];
+  }),
+]);
 
 export function getGameById(id: string): GameRegistryEntry | undefined {
   return GAME_REGISTRY.find((game) => game.id === id);
