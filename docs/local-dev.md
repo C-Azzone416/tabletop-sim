@@ -25,6 +25,25 @@ npm install
 
 > **Note:** `packages/server/.env` is gitignored — each developer sets it up once locally.
 
+## Pre-launch access gate (#252)
+
+The server rejects requests that don't carry a shared secret, and restricts profile creation to an invite allow-list — see `docs/access-control.md` for the full design. Both are **off by default in local dev**: leave `API_ACCESS_KEY` / `PROFILE_ALLOWLIST` unset in `packages/server/.env` and the app behaves exactly as before, no extra setup needed.
+
+To exercise the gate locally (e.g. testing the sign-in flow against it), set matching values on both sides:
+
+```bash
+# packages/server/.env
+API_ACCESS_KEY=dev-local-key
+PROFILE_ALLOWLIST=Dev,Alice,Bob,Carol
+
+# packages/client/.env.local
+NEXT_PUBLIC_API_ACCESS_KEY=dev-local-key
+```
+
+`/dev/*` routes are still separately gated by `ENABLE_DEV_SEED` — the dev-seed profiles (Dev/Alice/Bob/Carol) are created directly against the database and never go through `POST /profiles`, so they're unaffected by `PROFILE_ALLOWLIST` either way. Only sign-in (`POST /profiles`, via `auth.ts`) checks the allow-list.
+
+**In production, both are required** — `buildApp()` refuses to start without them when `NODE_ENV=production`.
+
 ## Starting the dev environment
 
 ```bash
