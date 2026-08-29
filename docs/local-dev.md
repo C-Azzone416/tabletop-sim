@@ -126,3 +126,9 @@ npx playwright test
 | Next.js client | 3000 |
 | Fastify server | 3001 |
 | PostgreSQL | 5432 |
+
+## Vercel: Preview Comments disabled (#284)
+
+The **Vercel Toolbar / Comments** setting for this project (Project Settings → General → Vercel Toolbar) has **Preview = Off**, deliberately, as of #284 (2026-08-29). Production is left at its default (Comments never auto-patches there, per #284's own findings — see the issue for the full evidence trail).
+
+Why: Next 16.3.x's immutable static file upload conflicts with Vercel's automatic preview-comment patch step, which runs on every Preview deployment by default. With it on, every Preview deploy for this project failed outright with `Cannot patch preview comments when immutable static file upload is enabled`. There's no committable fix — this isn't controlled by `vercel.json`, an env var, or anything else in-repo; it's a dashboard-only project setting. If you're bootstrapping a **new** Vercel project for this repo (e.g. after a fork), you'll need to flip this off by hand or Preview deployments will fail the same way.
