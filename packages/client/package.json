@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@tabletop/shared": "*",
-    "next": "16.2.11",
+    "next": "16.3.3",
     "next-auth": "5.0.0-beta.32",
     "react": "19.2.3",
     "react-dom": "19.2.3"
