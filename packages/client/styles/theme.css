@@ -55,8 +55,12 @@
   --surface: #FBF7EF;
   --surface-raised: #FFFFFF;
   --surface-table: #FFFFFF;
-  --surface-rack: #FFC53D;
-  --rack-ink: #10233F;
+  /* Rack tint = "yours" (#245). Deep amber, NOT --cab-sun: the sun hex is
+     --wire-yellow, and a rack painted with it was byte-identical to a yellow
+     wire while being full of wire tiles. Same value in both schemes; ink and
+     border track the scheme's --ink-inverse/--outline. */
+  --surface-rack: #7A5A0D;
+  --rack-ink: #FBF7EF;
   --rack-border: #10233F;
 
   --ink: #10233F;
@@ -83,9 +87,16 @@
      Defaults to Cabinet's own values; a second title overrides this
      layer under [data-game="<slug>"], never the platform layer. */
   --game-table: #FFFFFF;
-  --game-rack: #FFC53D;
-  --game-rack-ink: #10233F;
+  --game-rack: #7A5A0D;
+  --game-rack-ink: #FBF7EF;
   --game-rack-border: #10233F;
+  /* WARNING (#245): --game-accent is byte-identical to --wire-red in both
+     schemes. It has no consumers today, so nothing is broken — but the first
+     component that paints it onto, or adjacent to, a wire-bearing surface
+     reproduces the #245 collision with red, which carries instant-loss
+     semantics. Before using it there, give it its own hex off --wire-red.
+     Kept rather than removed because DESIGN-APPENDIX §3 lists it in the
+     game-interior inventory; dropping it is a doc change, not a token edit. */
   --game-accent: #E43126;
   --game-accent-ink: #FFFFFF;
 
@@ -121,18 +132,21 @@
   DARK — a translation, not an inversion. Two rules exist only here:
   1. --shadow-ink goes DARKER than the surface. A paper-colored offset shadow
      on every card turns the screen into a field of glowing boxes.
-  2. --surface-rack is deep amber with a sun edge. Full-brightness yellow
-     across the bottom third of a dark screen is unusable at night, but
-     "yellow means yours" has to survive the flip.
+  2. (retired by #245) --surface-rack used to be deep amber with a full-
+     brightness sun edge here, because the light rack was full-brightness sun
+     and that is unusable across the bottom third of a dark screen. The rack
+     is now deep amber in BOTH schemes, so the night-legibility problem the
+     override existed to solve is solved by the base value — and the sun edge
+     is gone, because it was --wire-yellow exactly (#245).
 */
 @layer base {
   .dark {
     --surface: #0E1B2E;
     --surface-raised: #132741;
     --surface-table: #132741;
-    --surface-rack: #3D3312;
+    --surface-rack: #7A5A0D;
     --rack-ink: #FBF7EF;
-    --rack-border: #FFC53D;
+    --rack-border: #FBF7EF;
 
     --ink: #FBF7EF;
     --ink-muted: #94A7BF;
@@ -153,9 +167,9 @@
     --halftone-opacity: 0.07;
 
     --game-table: #132741;
-    --game-rack: #3D3312;
+    --game-rack: #7A5A0D;
     --game-rack-ink: #FBF7EF;
-    --game-rack-border: #FFC53D;
+    --game-rack-border: #FBF7EF;
     --game-accent: #FF5346;
     --game-accent-ink: #0E1B2E;
     --game-concealed: #A177E8;
@@ -181,9 +195,9 @@
       --surface: #0E1B2E;
       --surface-raised: #132741;
       --surface-table: #132741;
-      --surface-rack: #3D3312;
+      --surface-rack: #7A5A0D;
       --rack-ink: #FBF7EF;
-      --rack-border: #FFC53D;
+      --rack-border: #FBF7EF;
       --ink: #FBF7EF;
       --ink-muted: #94A7BF;
       --ink-inverse: #0E1B2E;
@@ -199,9 +213,9 @@
       --halftone: #FBF7EF;
       --halftone-opacity: 0.07;
       --game-table: #132741;
-      --game-rack: #3D3312;
+      --game-rack: #7A5A0D;
       --game-rack-ink: #FBF7EF;
-      --game-rack-border: #FFC53D;
+      --game-rack-border: #FBF7EF;
       --game-accent: #FF5346;
       --game-accent-ink: #0E1B2E;
       --game-concealed: #A177E8;

@@ -116,7 +116,7 @@ Key rules:
 - One primary button per screen. Press lands it 3px down-right, shadow to 1px. Minimum target 44×44.
 - The active seat carries a 3px sun ring — **the only place that ring is used anywhere.**
 - Seat chips sit in turn order, left to right, and never reorder mid-game. Below 380px the name truncates before the count does.
-- **Yellow means yours.** The private surface is the only one painted `--game-rack`; that's the privacy signal.
+- **The rack tint means yours.** The private surface is the only one painted `--game-rack`; that's the privacy signal. This rule used to read "yellow means yours", and the wording was the defect (#245): `--game-rack` was set to the same hex as a yellow wire, so the privacy cue and a rule-bearing game value were indistinguishable on a surface made of wire tiles. The tint is a deep amber that no wire wears. **A wire colour may never carry a non-wire meaning** — see DESIGN-APPENDIX §3.
 
 ---
 
