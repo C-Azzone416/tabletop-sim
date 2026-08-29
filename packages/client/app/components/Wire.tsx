@@ -56,6 +56,52 @@ const PENDING_TOKEN_HOVER_RING_CLASSES: Record<"blue" | "yellow" | "red", string
   red: "cursor-pointer hover:ring-2 hover:ring-wire-red/40",
 };
 
+// #281 (Caroline's ruling, both halves): hue means wire-identity or
+// revealed-state, never selection. Revealed wires share ONE common border
+// colour (--game-revealed, off the wire palette — see theme.css). Selected
+// / selectable / hover stay on the wire's OWN hue, amplified — a heavier
+// border/ring, never a separate hue. --warning and --info both come off
+// the wire tile entirely; re-tinting them (Option 1) was rejected since
+// they're platform tokens with many other consumers (buttons, badges,
+// toasts, ActionPanel, GameBoard, Lobby, GameOverOverlay).
+//
+// Revealed still owns the border colour when a wire is ALSO selected (e.g.
+// reveal_reds, or the #190 dual-cut interim) — selection only adds the ring
+// on top, so the two treatments layer instead of fighting for the border.
+//
+// Literal class strings per color (see the PENDING_TOKEN_* comment above):
+// Tailwind's build-time scanner needs each full class name to appear
+// literally in the source, so these are keyed lookups, not interpolation.
+const WIRE_HUE_BORDER_CLASSES: Record<"blue" | "yellow" | "red", string> = {
+  blue: "border-wire-blue",
+  yellow: "border-wire-yellow",
+  red: "border-wire-red",
+};
+const WIRE_SELECTED_RING_CLASSES: Record<"blue" | "yellow" | "red", string> = {
+  blue: "ring-2 ring-wire-blue/50",
+  yellow: "ring-2 ring-wire-yellow/50",
+  red: "ring-2 ring-wire-red/50",
+};
+const WIRE_SELECTABLE_RING_CLASSES: Record<"blue" | "yellow" | "red", string> = {
+  blue: "ring-1 ring-wire-blue/25",
+  yellow: "ring-1 ring-wire-yellow/25",
+  red: "ring-1 ring-wire-red/25",
+};
+const WIRE_HOVER_RING_CLASSES: Record<"blue" | "yellow" | "red", string> = {
+  blue: "hover:ring-2 hover:ring-wire-blue/50",
+  yellow: "hover:ring-2 hover:ring-wire-yellow/50",
+  red: "hover:ring-2 hover:ring-wire-red/50",
+};
+// A selectable/selected wire can have a redacted hue — an opponent's still-
+// hidden wire, targeted for a dual-cut guess (#187 redacts color alongside
+// value). There's no hue to amplify there, so emphasis falls back to the
+// same neutral --outline the tile already borders with, amplified the same
+// way a known hue would be.
+const NEUTRAL_SELECTED_BORDER = "border-outline";
+const NEUTRAL_SELECTED_RING = "ring-2 ring-outline/50";
+const NEUTRAL_SELECTABLE_RING = "ring-1 ring-outline/25";
+const NEUTRAL_HOVER_RING = "hover:ring-2 hover:ring-outline/50";
+
 // #190 (Caroline's ruling): yellow/red DO show their decimal as a tinted
 // numeral on the owner's own rack, same as blue shows its number — the
 // physical tiles have the decimal printed on them, and the rulebook's "no
@@ -146,30 +192,52 @@ export function Wire({
   // an untouched hidden tile or a cut tile, so it gets its own treatment
   // rather than falling through to the plain hidden styling.
   const isRevealed = wire.status === "revealed";
+
+  // Border colour: cut/revealed own it outright; selection only repaints the
+  // border on an otherwise-plain hidden tile, where nothing else is
+  // claiming it (revealed already wins that slot above, per #281).
   let borderClass: string;
   if (isCut) {
     borderClass = "border-outline/30";
   } else if (isRevealed) {
-    borderClass = "border-warning";
+    borderClass = "border-game-revealed";
   } else if (isSelected) {
-    // Selection is an interaction affordance, not wire identity — it stays on
-    // the platform's --info token rather than moving to --wire-blue, so a
-    // future blue re-tint can't silently change what "selected" looks like.
-    // --info and the old --p2 are the same hex in both schemes, so this is
-    // pixel-identical today.
-    borderClass = "border-info ring-2 ring-info/40";
+    borderClass = wire.color
+      ? WIRE_HUE_BORDER_CLASSES[wire.color]
+      : NEUTRAL_SELECTED_BORDER;
   } else {
     borderClass = "border-outline/40";
   }
   // #173's dim-grey cut treatment stays as the one bg exception to #188's
   // uniform neutral — it signals "resolved," not color. Revealed gets its
-  // own light warning tint, between untouched-hidden and cut.
+  // own light tint, between untouched-hidden and cut.
   const bgClass = isCut
     ? "bg-outline/10"
     : isRevealed
-      ? "bg-warning/10"
+      ? "bg-game-revealed/10"
       : "bg-game-table";
   const valueTextClass = valueColorClass(wire.color);
+
+  // Emphasis ring: the wire's own hue, amplified — layered on top of
+  // whichever border colour won above, so revealed + selected together keep
+  // the shared revealed border with the wire's own hue ringed around it.
+  const emphasisClass = isCut
+    ? ""
+    : isSelected
+      ? wire.color
+        ? WIRE_SELECTED_RING_CLASSES[wire.color]
+        : NEUTRAL_SELECTED_RING
+      : isSelectable
+        ? wire.color
+          ? WIRE_SELECTABLE_RING_CLASSES[wire.color]
+          : NEUTRAL_SELECTABLE_RING
+        : "";
+  const hoverClass =
+    !isCut && onSelect
+      ? wire.color
+        ? WIRE_HOVER_RING_CLASSES[wire.color]
+        : NEUTRAL_HOVER_RING
+      : "";
 
   return (
     <button
@@ -182,9 +250,8 @@ export function Wire({
       className={`
         relative flex flex-col items-center justify-center
         h-16 w-12 rounded-piece border-2 transition-all shadow-print-sm
-        ${borderClass} ${bgClass}
-        ${isSelectable && !isSelected ? "ring-1 ring-info/20" : ""}
-        ${!isCut && onSelect ? "cursor-pointer press hover:ring-2 hover:ring-info/40" : "cursor-default"}
+        ${borderClass} ${bgClass} ${emphasisClass}
+        ${!isCut && onSelect ? `cursor-pointer press ${hoverClass}` : "cursor-default"}
       `}
     >
       {showValue && displayValue !== null && (
