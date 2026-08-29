@@ -1,5 +1,6 @@
 import type { WebSocket } from 'ws';
-import type { ClientMessage, ServerMessage } from '@tabletop/shared';
+import type { ClientMessage, GameId, ServerMessage } from '@tabletop/shared';
+import { isAvailableGameId } from '@tabletop/shared';
 import * as engine from '../engine/game-engine.js';
 import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
@@ -31,8 +32,11 @@ function validateMessage(parsed: unknown): ClientMessage | null {
 
   switch (msg.type) {
     case 'create_game':
-      if (!isValidName(msg.playerName)) return null;
-      return { type: 'create_game', playerName: msg.playerName };
+      // Shape check only — a syntactically-fine but unregistered/unavailable
+      // gameType is rejected by handleCreateGame's registry lookup, the
+      // actual security gate (never trust the client with a DB-bound value).
+      if (!isValidName(msg.playerName) || !isNonEmptyString(msg.gameType)) return null;
+      return { type: 'create_game', playerName: msg.playerName, gameType: msg.gameType as GameId };
     case 'join_game':
       if (!isNonEmptyString(msg.joinCode) || !isValidName(msg.playerName)) return null;
       return { type: 'join_game', joinCode: msg.joinCode, playerName: msg.playerName };
@@ -107,7 +111,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
   try {
     switch (msg.type) {
       case 'create_game':
-        await handleCreateGame(socket, msg.playerName);
+        await handleCreateGame(socket, msg.playerName, msg.gameType);
         break;
       case 'join_game':
         await handleJoinGame(socket, msg.joinCode, msg.playerName);
@@ -160,7 +164,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Reveal reds not available in this mission',
       'Game is not in setup phase', 'Can only place info token on your own wire', 'Info token already placed',
       'Opening info token must be placed on a blue wire',
-      'Game is not in waiting phase', 'Mission is locked',
+      'Game is not in waiting phase', 'Mission is locked', 'Unknown game type',
       'Dual cut already pending', 'Cannot target your own wire with dual cut',
       'No pending dual cut', 'Not your wire to respond to',
       'Not your turn to complete dual cut', 'Target wire is not revealed',
@@ -183,9 +187,16 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
   }
 }
 
-async function handleCreateGame(socket: WebSocket, _playerName: string): Promise<void> {
+async function handleCreateGame(socket: WebSocket, _playerName: string, gameType: GameId): Promise<void> {
+  // The application-level gate: a client-controlled value is about to reach
+  // a DB column, and the #324 CHECK constraint is only the backstop, not
+  // the primary defense. Reject anything not in the registry as available
+  // (covers both truly unknown ids and known-but-not-yet-playable ones,
+  // e.g. spades) before any room is created.
+  if (!isAvailableGameId(gameType)) throw new Error('Unknown game type');
+
   const user = getAuthenticatedUser(socket);
-  const { game, player } = await withTimeout(engine.createGame(user.name, user.profileId), 'createGame');
+  const { game, player } = await withTimeout(engine.createGame(user.name, gameType, user.profileId), 'createGame');
   connManager.registerConnection(socket, player.id, game.id);
 
   const response: ServerMessage = { type: 'game_created', game, player };

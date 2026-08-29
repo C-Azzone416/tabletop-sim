@@ -109,14 +109,30 @@ describe("message-handler", () => {
 
     it("rejects create_game with empty playerName", async () => {
       const ws = mockSocket();
-      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "" }));
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "", gameType: "wire-game" }));
       expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
     });
 
     it("rejects create_game with name over 20 chars", async () => {
       const ws = mockSocket();
-      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "A".repeat(21) }));
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "A".repeat(21), gameType: "wire-game" }));
       expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+    });
+
+    it("rejects create_game with missing gameType rather than defaulting", async () => {
+      const ws = mockSocket();
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice" }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockEngine.createGame).not.toHaveBeenCalled();
+    });
+
+    it("rejects create_game with an empty-string gameType", async () => {
+      const ws = mockSocket();
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "" }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockEngine.createGame).not.toHaveBeenCalled();
     });
 
     it("rejects join_game with missing joinCode", async () => {
@@ -181,20 +197,41 @@ describe("message-handler", () => {
   });
 
   describe("create_game", () => {
-    it("creates a game and sends game_created response", async () => {
+    it("creates a wire-game and sends game_created response", async () => {
       const ws = mockSocket();
-      const game = makeGame({ id: "g1", captainId: "p1" });
+      const game = makeGame({ id: "g1", captainId: "p1", gameType: "wire-game" });
       const player = makePlayer({ id: "p1", name: "Alice" });
 
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
       mockEngine.createGame.mockResolvedValue({ game, player });
 
-      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice" }));
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game" }));
 
-      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "prof-1");
+      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "wire-game", "prof-1");
       expect(mockConnManager.registerConnection).toHaveBeenCalledWith(ws, "p1", "g1");
       const sent = lastSent(ws) as { type: string; game: unknown; player: unknown };
       expect(sent.type).toBe("game_created");
+    });
+
+    it("rejects an unknown gameType with a clear error and creates no room", async () => {
+      const ws = mockSocket();
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "checkers" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Unknown game type" });
+      expect(mockEngine.createGame).not.toHaveBeenCalled();
+      expect(mockConnManager.registerConnection).not.toHaveBeenCalled();
+    });
+
+    it("rejects a known-but-unavailable gameType (spades) and creates no room", async () => {
+      const ws = mockSocket();
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "spades" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Unknown game type" });
+      expect(mockEngine.createGame).not.toHaveBeenCalled();
     });
   });
 
@@ -539,7 +576,7 @@ describe("message-handler", () => {
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
       mockEngine.createGame.mockRejectedValue(new Error("Game not found"));
 
-      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice" }));
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game" }));
 
       expect(lastSent(ws)).toEqual({ type: "error", message: "Game not found" });
     });
@@ -549,7 +586,7 @@ describe("message-handler", () => {
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
       mockEngine.createGame.mockRejectedValue(new Error("DB connection failed"));
 
-      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice" }));
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game" }));
 
       expect(lastSent(ws)).toEqual({ type: "error", message: "Internal error" });
     });

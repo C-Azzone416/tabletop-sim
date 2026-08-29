@@ -62,7 +62,11 @@ export default function Home() {
     setMode("creating");
     setActionError("");
     startActionTimeout();
-    send({ type: "create_game", playerName });
+    // Pre-#318-cutover legacy path — this inline create only ever makes a
+    // Wire Game. #318 deletes this in favor of /play/host's registry-driven
+    // selection; hardcoding here (rather than reaching for the registry)
+    // keeps behavior identical to today until that cutover lands.
+    send({ type: "create_game", playerName, gameType: "wire-game" });
     connect();
   };
 

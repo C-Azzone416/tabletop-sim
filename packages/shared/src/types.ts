@@ -10,6 +10,7 @@ export type TurnResult = 'success' | 'fail' | 'explosion';
 
 export interface Game {
   id: string;
+  gameType: GameId;
   mission: number;
   status: GameStatus;
   captainId: string | null;
@@ -126,7 +127,7 @@ export interface Turn {
 // WebSocket message types
 
 export type ClientMessage =
-  | { type: 'create_game'; playerName: string; gameType?: GameId }
+  | { type: 'create_game'; playerName: string; gameType: GameId }
   | { type: 'join_game'; joinCode: string; playerName: string }
   | { type: 'start_game'; mission?: number }
   | { type: 'place_info_token'; wireId: string }

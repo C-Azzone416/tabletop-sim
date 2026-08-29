@@ -111,11 +111,11 @@ describe("game-engine", () => {
       mockPlayersDb.createPlayer.mockResolvedValue(player);
       mockGamesDb.updateGameCaptain.mockResolvedValue(captainGame);
 
-      const result = await engine.createGame("Alice");
+      const result = await engine.createGame("Alice", "wire-game");
 
       expect(result.game.captainId).toBe("p1");
       expect(result.player.name).toBe("Alice");
-      expect(mockGamesDb.createGame).toHaveBeenCalled();
+      expect(mockGamesDb.createGame).toHaveBeenCalledWith(expect.any(String), "wire-game", 1, "lobby");
       expect(mockPlayersDb.createPlayer).toHaveBeenCalledWith("g1", "Alice", 0, undefined);
       expect(mockGamesDb.updateGameCaptain).toHaveBeenCalledWith("g1", "p1");
     });
