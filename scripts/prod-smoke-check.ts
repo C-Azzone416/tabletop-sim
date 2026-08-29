@@ -26,15 +26,32 @@
  * has answered, its remaining checks are fail-fast. All failures exit
  * non-zero and name the observed values.
  *
- * Usage: npx tsx scripts/prod-smoke-check.ts <renderProdUrl> <vercelProdUrl>
+ * #262 — #252's shared-secret preHandler hook runs before routing resolves
+ * to a 404, so once API_ACCESS_KEY is mandatory in production, an
+ * unauthenticated probe now gets 401 instead of the 404 this check asserts
+ * on — even though the underlying #98 gate (routes not registered at all)
+ * is holding exactly as intended. The apiAccessKey param lets this check
+ * present its own credential so it can get PAST the secret gate and observe
+ * the real #98 state; without one, a 401 is reported as its own distinct
+ * "couldn't verify" failure, never as "dev tooling exposed" — that message
+ * is only accurate for a 2xx/other non-404 response once authenticated.
+ *
+ * Usage: npx tsx scripts/prod-smoke-check.ts <renderProdUrl> <vercelProdUrl> [apiAccessKey]
  */
 
-const [renderUrl, vercelUrl] = process.argv.slice(2);
+const [renderUrl, vercelUrl, apiAccessKey] = process.argv.slice(2);
 
 if (!renderUrl || !vercelUrl) {
-  console.log('Usage: npx tsx scripts/prod-smoke-check.ts <renderProdUrl> <vercelProdUrl>');
+  console.log('Usage: npx tsx scripts/prod-smoke-check.ts <renderProdUrl> <vercelProdUrl> [apiAccessKey]');
   console.log('Not configured — skipping (no prod URLs provided).');
   process.exit(0);
+}
+
+if (!apiAccessKey) {
+  console.log(
+    'WARN: no apiAccessKey provided — the #98 dev-tooling-gate check will not be able to distinguish ' +
+    '"correctly gated off" from "rejected by #252\'s access gate before we could tell." See #262.'
+  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -82,7 +99,10 @@ async function checkDevSeedGated(label: string, baseUrl: string): Promise<void> 
   try {
     res = await fetch(`${baseUrl}/dev/seed`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiAccessKey ? { 'x-api-key': apiAccessKey } : {}),
+      },
       body: JSON.stringify({}),
     });
   } catch (err) {
@@ -92,6 +112,27 @@ async function checkDevSeedGated(label: string, baseUrl: string): Promise<void> 
 
   if (res.status === 404) {
     console.log(`OK: ${label}: POST ${baseUrl}/dev/seed -> 404 (dev tooling gated off in production).`);
+    return;
+  }
+
+  // #262 — a 401 means #252's shared-secret gate rejected us; it says
+  // nothing about whether the #98 dev-tooling gate underneath it is holding
+  // or broken, since routes that were never registered also come back
+  // through that same gate as 401 before Fastify's routing ever gets a
+  // chance to 404 them (confirmed directly against buildApp()). Reporting
+  // this as "dev tooling is exposed" would be false — treat it as its own
+  // inconclusive failure instead, split by whether this check even had a
+  // key to try.
+  if (res.status === 401) {
+    fail(
+      apiAccessKey
+        ? `${label}: POST ${baseUrl}/dev/seed -> 401 even with this check's API key. Could not verify the ` +
+          `#98 dev-tooling gate — check that this check's apiAccessKey secret matches ${label}'s configured ` +
+          `API_ACCESS_KEY (a mismatched key is indistinguishable from "everyone is rejected," including this check).`
+        : `${label}: POST ${baseUrl}/dev/seed -> 401 (#252's access gate rejected the unauthenticated probe). ` +
+          `This check has no apiAccessKey configured, so it cannot get past that gate to verify the #98 ` +
+          `dev-tooling gate underneath it. This is NOT evidence dev tooling is exposed — see #262.`
+    );
     return;
   }
 
@@ -108,7 +149,10 @@ async function checkDevSeedGated(label: string, baseUrl: string): Promise<void> 
       if (seeded.joinCode) {
         const cleanupRes = await fetch(`${baseUrl}/dev/cleanup`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiAccessKey ? { 'x-api-key': apiAccessKey } : {}),
+          },
           body: JSON.stringify({ joinCode: seeded.joinCode }),
         });
         console.error(

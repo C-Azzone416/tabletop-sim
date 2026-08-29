@@ -543,6 +543,77 @@ describe("routes", () => {
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Seed failed" });
     });
+
+    // #270 — /dev/seed used to always create all 4 (Dev/Alice/Bob/Carol),
+    // so 2p/3p rules (stand allocation, detonator max) were unverifiable by
+    // hand. playerCount seeds only the first N of DEV_SEED_NAMES.
+    it("with playerCount: 2, seeds only Dev and Alice", async () => {
+      const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
+      const player = makePlayer({ id: "p1", gameId: "g1", name: "Dev" });
+      const startedGame = { ...game, status: "setup" as const };
+
+      mockProfilesDb.getProfileByName.mockResolvedValue(null);
+      mockProfilesDb.createProfile.mockImplementation(async (name: string) =>
+        makeProfile({ id: `prof-${name.toLowerCase()}`, name }));
+      mockEngine.createGame.mockResolvedValue({ game, player });
+      mockEngine.joinGame.mockResolvedValue({ game, player, players: [player] });
+      mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed", payload: { playerCount: 2 } });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        joinCode: "DEVGAME",
+        profileId: "prof-dev",
+        playerName: "Dev",
+        mission: 1,
+        players: [
+          { name: "Dev", profileId: "prof-dev" },
+          { name: "Alice", profileId: "prof-alice" },
+        ],
+      });
+      expect(mockEngine.joinGame).toHaveBeenCalledTimes(1);
+      expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Alice", "prof-alice");
+      expect(mockEngine.joinGame).not.toHaveBeenCalledWith("DEVGAME", "Bob", expect.anything());
+      expect(mockEngine.joinGame).not.toHaveBeenCalledWith("DEVGAME", "Carol", expect.anything());
+    });
+
+    it("with playerCount: 3, seeds Dev, Alice, and Bob", async () => {
+      const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
+      const player = makePlayer({ id: "p1", gameId: "g1", name: "Dev" });
+      const startedGame = { ...game, status: "setup" as const };
+
+      mockProfilesDb.getProfileByName.mockResolvedValue(null);
+      mockProfilesDb.createProfile.mockImplementation(async (name: string) =>
+        makeProfile({ id: `prof-${name.toLowerCase()}`, name }));
+      mockEngine.createGame.mockResolvedValue({ game, player });
+      mockEngine.joinGame.mockResolvedValue({ game, player, players: [player] });
+      mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
+
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed", payload: { playerCount: 3 } });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        players: [
+          { name: "Dev", profileId: "prof-dev" },
+          { name: "Alice", profileId: "prof-alice" },
+          { name: "Bob", profileId: "prof-bob" },
+        ],
+      });
+      expect(mockEngine.joinGame).toHaveBeenCalledTimes(2);
+      expect(mockEngine.joinGame).not.toHaveBeenCalledWith("DEVGAME", "Carol", expect.anything());
+    });
+
+    it.each([
+      { playerCount: 1, label: "below range" },
+      { playerCount: 5, label: "above range" },
+      { playerCount: 2.5, label: "non-integer" },
+      { playerCount: "two", label: "non-number" },
+    ])("returns 400 for invalid playerCount ($label)", async ({ playerCount }) => {
+      const res = await seedApp.inject({ method: "POST", url: "/dev/seed", payload: { playerCount } });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: "playerCount must be an integer between 2 and 4" });
+    });
   });
 
   describe("POST /dev/reveal-all-tokens", () => {
@@ -1461,6 +1532,21 @@ describe("routes", () => {
         url: "/profiles",
         payload: { name: "Alice" },
         headers: { "x-api-key": "wrong" },
+      });
+
+      expect(res.statusCode).toBe(401);
+    });
+
+    // #259 — the comparison hashes both sides to a fixed-size digest before
+    // calling timingSafeEqual specifically so a length mismatch (shorter OR
+    // longer than the real secret) can never throw or behave differently
+    // from a same-length wrong guess — both just fail to match.
+    it("rejects a wrong key that is much longer than the real secret, without throwing", async () => {
+      const res = await keyedApp.inject({
+        method: "POST",
+        url: "/profiles",
+        payload: { name: "Alice" },
+        headers: { "x-api-key": "a".repeat(500) },
       });
 
       expect(res.statusCode).toBe(401);
