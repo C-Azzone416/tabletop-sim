@@ -13,6 +13,7 @@ import { ErrorToast } from "../../components/ErrorToast";
 import { JoinCodeBadge } from "../../components/JoinCodeBadge";
 import { LAST_MISSION } from "../../lib/missions";
 import { highestUnlockedMission } from "../../lib/missionUnlocks";
+import { readRoomGameType } from "../../lib/roomGameType";
 import { apiHeaders } from "../../lib/serverApi";
 
 export interface DevSeatOption {
@@ -163,8 +164,19 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
           localPlayerId={state.localPlayer?.id ?? ""}
           captainId={state.game?.captainId ?? null}
           onReady={() => send({ type: "player_ready" })}
-          onStartGame={(mission) => send({ type: "start_game", mission })}
+          onStartGame={(startArg) =>
+            // #319: Wire Game's config slot returns its mission as a number,
+            // which is the existing start_game shape — unchanged by the slot
+            // refactor. `start_game` carries no per-game config field yet, so
+            // any other shape sends no mission; carrying a second game's
+            // config on the wire is #294's `start_game { gameType, config }`.
+            send({
+              type: "start_game",
+              mission: typeof startArg === "number" ? startArg : undefined,
+            })
+          }
           highestUnlocked={highestUnlocked}
+          gameType={readRoomGameType(state.game)}
         />
         {devPanel()}
         <ErrorToast message={state.error} onDismiss={clearError} />
