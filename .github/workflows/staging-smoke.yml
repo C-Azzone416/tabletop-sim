@@ -8,8 +8,6 @@ name: Staging Smoke Check
 # to a GitHub Actions trigger) and via workflow_dispatch/repository_dispatch so
 # it can also be triggered on-demand or by a future deploy webhook.
 on:
-  schedule:
-    - cron: '*/30 * * * *'
   workflow_dispatch: {}
   repository_dispatch:
     types: [staging-deployed]
