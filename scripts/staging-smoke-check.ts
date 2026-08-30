@@ -47,6 +47,13 @@ if (!serverUrl || !stagingOrigin) {
   process.exit(0);
 }
 
+if (!apiAccessKey) {
+  console.log(
+    'WARN: no apiAccessKey provided — a 401 from #252\'s access gate will be indistinguishable from a ' +
+    'genuine "dev routes not registered" failure this check exists to catch. See #262.'
+  );
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
