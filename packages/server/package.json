@@ -16,6 +16,8 @@
     "@fastify/cors": "^10",
     "@fastify/websocket": "^11",
     "@neondatabase/serverless": "^1.0.2",
+    "@tabletop/cards": "*",
+    "@tabletop/game-spades": "*",
     "@tabletop/shared": "*",
     "fastify": "^5",
     "pg": "^8",

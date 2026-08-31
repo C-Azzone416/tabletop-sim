@@ -58,6 +58,12 @@ jobs:
       - name: Apply migrations
         run: npx tsx db/migrate.ts "$DATABASE_URL"
 
+      - name: Build cards
+        run: npm run build -w packages/cards
+
+      - name: Build game-spades
+        run: npm run build -w packages/games/spades
+
       - name: Build shared
         run: npm run build -w packages/shared
 
