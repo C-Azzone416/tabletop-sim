@@ -10,14 +10,17 @@ name: Prod Smoke Check
 # Neither Render nor Vercel deploys are wired to a GitHub Actions trigger, so
 # a push-to-main run may race the platform deploy and probe the previous
 # deployment; that's acceptable because these are env-scope invariants rather
-# than code checks, and the 30-minute schedule is the backstop that catches
-# post-deploy drift regardless. workflow_dispatch/repository_dispatch allow
-# on-demand runs or a future deploy webhook.
+# than code checks. workflow_dispatch/repository_dispatch allow on-demand
+# runs or a future deploy webhook.
+#
+# No schedule trigger, deliberately (Caroline, 2026-09-02, #352): prod is not
+# currently in use and has no deploy path today, so a periodic check would be
+# polling for drift that cannot occur — same reasoning that removed
+# staging-smoke's cron in #345/#348. Add one back if/when prod deploys and
+# sees real traffic again.
 on:
   push:
     branches: [main]
-  schedule:
-    - cron: '*/30 * * * *'
   workflow_dispatch: {}
   repository_dispatch:
     types: [prod-deployed]
