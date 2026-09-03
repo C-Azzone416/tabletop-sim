@@ -55,6 +55,18 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Deployed: $url" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Assign stable staging alias
+        if: github.event_name == 'push' && github.ref_name == 'develop'
+        env:
+          STAGING_ORIGIN: ${{ vars.STAGING_ORIGIN }}
+        run: |
+          if [ -z "$STAGING_ORIGIN" ]; then
+            echo "::error::STAGING_ORIGIN is empty — refusing to no-op the staging alias."
+            exit 1
+          fi
+          alias_host="${STAGING_ORIGIN#https://}"
+          vercel alias set "${{ steps.deploy.outputs.url }}" "$alias_host"
+
       - name: Comment preview URL on PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
