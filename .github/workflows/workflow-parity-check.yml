@@ -1,0 +1,61 @@
+name: Workflow Parity Check
+
+# #352 — "which workflows exist on which branch" was invisible until
+# deploy-vercel.yml and prod-smoke.yml turned out to be silently inert on
+# main (present on develop only, and GitHub only runs/schedules a workflow
+# from the branch it's actually on). This is a cheap guard against that
+# recurring unnoticed: it diffs the workflow file list between develop and
+# main and fails on anything not in ALLOWED_ONLY_ON_MAIN /
+# ALLOWED_ONLY_ON_DEVELOP below.
+#
+# Intentional differences go in the allowlists with a one-line reason, not
+# silently — the point is that a divergence always gets a human decision,
+# even if that decision is "yes, that's fine."
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+  push:
+    branches:
+      - develop
+      - main
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare workflow file lists
+        run: |
+          # Content differences (e.g. gitleaks.yml's branch trigger list) are
+          # out of scope here — this only checks which files exist where.
+          git fetch origin develop main
+          develop_files=$(git ls-tree --name-only origin/develop -- .github/workflows/ | sort)
+          main_files=$(git ls-tree --name-only origin/main -- .github/workflows/ | sort)
+
+          # <basename>: <reason> — one line per intentional divergence.
+          allowed_only_on_develop=""
+
+          only_on_develop=$(comm -23 <(echo "$develop_files") <(echo "$main_files") | xargs -n1 basename 2>/dev/null || true)
+          only_on_main=$(comm -13 <(echo "$develop_files") <(echo "$main_files") | xargs -n1 basename 2>/dev/null || true)
+
+          unexplained=0
+          for f in $only_on_develop; do
+            if ! echo "$allowed_only_on_develop" | grep -q "^$f:"; then
+              echo "::error::$f exists on develop but not main, and is not in the allowlist."
+              unexplained=1
+            fi
+          done
+          for f in $only_on_main; do
+            echo "::warning::$f exists on main but not develop (allowed — main-only files are never silently inert on develop)."
+          done
+
+          if [ "$unexplained" -eq 1 ]; then
+            echo "A workflow present on develop and missing on main runs and schedules from nowhere on main — see #352."
+            exit 1
+          fi
+          echo "OK: no unexplained workflow-file divergence between develop and main."
