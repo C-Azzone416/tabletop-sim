@@ -148,7 +148,7 @@ describe("Home (app/page.tsx)", () => {
       render(<Home />);
       expect(screen.getByText("Playing as")).toBeInTheDocument();
       expect(screen.getByText("Alice")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Create New Game" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Start Spades" })).toBeInTheDocument();
     });
 
     it("signs out when Change name is clicked", () => {
@@ -170,16 +170,26 @@ describe("Home (app/page.tsx)", () => {
     });
 
     describe("create game", () => {
-      it("sends create_game, connects, and shows Creating state", () => {
+      it("routes Spades directly to the playable table without creating a wire room", () => {
         render(<Home />);
-        fireEvent.click(screen.getByRole("button", { name: "Create New Game" }));
+        fireEvent.click(screen.getByRole("button", { name: "Start Spades" }));
+
+        expect(mockPush).toHaveBeenCalledWith("/spades/hot-seat");
+        expect(mockSend).not.toHaveBeenCalled();
+        expect(mockConnect).not.toHaveBeenCalled();
+      });
+
+      it("can preserve and create the existing wire game", () => {
+        render(<Home />);
+        fireEvent.click(screen.getByRole("button", { name: /Wire Game/ }));
+        fireEvent.click(screen.getByRole("button", { name: "Create Wire Game" }));
 
         expect(mockSend).toHaveBeenCalledWith({
           type: "create_game",
           playerName: "Alice",
+          gameType: "wire-game",
         });
         expect(mockConnect).toHaveBeenCalled();
-        expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
       });
 
       it("disables the Join button once creating", () => {
@@ -187,21 +197,23 @@ describe("Home (app/page.tsx)", () => {
         fireEvent.change(screen.getByPlaceholderText("Enter code"), {
           target: { value: "ABC123" },
         });
-        fireEvent.click(screen.getByRole("button", { name: "Create New Game" }));
+        fireEvent.click(screen.getByRole("button", { name: /Wire Game/ }));
+        fireEvent.click(screen.getByRole("button", { name: "Create Wire Game" }));
         expect(screen.getByRole("button", { name: "Join" })).toBeDisabled();
       });
 
       it("reverts to idle with an error after a 10s server timeout", () => {
         vi.useFakeTimers();
         render(<Home />);
-        fireEvent.click(screen.getByRole("button", { name: "Create New Game" }));
+        fireEvent.click(screen.getByRole("button", { name: /Wire Game/ }));
+        fireEvent.click(screen.getByRole("button", { name: "Create Wire Game" }));
         expect(screen.getByRole("button", { name: "Creating..." })).toBeInTheDocument();
 
         act(() => {
           vi.advanceTimersByTime(10_000);
         });
 
-        expect(screen.getByRole("button", { name: "Create New Game" })).not.toBeDisabled();
+        expect(screen.getByRole("button", { name: "Create Wire Game" })).not.toBeDisabled();
         expect(
           screen.getByText("Server did not respond. Please try again."),
         ).toBeInTheDocument();
@@ -209,7 +221,8 @@ describe("Home (app/page.tsx)", () => {
 
       it("routes to the game page when a game_created message arrives", () => {
         render(<Home />);
-        fireEvent.click(screen.getByRole("button", { name: "Create New Game" }));
+        fireEvent.click(screen.getByRole("button", { name: /Wire Game/ }));
+        fireEvent.click(screen.getByRole("button", { name: "Create Wire Game" }));
 
         act(() => {
           capturedOnMessage?.({
@@ -260,7 +273,7 @@ describe("Home (app/page.tsx)", () => {
           target: { value: "ABC123" },
         });
         fireEvent.click(screen.getByRole("button", { name: "Join" }));
-        expect(screen.getByRole("button", { name: "Create New Game" })).toBeDisabled();
+        expect(screen.getByRole("button", { name: "Start Spades" })).toBeDisabled();
       });
 
       it("routes to the game page when a joined_game message arrives", () => {
@@ -286,14 +299,15 @@ describe("Home (app/page.tsx)", () => {
     describe("server error routing", () => {
       it("resets mode to idle when the server sends an error message", () => {
         render(<Home />);
-        fireEvent.click(screen.getByRole("button", { name: "Create New Game" }));
+        fireEvent.click(screen.getByRole("button", { name: /Wire Game/ }));
+        fireEvent.click(screen.getByRole("button", { name: "Create Wire Game" }));
         expect(screen.getByRole("button", { name: "Creating..." })).toBeInTheDocument();
 
         act(() => {
           capturedOnMessage?.({ type: "error", message: "Game not found" });
         });
 
-        expect(screen.getByRole("button", { name: "Create New Game" })).not.toBeDisabled();
+        expect(screen.getByRole("button", { name: "Create Wire Game" })).not.toBeDisabled();
       });
     });
   });

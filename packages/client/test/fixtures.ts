@@ -19,6 +19,7 @@ export function resetIds() {
 export function makeGame(overrides: Partial<Game> = {}): Game {
   const defaults: Game = {
     id: nextId(),
+    gameType: "wire-game",
     mission: 1,
     status: "waiting",
     captainId: null,

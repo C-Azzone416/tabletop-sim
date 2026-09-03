@@ -7,11 +7,14 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { useGameState } from "./hooks/useGameState";
 import { GameRoomScene } from "./components/GameRoomScene";
 import { ErrorToast } from "./components/ErrorToast";
+import { GameSelector } from "./components/GameSelector";
+import type { GameType } from "@tabletop/shared";
 
 export default function Home() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
   const [joinCode, setJoinCode] = useState("");
+  const [selectedGame, setSelectedGame] = useState<GameType>("spades");
   const [mode, setMode] = useState<"idle" | "creating" | "joining">("idle");
   const [name, setName] = useState("");
   const [signInError, setSignInError] = useState("");
@@ -56,10 +59,21 @@ export default function Home() {
 
   const handleCreate = () => {
     if (!playerName) return;
+
+    // The Vercel branch preview currently shares the deployed wire-game
+    // backend. Sending a Spades create message there can return a wire-game
+    // room, which makes both selector choices open the same interface.
+    // Route Spades to its self-contained playable table until the independent
+    // Spades backend preview is connected.
+    if (selectedGame === "spades") {
+      router.push("/spades/hot-seat");
+      return;
+    }
+
     setMode("creating");
     setActionError("");
     startActionTimeout();
-    send({ type: "create_game", playerName });
+    send({ type: "create_game", playerName, gameType: "wire-game" });
     connect();
   };
 
@@ -186,12 +200,22 @@ export default function Home() {
         </div>
 
         <div className="space-y-6">
+          <GameSelector
+            selected={selectedGame}
+            onSelect={setSelectedGame}
+            disabled={mode !== "idle"}
+          />
+
           <button
             onClick={handleCreate}
             disabled={mode !== "idle"}
             className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {mode === "creating" ? "Creating..." : "Create New Game"}
+            {mode === "creating"
+              ? "Creating..."
+              : selectedGame === "spades"
+                ? "Start Spades"
+                : "Create Wire Game"}
           </button>
 
           <div className="relative">

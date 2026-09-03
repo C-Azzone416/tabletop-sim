@@ -1,10 +1,14 @@
 import { sql } from './client.js';
-import type { Game, GameStatus } from '@tabletop/shared';
+import type { Game, GameStatus, GameType } from '@tabletop/shared';
 
-export async function createGame(joinCode: string, mission: number = 1): Promise<Game> {
+export async function createGame(
+  joinCode: string,
+  mission: number = 1,
+  gameType: GameType = 'wire-game',
+): Promise<Game> {
   const rows = await sql`
-    INSERT INTO games (join_code, mission)
-    VALUES (${joinCode}, ${mission})
+    INSERT INTO games (join_code, mission, game_type)
+    VALUES (${joinCode}, ${mission}, ${gameType})
     RETURNING *
   `;
   return mapGame(rows[0]);
@@ -125,6 +129,7 @@ export async function updateDetonatorMax(id: string, max: number): Promise<Game>
 function mapGame(row: Record<string, unknown>): Game {
   return {
     id: row.id as string,
+    gameType: (row.game_type as GameType | undefined) ?? 'wire-game',
     mission: row.mission as number,
     status: row.status as GameStatus,
     captainId: row.captain_id as string | null,

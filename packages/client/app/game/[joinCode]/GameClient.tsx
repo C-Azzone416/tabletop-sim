@@ -10,6 +10,8 @@ import { GameOverOverlay } from "../../components/GameOverOverlay";
 import { DevPanel } from "../../components/DevPanel";
 import { ErrorToast } from "../../components/ErrorToast";
 import { JoinCodeBadge } from "../../components/JoinCodeBadge";
+import { SpadesLobby } from "../../components/spades/SpadesLobby";
+import { SpadesTable } from "../../components/spades/SpadesTable";
 
 export interface DevSeatOption {
   name: string;
@@ -115,6 +117,61 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
         onRevealAllTokens={options.canRevealTokens ? revealAllTokens : undefined}
         onSkipTurn={options.canSkipTurn ? skipTurn : undefined}
       />
+    );
+  }
+
+  if (state.game?.gameType === "spades") {
+    if (gameStatus === "waiting") {
+      return (
+        <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+          <SpadesLobby
+            joinCode={joinCode}
+            players={state.players}
+            localPlayerId={state.localPlayer?.id ?? ""}
+            captainId={state.game.captainId}
+            onReady={() => send({ type: "player_ready" })}
+            onStart={(targetScore, botDifficulties) =>
+              send({ type: "start_spades", targetScore, botDifficulties })
+            }
+          />
+          <ErrorToast message={state.error} onDismiss={clearError} />
+        </div>
+      );
+    }
+
+    if (state.spadesView && state.spadesSeat) {
+      return (
+        <div className="relative min-h-screen bg-emerald-950">
+          <JoinCodeBadge joinCode={joinCode} />
+          <SpadesTable
+            view={state.spadesView}
+            viewingSeat={state.spadesSeat}
+            onBlindNilChoice={(blindNil) => send({ type: "spades_blind_nil", blindNil })}
+            onBid={(bid) => send({ type: "spades_bid", bid })}
+            onPlayCard={(cardId) => send({ type: "spades_play", cardId })}
+          />
+          {state.spadesPausedUntil && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-6">
+              <div className="max-w-sm rounded-2xl bg-white p-6 text-center text-zinc-900 shadow-2xl">
+                <h2 className="text-xl font-black">Game paused</h2>
+                <p className="mt-2">A player has 60 seconds to reconnect. A computer player will take over afterward.</p>
+              </div>
+            </div>
+          )}
+          {state.spadesView.winner && (
+            <div className="fixed inset-x-4 top-20 z-40 mx-auto max-w-md rounded-2xl bg-amber-300 p-4 text-center font-black text-zinc-950 shadow-xl">
+              {state.spadesView.winner === "north-south" ? "North / South" : "East / West"} wins!
+            </div>
+          )}
+          <ErrorToast message={state.error} onDismiss={clearError} />
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
+        <p className="text-zinc-500">Loading private Spades table…</p>
+      </div>
     );
   }
 
