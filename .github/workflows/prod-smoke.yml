@@ -1,0 +1,54 @@
+name: Prod Smoke Check
+
+# Production counterpart of staging-smoke.yml (issue #174). Guards the
+# env-var-scope incident class: AUTH_SECRET existed in Vercel Preview scope
+# but not Production, so prod /api/auth/* 500'd from v0.2.0 onward with
+# nothing exercising it. Checks: Render prod /health -> 200, Vercel prod
+# /api/auth/session -> 200, and POST /dev/seed -> 404 on both hosts (the
+# fail-closed dev-tooling gate holds where NODE_ENV=production is correct).
+#
+# Neither Render nor Vercel deploys are wired to a GitHub Actions trigger, so
+# a push-to-main run may race the platform deploy and probe the previous
+# deployment; that's acceptable because these are env-scope invariants rather
+# than code checks. workflow_dispatch/repository_dispatch allow on-demand
+# runs or a future deploy webhook.
+#
+# No schedule trigger, deliberately (Caroline, 2026-09-02, #352): prod is not
+# currently in use and has no deploy path today, so a periodic check would be
+# polling for drift that cannot occur — same reasoning that removed
+# staging-smoke's cron in #345/#348. Add one back if/when prod deploys and
+# sees real traffic again.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+  repository_dispatch:
+    types: [prod-deployed]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check prod health, auth config, and dev-tooling gate
+        # vars.* with the real prod URLs as fallbacks — unlike staging (which
+        # skips gracefully when unconfigured), prod URLs are stable and known,
+        # and this check exists because silent non-coverage of prod went
+        # unnoticed; defaulting on means it can never silently not-run.
+        #
+        # #262 — secrets.PROD_API_ACCESS_KEY (not vars.*: this is the same
+        # credential #252 requires in production, sensitive by construction)
+        # lets the check get past #252's access gate to actually observe the
+        # #98 dev-tooling-gate state it exists to verify. If unset, the
+        # script still runs and reports a distinct "couldn't verify" failure
+        # rather than misreporting exposure — see prod-smoke-check.ts.
+        run: >-
+          npx tsx scripts/prod-smoke-check.ts
+          "${{ vars.PROD_SERVER_URL || 'https://tabletop-sim.onrender.com' }}"
+          "${{ vars.PROD_CLIENT_URL || 'https://tabletop-sim.vercel.app' }}"
+          "${{ secrets.PROD_API_ACCESS_KEY }}"
