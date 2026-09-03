@@ -5,12 +5,14 @@ name: Workflow Parity Check
 # main (present on develop only, and GitHub only runs/schedules a workflow
 # from the branch it's actually on). This is a cheap guard against that
 # recurring unnoticed: it diffs the workflow file list between develop and
-# main and fails on anything not in ALLOWED_ONLY_ON_MAIN /
-# ALLOWED_ONLY_ON_DEVELOP below.
+# main. A file that exists on main but not develop only warns (a main-only
+# workflow is never silently inert — that requires it to be *missing* from
+# main). A file that exists on develop but not main fails, unless it's in
+# allowed_only_on_develop below.
 #
-# Intentional differences go in the allowlists with a one-line reason, not
-# silently — the point is that a divergence always gets a human decision,
-# even if that decision is "yes, that's fine."
+# Intentional develop-only files go in that allowlist with a one-line
+# reason, not silently — the point is that a divergence always gets a
+# human decision, even if that decision is "yes, that's fine."
 on:
   pull_request:
     branches:
@@ -33,9 +35,41 @@ jobs:
         run: |
           # Content differences (e.g. gitleaks.yml's branch trigger list) are
           # out of scope here — this only checks which files exist where.
+          #
+          # Deliberately does NOT diff origin/develop against origin/main
+          # tip-to-tip: on a pull_request event that misses the PR's own
+          # content entirely (actions/checkout defaults to the merge commit,
+          # but this script would still be reading the *remote* branch
+          # tips, which don't yet include this PR), so a PR that adds a
+          # develop-only workflow would pass its own check and only get
+          # caught on the push after merge — after the gap has already
+          # shipped. Instead: HEAD (already the merge commit on
+          # pull_request, the pushed commit on push) stands in for
+          # whichever branch this run targets, and only the *other*
+          # branch's tip is fetched.
           git fetch origin develop main
-          develop_files=$(git ls-tree --name-only origin/develop -- .github/workflows/ | sort)
-          main_files=$(git ls-tree --name-only origin/main -- .github/workflows/ | sort)
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            current_branch="$GITHUB_BASE_REF"
+          else
+            current_branch="$GITHUB_REF_NAME"
+          fi
+          if [ "$current_branch" = "main" ]; then
+            other_branch="develop"
+          else
+            other_branch="main"
+          fi
+
+          current_files=$(git ls-tree --name-only HEAD -- .github/workflows/ | sort)
+          other_files=$(git ls-tree --name-only "origin/$other_branch" -- .github/workflows/ | sort)
+
+          if [ "$current_branch" = "main" ]; then
+            main_files="$current_files"
+            develop_files="$other_files"
+          else
+            develop_files="$current_files"
+            main_files="$other_files"
+          fi
 
           # <basename>: <reason> — one line per intentional divergence.
           allowed_only_on_develop=""
