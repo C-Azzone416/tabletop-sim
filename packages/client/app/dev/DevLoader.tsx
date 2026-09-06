@@ -3,9 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
-
-const SERVER_URL =
-  process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:3001";
+import { SERVER_URL, apiHeaders } from "../lib/serverApi";
 
 export function DevLoader() {
   const router = useRouter();
@@ -24,7 +22,7 @@ export function DevLoader() {
     try {
       const res = await fetch(`${SERVER_URL}/dev/seed`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: apiHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ mission }),
       });
       if (!res.ok) throw new Error(`Seed failed: ${res.status}`);
@@ -47,7 +45,7 @@ export function DevLoader() {
     try {
       const res = await fetch(`${SERVER_URL}/dev/advance-turn`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: apiHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ joinCode: advanceJoinCode }),
       });
       if (!res.ok) throw new Error(`Advance failed: ${res.status}`);

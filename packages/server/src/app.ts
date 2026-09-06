@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
@@ -13,8 +14,89 @@ import { removeConnection, setAuthenticatedUser, registerConnection } from './ws
 import { authenticateUpgrade } from './ws/auth.js';
 import { broadcastGameState } from './ws/state-broadcaster.js';
 
+// #252 — pre-launch access gate. Two independent mechanisms, per Caroline's
+// requirement: a shared secret alone would still let anyone holding it mint
+// or claim any name, so the allow-list is not optional once the secret
+// exists. Both read once at boot, not per-request. Unset (dev/test default)
+// disables the corresponding gate entirely — see docs/local-dev.md. In
+// production, unset is a startup failure rather than a silent open door.
+function getAccessKey(): string | null {
+  return process.env.API_ACCESS_KEY?.trim() || null;
+}
+
+function getProfileAllowlist(): Set<string> | null {
+  const raw = process.env.PROFILE_ALLOWLIST;
+  if (!raw) return null;
+  const names = raw.split(',').map(n => n.trim().toLowerCase()).filter(Boolean);
+  return names.length > 0 ? new Set(names) : null;
+}
+
+// #259 — weasel's FINAL review of #252 flagged the naive `===` secret
+// comparison as timing-leaky (short-circuits on the first differing byte).
+// Hashing both sides to a fixed-size SHA-256 digest before comparing means
+// timingSafeEqual is always called on two equal-length (32-byte) buffers —
+// no length guard is needed at all, so there's nothing left to leak: unlike
+// comparing the raw strings, this reveals nothing about the candidate's
+// length OR content, only ever "matches" or "doesn't."
+function secretsMatch(candidate: string, expected: string): boolean {
+  const candidateDigest = createHash('sha256').update(candidate).digest();
+  const expectedDigest = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(candidateDigest, expectedDigest);
+}
+
+// #264 — POST /profiles has no request-cost check, so anyone already
+// holding the #252 shared secret can enumerate PROFILE_ALLOWLIST membership
+// (200/201 vs 403) at whatever speed the server allows. This route's blast
+// radius is "which first names are invited," not game state — a lightweight
+// self-contained limiter matches that severity; no new dependency for one
+// low-risk route. Fixed-window per key, in-memory. Never pruned: bounded by
+// the count of distinct callers this process ever sees, a non-issue at this
+// project's scale (an invite-only game for a handful of people), and adding
+// a sweep/interval would need its own shutdown handling for one Low-severity
+// route.
+function createRateLimiter(max: number, windowMs: number): (key: string) => boolean {
+  const hits = new Map<string, { count: number; windowStart: number }>();
+  return (key: string): boolean => {
+    const now = Date.now();
+    const entry = hits.get(key);
+    if (!entry || now - entry.windowStart >= windowMs) {
+      hits.set(key, { count: 1, windowStart: now });
+      return true;
+    }
+    entry.count += 1;
+    return entry.count <= max;
+  };
+}
+
 export async function buildApp() {
-  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.url'] } });
+  const apiAccessKey = getAccessKey();
+  const profileAllowlist = getProfileAllowlist();
+
+  if (process.env.NODE_ENV === 'production') {
+    if (!apiAccessKey) {
+      throw new Error('API_ACCESS_KEY must be set in production — see docs/access-control.md (#252)');
+    }
+    if (!profileAllowlist) {
+      throw new Error('PROFILE_ALLOWLIST must be set in production — see docs/access-control.md (#252)');
+    }
+  }
+
+  // #264 — Render terminates TLS and proxies every request to this process,
+  // so without this, `request.ip` resolves to Render's internal proxy
+  // address for every request, not the real client — a per-IP rate limit
+  // built on that would rate-limit "everyone" as a single client instead of
+  // each caller individually.
+  //
+  // KNOWN ISSUE, NOT YET RESOLVED IN THIS PATCH: `trustProxy: true` (43ed460's
+  // original value) trusts the ENTIRE X-Forwarded-For chain and reads the
+  // FIRST (leftmost) entry — which is exactly the value a caller can supply
+  // themselves. #279 (c3b0df6, not in #305's four-commit cherry-pick list)
+  // fixes this to `trustProxy: 1`, confirmed live by toucan: with `true`, an
+  // attacker can fully reset their own rate-limit quota by changing the
+  // X-Forwarded-For header on each request, defeating #264 entirely. See the
+  // PR description / #305 thread — this needs a decision on whether #279
+  // should be a fifth cherry-pick before this patch is considered complete.
+  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.url'] }, trustProxy: true });
 
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
@@ -41,6 +123,22 @@ export async function buildApp() {
   });
   await app.register(websocket, { options: { maxPayload: 4096 } });
 
+  // Shared-secret gate — the first of the two #252 mechanisms. Runs before
+  // every route handler except the liveness probes. Accepts the secret as
+  // either the `x-api-key` header (plain HTTP fetches) or an `apiKey` query
+  // param (the WS upgrade — browsers can't set custom headers on that
+  // handshake, so it rides the URL the same way profileId/name already do).
+  app.addHook('preHandler', async (request, reply) => {
+    if (!apiAccessKey) return;
+    if (request.url.startsWith('/health')) return;
+    const headerKey = request.headers['x-api-key'];
+    const queryKey = (request.query as Record<string, unknown> | undefined)?.apiKey;
+    const provided = typeof headerKey === 'string' ? headerKey : typeof queryKey === 'string' ? queryKey : null;
+    if (provided === null || !secretsMatch(provided, apiAccessKey)) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+  });
+
   app.get('/health', async () => ({ status: 'ok' }));
   app.get('/healthz', async () => ({ status: 'ok' }));
 
@@ -52,12 +150,34 @@ export async function buildApp() {
     return reply.status(501).send({ error: 'Use WebSocket to create games' });
   });
 
-  app.post('/profiles', async (request, reply) => {
+  // #264 — 20 requests/minute per IP by default, overridable via env for
+  // whoever ends up tuning it against real traffic. Checked as its own
+  // preHandler, before the route body below ever reads `name` or touches
+  // profileAllowlist: whether a request gets 429'd depends only on how many
+  // requests this IP has made, never on what name it sent, so the limiter
+  // can't become a second oracle layered on top of the one #264 is about.
+  const profilesRateLimitMax = Number(process.env.PROFILES_RATE_LIMIT_MAX ?? 20);
+  const profilesRateLimitWindowMs = Number(process.env.PROFILES_RATE_LIMIT_WINDOW_MS ?? 60_000);
+  const allowProfilesRequest = createRateLimiter(profilesRateLimitMax, profilesRateLimitWindowMs);
+
+  app.post('/profiles', {
+    preHandler: async (request, reply) => {
+      if (!allowProfilesRequest(request.ip)) {
+        return reply.status(429).send({ error: 'Too many requests' });
+      }
+    },
+  }, async (request, reply) => {
     const { name } = request.body as { name: string };
     if (!name || typeof name !== 'string' || name.trim().length === 0 || name.trim().length > 20) {
       return reply.status(400).send({ error: 'name is required (1-20 chars)' });
     }
     const trimmed = name.trim();
+    // #252 — invite-only: a shared secret alone doesn't stop anyone holding
+    // it from minting or claiming an arbitrary name, so this checks the
+    // allow-list before either branch of find-or-create, not just create.
+    if (profileAllowlist && !profileAllowlist.has(trimmed.toLowerCase())) {
+      return reply.status(403).send({ error: 'This name is not on the invite list' });
+    }
     try {
       const existing = await profilesDb.getProfileByName(trimmed);
       if (existing) {

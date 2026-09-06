@@ -10,6 +10,7 @@ import { GameOverOverlay } from "../../components/GameOverOverlay";
 import { DevPanel } from "../../components/DevPanel";
 import { ErrorToast } from "../../components/ErrorToast";
 import { JoinCodeBadge } from "../../components/JoinCodeBadge";
+import { apiHeaders } from "../../lib/serverApi";
 
 export interface DevSeatOption {
   name: string;
@@ -92,7 +93,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   const revealAllTokens = () => {
     fetch(`${serverUrl}/dev/reveal-all-tokens`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ joinCode }),
     });
   };
@@ -100,7 +101,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   const skipTurn = () => {
     fetch(`${serverUrl}/dev/advance-turn`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ joinCode }),
     });
   };

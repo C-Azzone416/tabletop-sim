@@ -209,6 +209,76 @@ describe("routes", () => {
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ error: "Internal server error" });
     });
+
+    // #264 — enumeration-via-status-code needs speed to be useful; a
+    // per-IP rate limit slows it down. Small max/window via env so these
+    // tests don't need 20 real requests to exercise the 429 path.
+    describe("rate limit (#264)", () => {
+      let limitedApp: FastifyInstance;
+
+      beforeEach(async () => {
+        process.env.PROFILES_RATE_LIMIT_MAX = "2";
+        process.env.PROFILES_RATE_LIMIT_WINDOW_MS = "60000";
+        limitedApp = await buildApp();
+      });
+
+      afterEach(async () => {
+        await limitedApp.close();
+        delete process.env.PROFILES_RATE_LIMIT_MAX;
+        delete process.env.PROFILES_RATE_LIMIT_WINDOW_MS;
+      });
+
+      it("allows requests up to the configured max", async () => {
+        mockProfilesDb.getProfileByName.mockResolvedValue(null);
+        mockProfilesDb.createProfile.mockImplementation(async (name: string) => makeProfile({ name }));
+
+        const first = await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Alice" } });
+        const second = await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Bob" } });
+
+        expect(first.statusCode).toBe(201);
+        expect(second.statusCode).toBe(201);
+      });
+
+      it("returns 429 once the same caller exceeds the configured max", async () => {
+        mockProfilesDb.getProfileByName.mockResolvedValue(null);
+        mockProfilesDb.createProfile.mockImplementation(async (name: string) => makeProfile({ name }));
+
+        await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Alice" } });
+        await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Bob" } });
+        const third = await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Carol" } });
+
+        expect(third.statusCode).toBe(429);
+        expect(third.json()).toEqual({ error: "Too many requests" });
+      });
+
+      // The limiter must never inspect the request body, or a 429 becomes
+      // a second oracle on top of the one #264 is about (fires differently
+      // depending on whether the name being probed would have been
+      // allowed). Confirmed here directly: the request that trips the
+      // limit is for a name that was never going to be allow-listed
+      // (profileAllowlist unset in this test's app, so every name is
+      // normally accepted) — it still gets a plain 429, not a 403, proving
+      // the limiter decided before the handler ever read `name`.
+      it("the 429 fires purely on request count, never on the name's own validity", async () => {
+        mockProfilesDb.getProfileByName.mockResolvedValue(null);
+        mockProfilesDb.createProfile.mockImplementation(async (name: string) => makeProfile({ name }));
+
+        await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Alice" } });
+        await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Bob" } });
+        const third = await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "AnyNameAtAll" } });
+
+        expect(third.statusCode).toBe(429);
+        expect(mockProfilesDb.getProfileByName).not.toHaveBeenCalledWith("AnyNameAtAll");
+      });
+
+      it("does not rate-limit other routes", async () => {
+        await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Alice" } });
+        await limitedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Bob" } });
+
+        const health = await limitedApp.inject({ method: "GET", url: "/health" });
+        expect(health.statusCode).toBe(200);
+      });
+    });
   });
 
   describe("GET /profiles/:id", () => {
@@ -844,19 +914,24 @@ describe("routes", () => {
     afterEach(() => {
       process.env.NODE_ENV = originalNodeEnv;
       delete process.env.ENABLE_DEV_SEED;
+      delete process.env.API_ACCESS_KEY;
+      delete process.env.PROFILE_ALLOWLIST;
     });
 
     it("does not register /dev/seed, /dev/reveal-all-tokens, /dev/seed-near-win, /dev/advance-turn, /dev/cleanup, or /dev/migrations-status when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
       process.env.ENABLE_DEV_SEED = "true";
       process.env.NODE_ENV = "production";
+      process.env.API_ACCESS_KEY = "test-key";
+      process.env.PROFILE_ALLOWLIST = "Alice";
       const prodApp = await buildApp();
+      const headers = { "x-api-key": "test-key" };
 
-      const seedRes = await prodApp.inject({ method: "POST", url: "/dev/seed" });
-      const revealRes = await prodApp.inject({ method: "POST", url: "/dev/reveal-all-tokens", payload: { joinCode: "ABCD" } });
-      const seedNearWinRes = await prodApp.inject({ method: "POST", url: "/dev/seed-near-win" });
-      const advanceRes = await prodApp.inject({ method: "POST", url: "/dev/advance-turn", payload: { joinCode: "ABCD" } });
-      const cleanupRes = await prodApp.inject({ method: "POST", url: "/dev/cleanup", payload: { joinCode: "ABCD" } });
-      const migrationsStatusRes = await prodApp.inject({ method: "GET", url: "/dev/migrations-status" });
+      const seedRes = await prodApp.inject({ method: "POST", url: "/dev/seed", headers });
+      const revealRes = await prodApp.inject({ method: "POST", url: "/dev/reveal-all-tokens", payload: { joinCode: "ABCD" }, headers });
+      const seedNearWinRes = await prodApp.inject({ method: "POST", url: "/dev/seed-near-win", headers });
+      const advanceRes = await prodApp.inject({ method: "POST", url: "/dev/advance-turn", payload: { joinCode: "ABCD" }, headers });
+      const cleanupRes = await prodApp.inject({ method: "POST", url: "/dev/cleanup", payload: { joinCode: "ABCD" }, headers });
+      const migrationsStatusRes = await prodApp.inject({ method: "GET", url: "/dev/migrations-status", headers });
 
       expect(seedRes.statusCode).toBe(404);
       expect(revealRes.statusCode).toBe(404);
@@ -914,6 +989,8 @@ describe("routes", () => {
     it("never allows a preview origin when NODE_ENV is production, even if ENABLE_DEV_SEED is true", async () => {
       process.env.ENABLE_DEV_SEED = "true";
       process.env.NODE_ENV = "production";
+      process.env.API_ACCESS_KEY = "test-key";
+      process.env.PROFILE_ALLOWLIST = "Alice";
       const prodApp = await buildApp();
 
       const res = await prodApp.inject({
@@ -925,6 +1002,8 @@ describe("routes", () => {
       expect(res.headers["access-control-allow-origin"]).toBeUndefined();
 
       await prodApp.close();
+      delete process.env.API_ACCESS_KEY;
+      delete process.env.PROFILE_ALLOWLIST;
     });
 
     it("never allows a preview origin when dev tooling is disabled, even outside production", async () => {
@@ -945,6 +1024,193 @@ describe("routes", () => {
       const res = await app.inject({ method: "GET", url: "/health", headers: { origin: "http://localhost:3000" } });
 
       expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:3000");
+    });
+  });
+
+  describe("#252 — shared-secret access gate", () => {
+    let keyedApp: FastifyInstance;
+
+    beforeEach(async () => {
+      process.env.API_ACCESS_KEY = "secret-123";
+      keyedApp = await buildApp();
+    });
+
+    afterEach(async () => {
+      await keyedApp.close();
+      delete process.env.API_ACCESS_KEY;
+    });
+
+    it("does not gate requests when API_ACCESS_KEY is unset (dev/test default)", async () => {
+      const res = await app.inject({ method: "GET", url: "/dev/migrations-status" });
+      // No route registered (ENABLE_DEV_SEED unset in this describe's `app`) — 404, not 401,
+      // proves the gate itself let the request through to routing.
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("rejects a request with no key when API_ACCESS_KEY is configured", async () => {
+      mockProfilesDb.getProfileByName.mockResolvedValue(makeProfile({ id: "prof-1", name: "Alice" }));
+
+      const res = await keyedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Alice" } });
+
+      expect(res.statusCode).toBe(401);
+      expect(res.json()).toEqual({ error: "Unauthorized" });
+      expect(mockProfilesDb.getProfileByName).not.toHaveBeenCalled();
+    });
+
+    it("rejects a request with the wrong key", async () => {
+      const res = await keyedApp.inject({
+        method: "POST",
+        url: "/profiles",
+        payload: { name: "Alice" },
+        headers: { "x-api-key": "wrong" },
+      });
+
+      expect(res.statusCode).toBe(401);
+    });
+
+    // #259 — the comparison hashes both sides to a fixed-size digest before
+    // calling timingSafeEqual specifically so a length mismatch (shorter OR
+    // longer than the real secret) can never throw or behave differently
+    // from a same-length wrong guess — both just fail to match.
+    it("rejects a wrong key that is much longer than the real secret, without throwing", async () => {
+      const res = await keyedApp.inject({
+        method: "POST",
+        url: "/profiles",
+        payload: { name: "Alice" },
+        headers: { "x-api-key": "a".repeat(500) },
+      });
+
+      expect(res.statusCode).toBe(401);
+    });
+
+    it("accepts the key via the x-api-key header", async () => {
+      const profile = makeProfile({ id: "prof-1", name: "Alice" });
+      mockProfilesDb.getProfileByName.mockResolvedValue(profile);
+
+      const res = await keyedApp.inject({
+        method: "POST",
+        url: "/profiles",
+        payload: { name: "Alice" },
+        headers: { "x-api-key": "secret-123" },
+      });
+
+      expect(res.statusCode).toBe(200);
+    });
+
+    it("accepts the key via the apiKey query param (WS upgrade can't send custom headers)", async () => {
+      mockProfilesDb.getProfileById.mockResolvedValue(makeProfile({ id: "prof-1", name: "Alice" }));
+
+      const res = await keyedApp.inject({
+        method: "GET",
+        url: "/profiles/prof-1?apiKey=secret-123",
+      });
+
+      expect(res.statusCode).toBe(200);
+    });
+
+    it("never gates /health or /healthz, even when the key is configured and absent", async () => {
+      const healthRes = await keyedApp.inject({ method: "GET", url: "/health" });
+      const healthzRes = await keyedApp.inject({ method: "GET", url: "/healthz" });
+
+      expect(healthRes.statusCode).toBe(200);
+      expect(healthzRes.statusCode).toBe(200);
+    });
+  });
+
+  describe("#252 — profile invite allow-list", () => {
+    let allowlistedApp: FastifyInstance;
+
+    beforeEach(async () => {
+      process.env.PROFILE_ALLOWLIST = "Alice, Bob";
+      allowlistedApp = await buildApp();
+    });
+
+    afterEach(async () => {
+      await allowlistedApp.close();
+      delete process.env.PROFILE_ALLOWLIST;
+    });
+
+    it("does not gate profile creation when PROFILE_ALLOWLIST is unset (dev/test default)", async () => {
+      const profile = makeProfile({ id: "prof-1", name: "Anyone" });
+      mockProfilesDb.getProfileByName.mockResolvedValue(null);
+      mockProfilesDb.createProfile.mockResolvedValue(profile);
+
+      const res = await app.inject({ method: "POST", url: "/profiles", payload: { name: "Anyone" } });
+
+      expect(res.statusCode).toBe(201);
+    });
+
+    it("allows creating a profile whose name is on the allow-list", async () => {
+      const profile = makeProfile({ id: "prof-1", name: "Alice" });
+      mockProfilesDb.getProfileByName.mockResolvedValue(null);
+      mockProfilesDb.createProfile.mockResolvedValue(profile);
+
+      const res = await allowlistedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Alice" } });
+
+      expect(res.statusCode).toBe(201);
+      expect(mockProfilesDb.createProfile).toHaveBeenCalledWith("Alice");
+    });
+
+    it("matches the allow-list case-insensitively", async () => {
+      const profile = makeProfile({ id: "prof-1", name: "alice" });
+      mockProfilesDb.getProfileByName.mockResolvedValue(null);
+      mockProfilesDb.createProfile.mockResolvedValue(profile);
+
+      const res = await allowlistedApp.inject({ method: "POST", url: "/profiles", payload: { name: "alice" } });
+
+      expect(res.statusCode).toBe(201);
+    });
+
+    it("rejects creating a profile whose name is not on the allow-list", async () => {
+      const res = await allowlistedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Mallory" } });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: "This name is not on the invite list" });
+      expect(mockProfilesDb.getProfileByName).not.toHaveBeenCalled();
+      expect(mockProfilesDb.createProfile).not.toHaveBeenCalled();
+    });
+
+    it("does not return an existing profile for a name that isn't on the allow-list (no find-or-create bypass)", async () => {
+      // Even though "Mallory" already has a profile row (created before the
+      // allow-list existed, say), an uninvited caller posting that exact
+      // name must not get it handed back.
+      const res = await allowlistedApp.inject({ method: "POST", url: "/profiles", payload: { name: "Mallory" } });
+
+      expect(res.statusCode).toBe(403);
+      expect(mockProfilesDb.getProfileByName).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("#252 — startup fails closed in production without the gate configured", () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalNodeEnv;
+      delete process.env.API_ACCESS_KEY;
+      delete process.env.PROFILE_ALLOWLIST;
+    });
+
+    it("throws when NODE_ENV is production and API_ACCESS_KEY is unset", async () => {
+      process.env.NODE_ENV = "production";
+      process.env.PROFILE_ALLOWLIST = "Alice";
+
+      await expect(buildApp()).rejects.toThrow(/API_ACCESS_KEY/);
+    });
+
+    it("throws when NODE_ENV is production and PROFILE_ALLOWLIST is unset", async () => {
+      process.env.NODE_ENV = "production";
+      process.env.API_ACCESS_KEY = "secret-123";
+
+      await expect(buildApp()).rejects.toThrow(/PROFILE_ALLOWLIST/);
+    });
+
+    it("starts normally in production when both are configured", async () => {
+      process.env.NODE_ENV = "production";
+      process.env.API_ACCESS_KEY = "secret-123";
+      process.env.PROFILE_ALLOWLIST = "Alice";
+
+      const prodApp = await buildApp();
+      await prodApp.close();
     });
   });
 });
