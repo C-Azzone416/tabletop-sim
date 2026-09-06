@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ErrorToast } from "../../components/ErrorToast";
 import { isValidJoinCodeFormat } from "../../lib/joinCode";
+import { PlayScreen } from "../PlayScreen";
 import { usePlayAction, usePlaySessionGuard } from "../usePlayAction";
 
 /**
@@ -16,6 +17,11 @@ import { usePlayAction, usePlaySessionGuard } from "../usePlayAction";
  * NOT send or connect, so it never enters the action lifecycle at all. Its
  * message shares the one ErrorToast, ahead of the lifecycle's message, as
  * it did before.
+ *
+ * #335/#355: adopted the shared PlayScreen chrome. PlayScreen is
+ * max-w-3xl; the join code input keeps its own inner max-w-sm rather than
+ * widening the whole page — the narrow field is a property of that
+ * control, not the screen.
  */
 export default function JoinByCode() {
   const guard = usePlaySessionGuard();
@@ -42,18 +48,9 @@ export default function JoinByCode() {
   }
 
   return (
-    <div className="min-h-screen bg-surface px-6 py-10 font-sans">
-      <main className="mx-auto max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-ink">
-            Join a game
-          </h1>
-          <p className="mt-2 text-ink-muted">
-            Enter the code your host gave you
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-4">
+    <>
+      <PlayScreen backHref="/play" title="Join a game" subtitle="Enter the code your host gave you">
+        <div className="mx-auto flex w-full max-w-sm flex-col gap-4">
           <input
             type="text"
             value={joinCode}
@@ -79,7 +76,7 @@ export default function JoinByCode() {
             </p>
           )}
         </div>
-      </main>
+      </PlayScreen>
       <ErrorToast
         message={formatError || errorMessage}
         onDismiss={() => {
@@ -87,6 +84,6 @@ export default function JoinByCode() {
           dismissError();
         }}
       />
-    </div>
+    </>
   );
 }

@@ -150,5 +150,10 @@ describe("HostSelection (app/play/host/page.tsx)", () => {
       ).toBeInTheDocument();
       expect(screen.getByText("Wire Game").closest("button")).not.toBeDisabled();
     });
+
+    it("offers ← Back to /play (#335/#355: adopted PlayScreen chrome)", () => {
+      render(<HostSelection />);
+      expect(screen.getByRole("link", { name: /← Back/ })).toHaveAttribute("href", "/play");
+    });
   });
 });

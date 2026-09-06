@@ -3,6 +3,7 @@
 import type { GameRegistryEntry } from "@tabletop/shared";
 import { GameSelectionGrid } from "../../components/GameSelectionGrid";
 import { ErrorToast } from "../../components/ErrorToast";
+import { PlayScreen } from "../PlayScreen";
 import { usePlayAction, usePlaySessionGuard } from "../usePlayAction";
 
 /**
@@ -18,6 +19,11 @@ import { usePlayAction, usePlaySessionGuard } from "../usePlayAction";
  * reading. Relocated (not dropped): the 10s timeout/error toast covers the
  * hang case, but the brief pre-connect window before that timeout is a real
  * gap this indicator closes, same as it did on the page it's replacing.
+ *
+ * #335/#355: adopted the shared PlayScreen chrome (back affordance, heading,
+ * column) instead of hand-rolling it, per the #310 ruling this had drifted
+ * from. GameSelectionGrid is untouched — left-aligning the heading via
+ * PlayScreen closes #355's centring mismatch without touching the grid.
  */
 export default function HostSelection() {
   const guard = usePlaySessionGuard();
@@ -34,17 +40,12 @@ export default function HostSelection() {
   }
 
   return (
-    <div className="min-h-screen bg-surface px-6 py-10 font-sans">
-      <main className="mx-auto max-w-3xl">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-ink">
-            Choose a game
-          </h1>
-          <p className="mt-2 text-ink-muted">
-            {mode === "creating" ? "Creating room..." : "Pick what to host"}
-          </p>
-        </div>
-
+    <>
+      <PlayScreen
+        backHref="/play"
+        title="Choose a game"
+        subtitle={mode === "creating" ? "Creating room..." : "Pick what to host"}
+      >
         <GameSelectionGrid onSelect={handleSelect} disabled={isBusy} />
 
         {connectionStatus === "connecting" && (
@@ -52,8 +53,8 @@ export default function HostSelection() {
             Connecting to server...
           </p>
         )}
-      </main>
+      </PlayScreen>
       <ErrorToast message={errorMessage} onDismiss={dismissError} />
-    </div>
+    </>
   );
 }
