@@ -206,5 +206,10 @@ describe("JoinByCode (app/play/join/page.tsx)", () => {
       render(<JoinByCode />);
       expect(screen.getByText("Connecting to server...")).toBeInTheDocument();
     });
+
+    it("offers ← Back to /play (#335/#355: adopted PlayScreen chrome)", () => {
+      render(<JoinByCode />);
+      expect(screen.getByRole("link", { name: /← Back/ })).toHaveAttribute("href", "/play");
+    });
   });
 });
