@@ -1,6 +1,7 @@
 // Game state types
 
 import type { GameId } from './game-registry';
+import type { FlipTableView } from './flip-view';
 
 export type GameStatus = 'waiting' | 'setup' | 'active' | 'won' | 'lost';
 export type WireColor = 'blue' | 'yellow' | 'red';
@@ -145,7 +146,12 @@ export type ServerMessage =
   | { type: 'joined_game'; game: Game; player: Player; players: Player[] }
   | { type: 'game_started'; game: Game; players: Player[]; wires: Wire[]; candidates: WireCandidate[] }
   | { type: 'setup_complete'; game: Game }
-  | { type: 'game_state'; game: Game; players: Player[]; wires: Wire[]; infoTokens: InfoToken[]; validationTokens: ValidationToken[]; localPlayerId: string; candidates: WireCandidate[] }
+  // #382 — the wire game's shape, unchanged. `flip` is absent on this path.
+  | { type: 'game_state'; game: Game; players: Player[]; wires: Wire[]; infoTokens: InfoToken[]; validationTokens: ValidationToken[]; localPlayerId: string; candidates: WireCandidate[]; flip?: undefined }
+  // #382 — Flip carries no wires/tokens/candidates at all, and no wiresDb call
+  // is made to produce it. Identical for every player: `localPlayerId` says
+  // which seat is yours, never what you may see (#358 — no hidden state).
+  | { type: 'game_state'; game: Game; players: Player[]; localPlayerId: string; flip: FlipTableView }
   | { type: 'player_joined'; player: Player }
   | { type: 'dual_cut_proposed'; proposingPlayerId: string; targetPlayerId: string; targetWireId: string; targetWireRackPosition: number; guessedValue: string }
   | { type: 'dual_cut_correct'; targetWireId: string; targetWireRackPosition: number; targetWireColor: WireColor }

@@ -11,6 +11,12 @@ vi.mock("../src/db/tokens.js", () => ({
 vi.mock("../src/db/candidates.js", () => ({
   getWireCandidatesByGameId: vi.fn(),
 }));
+vi.mock("../src/db/flip-games.js", () => ({
+  getFlipGameState: vi.fn(),
+  saveFlipGameState: vi.fn(),
+  recordFlipRoundScores: vi.fn(),
+  getFlipRoundScores: vi.fn(),
+}));
 vi.mock("../src/ws/connection-manager.js", () => ({
   getGameSockets: vi.fn(() => new Map()),
   sendToPlayer: vi.fn(),
@@ -20,7 +26,10 @@ import * as wiresDb from "../src/db/wires.js";
 import * as tokensDb from "../src/db/tokens.js";
 import * as candidatesDb from "../src/db/candidates.js";
 import * as connManager from "../src/ws/connection-manager.js";
+import * as flipGamesDb from "../src/db/flip-games.js";
+import { buildFlipGameState, flipCards } from "@tabletop/game-flip";
 
+const mockFlipGamesDb = vi.mocked(flipGamesDb);
 const mockWiresDb = vi.mocked(wiresDb);
 const mockTokensDb = vi.mocked(tokensDb);
 const mockCandidatesDb = vi.mocked(candidatesDb);
@@ -121,7 +130,140 @@ describe("state-broadcaster", () => {
     });
   });
 
+  // #382 — broadcastGameState used to call getWiresByGameId unconditionally,
+  // so a Flip game got a wire-shaped message with nothing in it and the client
+  // sat on the lobby screen forever.
+  describe("broadcastGameState — flip (#382)", () => {
+    const flipGame = () => makeGame({ id: "g1", gameType: "flip" });
+    const flipPlayers = () => [makePlayer({ id: "p0" }), makePlayer({ id: "p1" })];
+    const twoSeats = [
+      { id: "p0", name: "Dev" },
+      { id: "p1", name: "Alice" },
+    ];
+
+    const connect = (...ids: string[]) => {
+      mockConnManager.getGameSockets.mockReturnValue(
+        new Map(ids.map((id) => [id, {}])) as Map<string, WebSocket>,
+      );
+    };
+
+    it("broadcasts a renderable flip table to every connected seat", async () => {
+      mockFlipGamesDb.getFlipGameState.mockResolvedValue(
+        buildFlipGameState({ players: twoSeats, hands: { p0: flipCards(["7", "+4"]) } }),
+      );
+      connect("p0", "p1");
+
+      await broadcastGameState("g1", flipGame(), flipPlayers());
+
+      expect(mockConnManager.sendToPlayer).toHaveBeenCalledTimes(2);
+      const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+      expect(message).toMatchObject({ type: "game_state", localPlayerId: "p0" });
+      expect((message as { flip: unknown }).flip).toBeDefined();
+    });
+
+    // The acceptance criterion, and the actual bug: no wire-game query may be
+    // issued on a Flip path at all.
+    it("never touches wiresDb, tokensDb or candidatesDb for a flip game", async () => {
+      mockFlipGamesDb.getFlipGameState.mockResolvedValue(
+        buildFlipGameState({ players: twoSeats }),
+      );
+      connect("p0");
+
+      await broadcastGameState("g1", flipGame(), flipPlayers());
+
+      expect(mockWiresDb.getWiresByGameId).not.toHaveBeenCalled();
+      expect(mockTokensDb.getInfoTokensByGameId).not.toHaveBeenCalled();
+      expect(mockTokensDb.getValidationTokensByGameId).not.toHaveBeenCalled();
+      expect(mockCandidatesDb.getWireCandidatesByGameId).not.toHaveBeenCalled();
+    });
+
+    it("sends no wires, infoTokens, validationTokens or candidates", async () => {
+      mockFlipGamesDb.getFlipGameState.mockResolvedValue(
+        buildFlipGameState({ players: twoSeats }),
+      );
+      connect("p0");
+
+      await broadcastGameState("g1", flipGame(), flipPlayers());
+
+      const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+      expect(message).not.toHaveProperty("wires");
+      expect(message).not.toHaveProperty("infoTokens");
+      expect(message).not.toHaveProperty("validationTokens");
+      expect(message).not.toHaveProperty("candidates");
+    });
+
+    // #358: no hidden state. Every seat sees every hand, so unlike the wire
+    // game the payload is identical for all recipients apart from localPlayerId.
+    it("sends every seat the same table, differing only in localPlayerId", async () => {
+      mockFlipGamesDb.getFlipGameState.mockResolvedValue(
+        buildFlipGameState({
+          players: twoSeats,
+          hands: { p0: flipCards(["7"]), p1: flipCards(["9"]) },
+        }),
+      );
+      connect("p0", "p1");
+
+      await broadcastGameState("g1", flipGame(), flipPlayers());
+
+      const [, , first] = mockConnManager.sendToPlayer.mock.calls[0];
+      const [, , second] = mockConnManager.sendToPlayer.mock.calls[1];
+      expect((first as { flip: unknown }).flip).toEqual((second as { flip: unknown }).flip);
+      expect((first as { localPlayerId: string }).localPlayerId).toBe("p0");
+      expect((second as { localPlayerId: string }).localPlayerId).toBe("p1");
+    });
+
+    // Reconnect: the table is rebuilt from the persisted blob every time, so
+    // a client rejoining mid-round gets the pending choice back.
+    it("restores a pending target choice from persisted state", async () => {
+      mockFlipGamesDb.getFlipGameState.mockResolvedValue(
+        buildFlipGameState({
+          players: twoSeats,
+          turnPlayerId: "p0",
+          pendingAction: { kind: "flip3" },
+        }),
+      );
+      connect("p0");
+
+      await broadcastGameState("g1", flipGame(), flipPlayers());
+
+      const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+      expect((message as { flip: { pendingAction: unknown } }).flip.pendingAction).toMatchObject({
+        kind: "flip3",
+        flipperId: "p0",
+      });
+    });
+
+    // A room created but not yet seeded has nothing to render. Sending a
+    // half-built table would be worse than sending nothing.
+    it("sends nothing when the game has no persisted flip state yet", async () => {
+      mockFlipGamesDb.getFlipGameState.mockResolvedValue(null);
+      connect("p0");
+
+      await broadcastGameState("g1", flipGame(), flipPlayers());
+
+      expect(mockConnManager.sendToPlayer).not.toHaveBeenCalled();
+      expect(mockWiresDb.getWiresByGameId).not.toHaveBeenCalled();
+    });
+  });
+
   describe("broadcastGameState", () => {
+    // #382 regression guard: the wire-game path must be untouched by the
+    // gameType branch added above it.
+    it("still queries wiresDb for a wire game", async () => {
+      mockWiresDb.getWiresByGameId.mockResolvedValue([]);
+      mockTokensDb.getInfoTokensByGameId.mockResolvedValue([]);
+      mockTokensDb.getValidationTokensByGameId.mockResolvedValue([]);
+      mockCandidatesDb.getWireCandidatesByGameId.mockResolvedValue([]);
+      mockConnManager.getGameSockets.mockReturnValue(new Map([["p1", {}]]) as Map<string, WebSocket>);
+
+      await broadcastGameState("g1", makeGame({ id: "g1", gameType: "wire-game" }), [makePlayer({ id: "p1" })]);
+
+      expect(mockWiresDb.getWiresByGameId).toHaveBeenCalledWith("g1");
+      expect(mockFlipGamesDb.getFlipGameState).not.toHaveBeenCalled();
+      const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+      expect(message).not.toHaveProperty("flip");
+    });
+
     it("sends a per-player redacted game_state message to every connected socket", async () => {
       const game = makeGame({ id: "g1" });
       const players = [makePlayer({ id: "p1" }), makePlayer({ id: "p2" })];
