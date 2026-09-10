@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
-import { seedFlipGame, flipGameUrl, switchToSeat, waitForTurnToPass } from "./flip-helpers";
+import { seedFlipGame, flipGameUrl, switchToSeat, waitForTurnToPass, shoeCount, errorToast } from "./flip-helpers";
 
 /**
  * #367 — Flip E2E. Targets the local stack in CI, per the existing E2E
@@ -40,6 +40,13 @@ import { seedFlipGame, flipGameUrl, switchToSeat, waitForTurnToPass } from "./fl
  *   in flight). Where a test's job is to prove a scoring rule fired, it
  *   asserts the resulting game-over winner or phase transition instead,
  *   which is observable without the scoreboard.
+ * - "A tie at 200+ resolves on highest final-round score" has no test.
+ *   near-200 (used below) only stacks ONE player's shoe card — the other
+ *   leader's draw is unstacked/random, so there is no #370 scenario that
+ *   constructs an exact live tie. The tie-break rule itself is exhaustively
+ *   covered at the engine level (packages/games/flip/test/game.test.ts:
+ *   "breaks a tie at 200+ by the highest score in the final round" and
+ *   "plays another full round when still tied").
  */
 
 function seatByName(page: Page, name: string): Locator {
@@ -166,11 +173,20 @@ test.describe("Flip — Flip 3 interruption rulings", () => {
     await page.getByRole("button", { name: "Hit" }).click();
 
     await expect(page.getByTestId("flip-pending-action-picker")).toBeVisible();
+    // Shoe count right after Alice's own Hit (which drew the Flip 3 card
+    // itself) — the baseline the target's cards get dealt out of.
+    const shoeBeforeTarget = await shoeCount(page);
     await page.getByTestId("flip-target-picker").getByRole("button", { name: bob.name }).click();
 
-    // Busted: Bob's hand is cleared and the seat shows the Busted badge —
-    // only the busting card (one of the three) was ever dealt.
+    // Busted: Bob's hand is cleared and the seat shows the Busted badge.
     await expect(seatByName(page, bob.name)).toContainText("Busted");
+    // The real assertion for "only the busting card was ever dealt": the
+    // shoe dropped by exactly 1, not 3. A regression that dealt all 3
+    // cards before applying the bust would leave an identical Busted/empty
+    // hand but a shoe count 2 lower than this.
+    await expect(async () => {
+      expect(await shoeCount(page)).toBe(shoeBeforeTarget - 1);
+    }).toPass();
     await expect(handOf(page, bob.name).locator('[data-testid^="card-"]')).toHaveCount(0);
   });
 
@@ -228,20 +244,39 @@ test.describe("Flip — deck exhaustion", () => {
     const turnOrder = [alice, dev, alice, dev];
 
     await page.goto(flipGameUrl(seed));
-    for (const player of turnOrder) {
+    for (const [i, player] of turnOrder.entries()) {
       await switchToSeat(page, player.name);
       await expect(page.getByRole("button", { name: "Hit" })).toBeVisible();
       await page.getByRole("button", { name: "Hit" }).click();
-      await waitForTurnToPass(page, player.name);
+      // Not after the last (4th) hit: if the reshuffle-on-empty-shoe path
+      // broke, the action is rejected and this player's turn never passes
+      // — waiting for it here would hang on a timeout instead of failing
+      // on the explicit, immediate check below.
+      if (i < turnOrder.length - 1) await waitForTurnToPass(page, player.name);
     }
 
-    // The 4th Hit (Dev's second) only succeeds if the discard reshuffled
-    // in behind the now-empty shoe. No "Not your turn"/engine error toast,
-    // and the round is still live (never bounced to awaiting-round-start)
-    // — the reshuffle-drawn card may legitimately bust the drawer (it's
-    // shuffled), so only phase and absence-of-error are asserted, not a
-    // specific hand outcome.
-    await expect(page.getByText("Not your turn")).toHaveCount(0);
+    // The 4th Hit (Dev's second) only succeeds if the discard reshuffled in
+    // behind the now-empty shoe. If that path breaks, drawFromShoe throws
+    // "cannot draw: shoe and discard are both empty" — not on the safe-error
+    // allowlist, so it collapses to a generic "Internal error" toast, NOT
+    // "Not your turn". Checking for the toast itself (regardless of
+    // message) is what actually catches that regression.
+    //
+    // A positive outcome check too, not just absence-of-error: Dev's hand
+    // (1 card after his first hit) either grew to 2 (the reshuffle-drawn
+    // card was safe) or he busted (it was a duplicate — legitimate, the
+    // reshuffle is genuinely shuffled). Either proves the draw completed;
+    // neither happening (hand still 1, not busted) would mean the action
+    // silently failed to apply, which absence-of-error alone wouldn't catch.
+    await expect(async () => {
+      const busted = await seatByName(page, dev.name).getByText("Busted").isVisible();
+      // Currently viewing as Dev (the last switchToSeat in the loop above),
+      // so his own label reads "You" — handOf(dev.name) would look for the
+      // literal name, which no longer renders while it's his own view.
+      const handCount = await myHand(page).locator('[data-testid^="card-"]').count();
+      expect(busted || handCount === 2).toBe(true);
+    }).toPass();
+    await expect(errorToast(page)).toHaveCount(0);
     await expect(page.getByTestId("flip-awaiting-round-start")).toHaveCount(0);
   });
 });

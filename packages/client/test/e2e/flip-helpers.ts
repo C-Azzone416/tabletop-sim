@@ -1,4 +1,4 @@
-import { request, type Page } from "@playwright/test";
+import { request, type Locator, type Page } from "@playwright/test";
 
 export const API_URL = process.env.E2E_API_URL ?? "http://localhost:3001";
 export const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
@@ -45,16 +45,6 @@ export function flipGameUrl(seed: FlipSeedResult, name = seed.playerName, profil
 }
 
 /**
- * Opens the DevPanel (if collapsed) and switches to the named seat.
- *
- * Waits for the panel's "Viewing: <name>" label to confirm the switch before
- * returning — GameClient disconnects and re-opens a WebSocket on a seat
- * switch (see its `activeSeat` effect), and clicking an action immediately
- * after can otherwise still be in flight on the outgoing connection,
- * producing a server-side "Not your turn" (or a UI race where the clicked
- * button is mid-unmount as the reconnect's fresh state arrives).
- */
-/**
  * Waits for a just-acted seat's "active" (its turn) indicator to clear,
  * confirming the server has processed the action and broadcast the turn
  * change — before switching to another seat and acting as them, which
@@ -69,6 +59,16 @@ export async function waitForTurnToPass(page: Page, actedPlayerName: string): Pr
     .waitFor({ state: "detached" });
 }
 
+/**
+ * Opens the DevPanel (if collapsed) and switches to the named seat.
+ *
+ * Waits for the panel's "Viewing: <name>" label to confirm the switch before
+ * returning — GameClient disconnects and re-opens a WebSocket on a seat
+ * switch (see its `activeSeat` effect), and clicking an action immediately
+ * after can otherwise still be in flight on the outgoing connection,
+ * producing a server-side "Not your turn" (or a UI race where the clicked
+ * button is mid-unmount as the reconnect's fresh state arrives).
+ */
 export async function switchToSeat(page: Page, name: string): Promise<void> {
   const openToggle = page.getByRole("button", { name: "Open dev tools" });
   if (await openToggle.isVisible().catch(() => false)) {
@@ -82,4 +82,17 @@ export async function switchToSeat(page: Page, name: string): Promise<void> {
   // than a tighter signal: there's no client-visible event for "reconnect
   // fully registered" to wait on instead.
   await page.waitForTimeout(800);
+}
+
+/** Parses the shoe count out of CardsRemaining's "N card(s) left in the shoe" text. */
+export async function shoeCount(page: Page): Promise<number> {
+  const text = await page.getByTestId("cards-remaining").innerText();
+  const match = text.match(/(\d+)/);
+  if (!match) throw new Error(`Could not parse a shoe count out of "${text}"`);
+  return Number(match[1]);
+}
+
+/** Locates the error toast (ErrorToast.tsx) if one is showing, regardless of its message. */
+export function errorToast(page: Page): Locator {
+  return page.getByLabel("Dismiss error");
 }
