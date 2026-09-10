@@ -92,11 +92,39 @@ export interface FlipResolutionEvent {
   readonly context: 'deal' | 'hit' | 'flip3';
 }
 
+/**
+ * How a round score was arrived at. Lives here rather than in scoring.ts
+ * because FlipRoundResult references it (#396) and scoring.ts imports this
+ * module; scoring.ts re-exports the name for existing importers.
+ */
+export interface FlipScoreBreakdown {
+  readonly numbersSum: number;
+  readonly plusSum: number;
+  readonly hasX2: boolean;
+  /** 15 or 0. Added after the multiplier, never doubled. */
+  readonly flip7Bonus: number;
+  /** Identical to `scoreHand` for the same arguments — the number of record. */
+  readonly total: number;
+  /** True ⇒ every other field is 0: a busted hand scores nothing it held. */
+  readonly busted: boolean;
+}
+
 export interface FlipRoundResult {
   readonly roundNumber: number;
   /** Round score per player id (0 for a busted hand). */
   readonly scores: Readonly<Record<string, number>>;
   readonly flip7PlayerId: string | null;
+  /**
+   * #396 — how each score was arrived at, per player id.
+   *
+   * Captured here because `finalizeRound` clears every hand as it scores:
+   * once the round is over the cards that produced these numbers are in the
+   * discard with no owner, so the components cannot be recovered afterwards.
+   * The scoreboard needs them to show a Flip 7's +15 and a `x2` as distinct
+   * terms rather than folded into a total (#365), and deriving them outside
+   * the engine would be reimplementing the scoring rule.
+   */
+  readonly breakdowns: Readonly<Record<string, FlipScoreBreakdown>>;
 }
 
 export interface FlipGameState {

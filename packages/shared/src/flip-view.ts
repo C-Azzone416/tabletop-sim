@@ -49,10 +49,48 @@ export interface FlipResolutionEventView {
   readonly context: 'deal' | 'hit' | 'flip3';
 }
 
+/**
+ * #396 — how one round's score was arrived at.
+ *
+ * These are not decoration: #365 requires a Flip 7's +15 and a `x2` to show as
+ * distinct terms rather than folded into a total, and neither is recoverable
+ * from the total alone — 30 is both (15 numbers ×2) and (15 numbers + 15
+ * bonus). Computed by the engine at scoring time and carried through, never
+ * re-derived client-side, so the explanation can never disagree with the
+ * score actually awarded.
+ */
+export interface FlipScoreBreakdownView {
+  readonly numbersSum: number;
+  readonly plusSum: number;
+  readonly hasX2: boolean;
+  /** 15 or 0. Added after the multiplier and never doubled (#358). */
+  readonly flip7Bonus: number;
+  /** The score of record — identical to the row's `score`. */
+  readonly total: number;
+  /** True ⇒ every field above is 0: a bust scores nothing it held. */
+  readonly busted: boolean;
+}
+
+/** One completed round for one player. */
+export interface FlipRoundScoreView {
+  readonly roundNumber: number;
+  readonly score: number;
+  readonly busted: boolean;
+  readonly flip7: boolean;
+  /** Null only for rounds scored before migration 017 stored a breakdown. */
+  readonly breakdown: FlipScoreBreakdownView | null;
+}
+
 export interface FlipPlayerView {
   readonly id: string;
   readonly name: string;
   readonly status: FlipPlayerStatusView;
+  /**
+   * #396 — completed rounds for this player, ascending. Empty before the
+   * first round scores. `totalScore` stays the cumulative figure of record;
+   * this is the history behind it, and summing these equals that.
+   */
+  readonly rounds: readonly FlipRoundScoreView[];
   /**
    * Face up to everyone. Flip has no hidden state (#358) — design contract C1
    * does not apply — so unlike the wire game there is no per-player redaction

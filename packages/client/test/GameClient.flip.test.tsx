@@ -54,8 +54,8 @@ function flipView(overrides: Partial<FlipTableView> = {}): FlipTableView {
     dealerId: "p1",
     turnPlayerId: "p1",
     players: [
-      { id: "p1", name: "Alice", status: "active", hand: [], totalScore: 0, uniqueNumberCount: 0 },
-      { id: "p2", name: "Bob", status: "active", hand: [], totalScore: 0, uniqueNumberCount: 0 },
+      { id: "p1", name: "Alice", status: "active", hand: [], totalScore: 0, uniqueNumberCount: 0, rounds: [] },
+      { id: "p2", name: "Bob", status: "active", hand: [], totalScore: 0, uniqueNumberCount: 0, rounds: [] },
     ],
     shoeRemaining: 90,
     discardCount: 0,
@@ -173,8 +173,8 @@ describe("GameClient — Flip rendering (#383)", () => {
             phase: "game-over",
             winnerId: "p1",
             players: [
-              { id: "p1", name: "Alice", status: "active", hand: [], totalScore: 210, uniqueNumberCount: 0 },
-              { id: "p2", name: "Bob", status: "active", hand: [], totalScore: 150, uniqueNumberCount: 0 },
+              { id: "p1", name: "Alice", status: "active", hand: [], totalScore: 210, uniqueNumberCount: 0, rounds: [] },
+              { id: "p2", name: "Bob", status: "active", hand: [], totalScore: 150, uniqueNumberCount: 0, rounds: [] },
             ],
           },
         }),
