@@ -54,6 +54,7 @@ function baseState(
     dealQueue: null,
     lastRoundResult: null,
     winnerId: null,
+    resolutionLog: [],
     ...overrides,
   };
 }
@@ -488,5 +489,89 @@ describe('validation guards', () => {
     expect(settled.phase).toBe('awaiting-round-start');
     expect(settled.turnPlayerId).toBeNull();
     expect(settled.lastRoundResult).not.toBeNull();
+  });
+});
+
+describe('resolutionLog (#363 narration support)', () => {
+  it('resets at the start of every call and logs a plain hit', () => {
+    const players = [makePlayer('a'), makePlayer('b')];
+    const card = numberCard(4);
+    const state = baseState(players, [card], { resolutionLog: [{ targetId: 'x', card, effect: 'number-added', context: 'hit' }] });
+
+    const next = hit(state, 'a', noRandom);
+
+    expect(next.resolutionLog).toEqual([{ targetId: 'a', card, effect: 'number-added', context: 'hit' }]);
+  });
+
+  it('a bust stop condition explains itself as the last logged event', () => {
+    const players = [makePlayer('a'), makePlayer('b', { hand: [numberCard(5)] }), makePlayer('c')];
+    const bustCard = numberCard(5);
+    const state = baseState(players, [actionCard('flip3'), bustCard]);
+
+    const paused = hit(state, 'a', noRandom);
+    const resolved = chooseFlip3Target(paused, 'a', 'b', noRandom);
+
+    const last = resolved.resolutionLog[resolved.resolutionLog.length - 1]!;
+    expect(last.effect).toBe('number-busted');
+    expect(last.targetId).toBe('b');
+  });
+
+  it('a Second Chance save logs "number-saved" and the deal visibly continues past it', () => {
+    const sc = actionCard('second-chance');
+    const players = [makePlayer('a'), makePlayer('b', { hand: [numberCard(5), sc] }), makePlayer('c')];
+    const dup = numberCard(5);
+    const safe = numberCard(8);
+    const safe2 = modifierCard('+2');
+    const state = baseState(players, [actionCard('flip3'), dup, safe, safe2]);
+
+    const paused = hit(state, 'a', noRandom);
+    const resolved = chooseFlip3Target(paused, 'a', 'b', noRandom);
+
+    const effects = resolved.resolutionLog.map((event) => event.effect);
+    expect(effects).toContain('number-saved');
+    // the save is not the last event — dealing continued afterward
+    expect(effects[effects.length - 1]).not.toBe('number-saved');
+    expect(effects.filter((e) => e === 'number-added' || e === 'modifier-added')).toHaveLength(2);
+  });
+
+  it('a nested Flip 3 is distinguishable in the log by target and context', () => {
+    const players = [makePlayer('a'), makePlayer('b'), makePlayer('c')];
+    const nestedFlip3 = actionCard('flip3');
+    const forC1 = numberCard(1);
+    const forC2 = numberCard(2);
+    const forC3 = numberCard(3);
+    const forB1 = numberCard(4);
+    const forB2 = numberCard(5);
+    const state = baseState(players, [actionCard('flip3'), nestedFlip3, forC1, forC2, forC3, forB1, forB2]);
+
+    const pausedOuter = hit(state, 'a', noRandom);
+    const pausedNested = chooseFlip3Target(pausedOuter, 'a', 'b', noRandom);
+    const resolved = chooseFlip3Target(pausedNested, 'a', 'c', noRandom);
+
+    // the first call's log only shows what happened up to the nested pause
+    expect(pausedNested.resolutionLog.map((e) => e.effect)).toEqual(['flip3-drawn']);
+    expect(pausedNested.resolutionLog[0]!.targetId).toBe('b');
+    // the second call resumes: the nested target's 3 cards, then the outer target's remaining 2
+    expect(resolved.resolutionLog).toEqual([
+      { targetId: 'c', card: forC1, effect: 'number-added', context: 'flip3' },
+      { targetId: 'c', card: forC2, effect: 'number-added', context: 'flip3' },
+      { targetId: 'c', card: forC3, effect: 'number-added', context: 'flip3' },
+      { targetId: 'b', card: forB1, effect: 'number-added', context: 'flip3' },
+      { targetId: 'b', card: forB2, effect: 'number-added', context: 'flip3' },
+    ]);
+  });
+
+  it('the opening deal logs each dealt card with context "deal"', () => {
+    const game = startFlipGame({ players: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], random: () => 0 });
+    const cardForB = numberCard(1);
+    const cardForA = numberCard(2);
+    const rigged: FlipGameState = { ...game, dealerIndex: 0, shoe: [cardForB, cardForA] };
+
+    const dealt = startRound(rigged, 'a', noRandom);
+
+    expect(dealt.resolutionLog).toEqual([
+      { targetId: 'b', card: cardForB, effect: 'number-added', context: 'deal' },
+      { targetId: 'a', card: cardForA, effect: 'number-added', context: 'deal' },
+    ]);
   });
 });

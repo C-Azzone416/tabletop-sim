@@ -3,23 +3,14 @@ import { buildFlipDeck, drawFromShoe } from './deck';
 import { eligibleTargets, isDuplicateNumber, nextActiveSeatIndex, playerIndex } from './rules';
 import { hasSecondChance, isFlip7, scoreHand } from './scoring';
 import type {
+  FlipCardEffect,
   FlipCardInstance,
   FlipGameState,
   FlipPlayerState,
+  FlipResolutionEvent,
   FlipRoundResult,
   StartFlipGameOptions,
 } from './types';
-
-type CardEffect =
-  | 'number-added'
-  | 'number-busted'
-  | 'number-saved'
-  | 'number-flip7'
-  | 'modifier-added'
-  | 'second-chance-gained'
-  | 'second-chance-discarded'
-  | 'freeze-drawn'
-  | 'flip3-drawn';
 
 export function startFlipGame(options: StartFlipGameOptions): FlipGameState {
   const players = options.players;
@@ -48,6 +39,7 @@ export function startFlipGame(options: StartFlipGameOptions): FlipGameState {
     dealQueue: null,
     lastRoundResult: null,
     winnerId: null,
+    resolutionLog: [],
   };
 }
 
@@ -85,6 +77,7 @@ export function startRound(
       turnPlayerId: order[0]!,
       pendingAction: null,
       flip3Stack: [],
+      resolutionLog: [],
     },
     random,
   );
@@ -96,7 +89,7 @@ export function hit(
   random: () => number = Math.random,
 ): FlipGameState {
   requireLiveTurn(state, playerId);
-  const drawn = drawCardTo(state, playerId, random);
+  const drawn = drawCardTo({ ...state, resolutionLog: [] }, playerId, random, 'hit');
 
   if (drawn.effect === 'number-flip7') return finalizeRound(drawn.state, playerId);
   if (drawn.effect === 'freeze-drawn') return { ...drawn.state, pendingAction: { kind: 'freeze' } };
@@ -112,7 +105,7 @@ export function freeze(
   requireLiveTurn(state, playerId);
   const index = playerIndex(state.players, playerId);
   const players = replacePlayer(state.players, index, { ...state.players[index]!, status: 'frozen' });
-  return finalizeLiveTurnIfSettled({ ...state, players }, playerId);
+  return finalizeLiveTurnIfSettled({ ...state, players, resolutionLog: [] }, playerId);
 }
 
 export function chooseFreezeTarget(
@@ -126,7 +119,7 @@ export function chooseFreezeTarget(
 
   const index = playerIndex(state.players, targetId);
   const players = replacePlayer(state.players, index, { ...state.players[index]!, status: 'frozen' });
-  const next: FlipGameState = { ...state, players, pendingAction: null };
+  const next: FlipGameState = { ...state, players, pendingAction: null, resolutionLog: [] };
 
   if (next.dealQueue !== null) return advance(next, random);
   const flipperTurnId = next.turnPlayerId!;
@@ -146,6 +139,7 @@ export function chooseFlip3Target(
     ...state,
     pendingAction: null,
     flip3Stack: [...state.flip3Stack, { targetId, remaining: 3 }],
+    resolutionLog: [],
   };
 
   if (next.dealQueue !== null) return advance(next, random);
@@ -198,7 +192,7 @@ function applyCard(
   recipientId: string,
   discard: readonly FlipCardInstance[],
   card: FlipCardInstance,
-): { players: readonly FlipPlayerState[]; discard: readonly FlipCardInstance[]; effect: CardEffect } {
+): { players: readonly FlipPlayerState[]; discard: readonly FlipCardInstance[]; effect: FlipCardEffect } {
   const index = playerIndex(players, recipientId);
   const player = players[index]!;
 
@@ -253,11 +247,19 @@ function drawCardTo(
   state: FlipGameState,
   recipientId: string,
   random: () => number,
-): { state: FlipGameState; effect: CardEffect } {
+  context: FlipResolutionEvent['context'],
+): { state: FlipGameState; effect: FlipCardEffect } {
   const { card, shoe, discard } = drawFromShoe(state.shoe, state.discard, random);
   const applied = applyCard(state.players, recipientId, discard, card);
+  const event: FlipResolutionEvent = { targetId: recipientId, card, effect: applied.effect, context };
   return {
-    state: { ...state, players: applied.players, shoe, discard: applied.discard },
+    state: {
+      ...state,
+      players: applied.players,
+      shoe,
+      discard: applied.discard,
+      resolutionLog: [...state.resolutionLog, event],
+    },
     effect: applied.effect,
   };
 }
@@ -280,7 +282,7 @@ function advance(state: FlipGameState, random: () => number): FlipGameState {
         continue;
       }
 
-      const drawn = drawCardTo(current, level.targetId, random);
+      const drawn = drawCardTo(current, level.targetId, random, 'flip3');
       current = {
         ...drawn.state,
         flip3Stack: [
@@ -319,7 +321,7 @@ function advance(state: FlipGameState, random: () => number): FlipGameState {
       const queue = current.dealQueue;
       const recipientId = queue[0]!;
       current = { ...current, turnPlayerId: recipientId };
-      const drawn = drawCardTo(current, recipientId, random);
+      const drawn = drawCardTo(current, recipientId, random, 'deal');
       current = { ...drawn.state, dealQueue: queue.slice(1) };
 
       if (drawn.effect === 'number-flip7') return finalizeRound(current, recipientId);

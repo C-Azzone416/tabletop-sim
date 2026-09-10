@@ -180,6 +180,7 @@ export function buildFlipGameState(spec: FlipStateSpec): FlipGameState {
     pendingAction,
     flip3Stack,
     dealQueue,
+    resolutionLog: [],
     lastRoundResult: spec.lastRoundResult ?? null,
     winnerId: spec.winnerId ?? null,
   };

@@ -62,6 +62,36 @@ export interface FlipThreeLevel {
 
 export type FlipPhase = 'awaiting-round-start' | 'round-in-progress' | 'round-over' | 'game-over';
 
+/** What resolving one drawn card did — the vocabulary a UI narrates a Flip 3/Hit resolution with. */
+export type FlipCardEffect =
+  | 'number-added'
+  | 'number-busted'
+  | 'number-saved'
+  | 'number-flip7'
+  | 'modifier-added'
+  | 'second-chance-gained'
+  | 'second-chance-discarded'
+  | 'freeze-drawn'
+  | 'flip3-drawn';
+
+/**
+ * One step of what a single public mutator call (hit/freeze/
+ * chooseFreezeTarget/chooseFlip3Target/startRound) did, in order. A UI can
+ * render this to explain a Flip 3's outcome — why it stopped early (the
+ * last event's `effect`, e.g. 'number-busted' or 'freeze-drawn'), that a
+ * Second Chance save let it continue ('number-saved' followed by more
+ * events), or that a nested Flip 3 fully resolved before the outer one
+ * continued (a `context: 'flip3'` run for one targetId, then more events
+ * for a different targetId at the same or an outer level).
+ */
+export interface FlipResolutionEvent {
+  readonly targetId: string;
+  readonly card: FlipCardInstance;
+  readonly effect: FlipCardEffect;
+  /** 'deal' = the opening one-card-each deal, 'hit' = a live turn's own draw, 'flip3' = dealt by a Flip 3 (nested or not). */
+  readonly context: 'deal' | 'hit' | 'flip3';
+}
+
 export interface FlipRoundResult {
   readonly roundNumber: number;
   /** Round score per player id (0 for a busted hand). */
@@ -92,6 +122,13 @@ export interface FlipGameState {
   readonly dealQueue: readonly string[] | null;
   readonly lastRoundResult: FlipRoundResult | null;
   readonly winnerId: string | null;
+  /**
+   * What the most recent public mutator call did, in order. Reset to [] at
+   * the start of every call to startRound/hit/freeze/chooseFreezeTarget/
+   * chooseFlip3Target — it is a trace of that one call, not a full game
+   * history.
+   */
+  readonly resolutionLog: readonly FlipResolutionEvent[];
 }
 
 export interface StartFlipGameOptions {
