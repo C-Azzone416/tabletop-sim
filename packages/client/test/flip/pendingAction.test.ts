@@ -81,6 +81,9 @@ describe('describeLastEvent', () => {
       ['number-busted', /busted/i],
       ['freeze-drawn', /freeze.*resolves first/i],
       ['number-flip7', /flip 7/i],
+      ['second-chance-gained', /gained a second chance/i],
+      ['second-chance-discarded', /already held a second chance/i],
+      ['modifier-added', /added a modifier card/i],
     ];
     for (const [effect, pattern] of cases) {
       const events: FlipResolutionEventView[] = [{ targetId: 'a', effect, context: 'flip3' }];
