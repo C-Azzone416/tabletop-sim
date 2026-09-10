@@ -26,16 +26,33 @@ export function hasSecondChance(hand: readonly FlipCardInstance[]): boolean {
 }
 
 /**
- * Round score for one hand. `flip7` marks the player who ended the round by
- * reaching 7 unique numbers — the +15 bonus is added after the x2 multiplier
- * and is never doubled itself.
+ * #365 — where a round's points came from. The scoreboard has to show a Flip
+ * 7's +15 as a distinct term and a `x2` as a multiplier applied, and neither
+ * is recoverable from the total alone: 30 could be (15 numbers x2) or
+ * (15 numbers + 15 bonus). Exposed here rather than recomputed by the
+ * scoreboard because summing card values, and knowing that `x2` doubles the
+ * `+` cards but never the Flip 7 bonus, IS the scoring rule.
  */
-export function scoreHand(
+export interface FlipScoreBreakdown {
+  readonly numbersSum: number;
+  readonly plusSum: number;
+  readonly hasX2: boolean;
+  /** 15 or 0. Added after the multiplier, never doubled. */
+  readonly flip7Bonus: number;
+  /** Identical to `scoreHand` for the same arguments — the number of record. */
+  readonly total: number;
+  /** True ⇒ every other field is 0: a busted hand scores nothing it held. */
+  readonly busted: boolean;
+}
+
+export function scoreHandBreakdown(
   hand: readonly FlipCardInstance[],
   status: FlipPlayerStatus,
   flip7: boolean,
-): number {
-  if (status === 'busted') return 0;
+): FlipScoreBreakdown {
+  if (status === 'busted') {
+    return { numbersSum: 0, plusSum: 0, hasX2: false, flip7Bonus: 0, total: 0, busted: true };
+  }
 
   let numbersSum = 0;
   let plusSum = 0;
@@ -49,6 +66,24 @@ export function scoreHand(
     }
   }
 
-  const base = (numbersSum + plusSum) * (hasX2 ? 2 : 1);
-  return base + (flip7 ? 15 : 0);
+  const flip7Bonus = flip7 ? 15 : 0;
+  const total = (numbersSum + plusSum) * (hasX2 ? 2 : 1) + flip7Bonus;
+
+  return { numbersSum, plusSum, hasX2, flip7Bonus, total, busted: false };
+}
+
+/**
+ * Round score for one hand. `flip7` marks the player who ended the round by
+ * reaching 7 unique numbers — the +15 bonus is added after the x2 multiplier
+ * and is never doubled itself.
+ *
+ * Delegates so there is exactly one implementation of the rule and the total
+ * can never drift from the breakdown that explains it.
+ */
+export function scoreHand(
+  hand: readonly FlipCardInstance[],
+  status: FlipPlayerStatus,
+  flip7: boolean,
+): number {
+  return scoreHandBreakdown(hand, status, flip7).total;
 }
