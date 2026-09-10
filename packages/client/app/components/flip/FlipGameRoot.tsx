@@ -1,0 +1,121 @@
+"use client";
+
+/**
+ * #383 — the missing mount point. Bridges the #382 `FlipTableView` wire
+ * shape to #362/#363's existing `FlipTable`/`PendingActionPicker` (which
+ * take engine-types.ts's `FlipGameState` shape), and owns the two phases
+ * neither of those components renders: the dealer's "start the round"
+ * action (#358: dealer triggers round start explicitly) and the game-over
+ * winner display.
+ */
+
+import { FlipTable } from "./FlipTable";
+import { PendingActionPicker } from "./PendingActionPicker";
+import type { FlipGameState as EngineFlipGameState } from "./engine-types";
+import type { FlipTableView } from "@tabletop/shared";
+
+export interface FlipGameRootProps {
+  flip: FlipTableView;
+  localPlayerId: string;
+  onHit: () => void;
+  onFreeze: () => void;
+  onChooseFreezeTarget: (targetId: string) => void;
+  onChooseFlip3Target: (targetId: string) => void;
+  onStartRound: () => void;
+}
+
+// FlipTable/PendingActionPicker never read shoe/discard *contents* — only
+// CardsRemaining's `.length`, and the discard pile isn't rendered at all
+// (#358: "not browsable, memory stays a skill"). FlipTableView only sends
+// counts (deliberately — see #382), so these arrays exist purely to satisfy
+// engine-types.ts's shape; their contents are never read.
+const PLACEHOLDER_CARD = { id: "placeholder", kind: "number" as const, value: 0 as const };
+
+function toEngineGameState(view: FlipTableView): EngineFlipGameState {
+  const dealerIndex = Math.max(
+    0,
+    view.players.findIndex((player) => player.id === view.dealerId),
+  );
+  return {
+    players: view.players,
+    dealerIndex,
+    roundNumber: view.roundNumber,
+    shoe: Array.from({ length: view.shoeRemaining }, () => PLACEHOLDER_CARD),
+    discard: Array.from({ length: view.discardCount }, () => PLACEHOLDER_CARD),
+    phase: view.phase,
+    turnPlayerId: view.turnPlayerId,
+    pendingAction: view.pendingAction,
+    flip3Stack: view.flip3Stack,
+    lastRoundResult: view.lastRoundResult,
+    winnerId: view.winnerId,
+    resolutionLog: view.resolutionLog,
+  };
+}
+
+export function FlipGameRoot({
+  flip,
+  localPlayerId,
+  onHit,
+  onFreeze,
+  onChooseFreezeTarget,
+  onChooseFlip3Target,
+  onStartRound,
+}: FlipGameRootProps) {
+  if (flip.phase === "game-over") {
+    const winner = flip.players.find((player) => player.id === flip.winnerId);
+    const ranked = [...flip.players].sort((a, b) => b.totalScore - a.totalScore);
+    return (
+      <div data-testid="flip-game-over" className="flex flex-col items-center gap-2 p-6 text-center">
+        <p className="text-lg font-bold text-ink">{winner ? `${winner.name} wins!` : "Game over"}</p>
+        <ul className="text-sm text-ink-muted">
+          {ranked.map((player) => (
+            <li key={player.id}>
+              {player.name}: {player.totalScore}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  if (flip.phase === "awaiting-round-start") {
+    const isDealer = localPlayerId === flip.dealerId;
+    return (
+      <div data-testid="flip-awaiting-round-start" className="flex flex-col items-center gap-3 p-6 text-center">
+        <p className="text-sm text-ink-muted">
+          {isDealer
+            ? "You're the dealer — start the next round when ready."
+            : "Waiting on the dealer to start the round…"}
+        </p>
+        {isDealer && (
+          <button
+            type="button"
+            onClick={onStartRound}
+            className="press rounded-cab border-2 border-outline bg-accent px-6 py-3 text-base font-bold text-accent-ink shadow-print-md"
+          >
+            Start Round
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const game = toEngineGameState(flip);
+
+  return (
+    <FlipTable
+      game={game}
+      localPlayerId={localPlayerId}
+      onHit={onHit}
+      onFreeze={onFreeze}
+      pendingActionUi={
+        <PendingActionPicker
+          game={game}
+          localPlayerId={localPlayerId}
+          onChooseFreezeTarget={onChooseFreezeTarget}
+          onChooseFlip3Target={onChooseFlip3Target}
+        />
+      }
+    />
+  );
+}

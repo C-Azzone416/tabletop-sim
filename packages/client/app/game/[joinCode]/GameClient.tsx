@@ -7,6 +7,7 @@ import { useMissionOutcomes } from "../../hooks/useMissionOutcomes";
 import { Lobby } from "../../components/Lobby";
 import { SetupPhase } from "../../components/SetupPhase";
 import { GameBoard } from "../../components/GameBoard";
+import { FlipGameRoot } from "../../components/flip/FlipGameRoot";
 import { GameOverOverlay } from "../../components/GameOverOverlay";
 import { DevPanel } from "../../components/DevPanel";
 import { ErrorToast } from "../../components/ErrorToast";
@@ -15,6 +16,21 @@ import { LAST_MISSION } from "../../lib/missions";
 import { highestUnlockedMission } from "../../lib/missionUnlocks";
 import { readRoomGameType } from "../../lib/roomGameType";
 import { apiHeaders } from "../../lib/serverApi";
+import type { ClientMessage } from "@tabletop/shared";
+
+/**
+ * Flip's client->server actions (#383/#387). Cast rather than typed through
+ * `ClientMessage` directly: #389 (server dispatch, deep-dingo) owns adding
+ * these five variants to @tabletop/shared's ClientMessage union, including
+ * `flip_start_round` which #389 doesn't have yet either — flagged on
+ * control. Collapses to a plain `send` call once that merges.
+ */
+type FlipClientMessage =
+  | { type: "flip_start_round" }
+  | { type: "flip_hit" }
+  | { type: "flip_freeze" }
+  | { type: "flip_choose_freeze_target"; targetPlayerId: string }
+  | { type: "flip_choose_flip3_target"; targetPlayerId: string };
 
 export interface DevSeatOption {
   name: string;
@@ -36,6 +52,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
     activeSeat.profileId,
     activeSeat.name,
   );
+  const sendFlipMessage = (message: FlipClientMessage) => send(message as unknown as ClientMessage);
   const hasConnected = useRef(false);
   const connectedSeatRef = useRef(activeSeat.profileId);
 
@@ -200,6 +217,36 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
           }
         />
         {devPanel({ canRevealTokens: true })}
+        <ErrorToast message={state.error} onDismiss={clearError} />
+      </div>
+    );
+  }
+
+  // Active Flip game (#383) — checked ahead of the Wire-only branch below,
+  // which must stay completely unaffected (#383 AC: "the wire game is
+  // completely unaffected — its rendering path must not regress").
+  if (gameStatus === "active" && readRoomGameType(state.game) === "flip") {
+    return (
+      <div className="min-h-screen bg-surface">
+        <JoinCodeBadge joinCode={joinCode} />
+        {state.flip ? (
+          <FlipGameRoot
+            flip={state.flip}
+            localPlayerId={state.localPlayer?.id ?? ""}
+            onHit={() => sendFlipMessage({ type: "flip_hit" })}
+            onFreeze={() => sendFlipMessage({ type: "flip_freeze" })}
+            onChooseFreezeTarget={(targetId) =>
+              sendFlipMessage({ type: "flip_choose_freeze_target", targetPlayerId: targetId })
+            }
+            onChooseFlip3Target={(targetId) =>
+              sendFlipMessage({ type: "flip_choose_flip3_target", targetPlayerId: targetId })
+            }
+            onStartRound={() => sendFlipMessage({ type: "flip_start_round" })}
+          />
+        ) : (
+          <p className="p-6 text-center text-sm text-ink-muted">Loading the table…</p>
+        )}
+        {devPanel()}
         <ErrorToast message={state.error} onDismiss={clearError} />
       </div>
     );
