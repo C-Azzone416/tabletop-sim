@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { WebSocket } from "ws";
+import { getGameById } from "@tabletop/shared";
 import { makeGame, makePlayer, makeWire, makeTurn, resetIds } from "./fixtures.js";
 
 // Mock the engine and DB modules
@@ -232,6 +233,30 @@ describe("message-handler", () => {
 
       expect(lastSent(ws)).toEqual({ type: "error", message: "Unknown game type" });
       expect(mockEngine.createGame).not.toHaveBeenCalled();
+    });
+
+    // #361 — flip is registered but `available: false` until the game is
+    // playable, so today it takes the same path as spades. The gate is the
+    // registry's available flag rather than a hard-coded id list, so this
+    // starts passing through to createGame the moment #358's last mission
+    // flips the flag.
+    it("rejects flip while it is registered-but-unavailable and creates no room", async () => {
+      const ws = mockSocket();
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "flip" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Unknown game type" });
+      expect(mockEngine.createGame).not.toHaveBeenCalled();
+      expect(mockConnManager.registerConnection).not.toHaveBeenCalled();
+    });
+
+    // The half of "create_game accepts flip" (#361 AC) that can be asserted
+    // before the game is playable: the id is genuinely registered, and the
+    // only thing between it and a created room is the available flag.
+    it("recognises flip as a registered game id awaiting only its available flag", () => {
+      expect(getGameById("flip")).toMatchObject({ id: "flip", minPlayers: 2, maxPlayers: 5 });
+      expect(getGameById("checkers")).toBeUndefined();
     });
   });
 

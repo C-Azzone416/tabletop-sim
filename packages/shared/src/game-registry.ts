@@ -3,7 +3,7 @@
 // create_game validation (#313). See the #314 scope ruling: a plain data
 // table here, no package extraction, no dependency on #288/#304.
 
-export type GameId = 'wire-game' | 'spades';
+export type GameId = 'wire-game' | 'spades' | 'flip';
 
 export interface GameRegistryEntry {
   id: GameId;
@@ -36,6 +36,14 @@ export const GAME_REGISTRY: readonly GameRegistryEntry[] = Object.freeze([
     description: 'Classic trick-taking card game for four players in two partnerships.',
     minPlayers: 4,
     maxPlayers: 4,
+    available: false,
+  }),
+  Object.freeze({
+    id: 'flip',
+    displayName: 'Flip',
+    description: 'Press your luck: keep flipping cards for a bigger score, but a duplicate busts your hand.',
+    minPlayers: 2,
+    maxPlayers: 5,
     available: false,
   }),
 ]);
