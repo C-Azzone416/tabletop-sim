@@ -204,4 +204,83 @@ describe("GameClient — Flip rendering (#383)", () => {
       JSON.stringify({ type: "flip_choose_freeze_target", targetPlayerId: "p2" }),
     );
   });
+
+  // #396 — FlipScoreboard.tsx existed and was tested since #365 but was
+  // never mounted anywhere, so it never rendered real data. This is the
+  // regression guard for that specific gap: round history present in
+  // FlipTableView.players[].rounds must actually reach the screen.
+  describe("scoreboard mount (#396)", () => {
+    const roundHistory = [
+      {
+        roundNumber: 1,
+        score: 43,
+        busted: false,
+        flip7: true,
+        breakdown: { numbersSum: 28, plusSum: 0, hasX2: false, flip7Bonus: 15, total: 43, busted: false },
+      },
+    ];
+
+    it("shows the scoreboard with the Flip 7 bonus as a distinct line during awaiting-round-start", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage(
+          flipGameStateMessage({
+            flip: {
+              phase: "awaiting-round-start",
+              turnPlayerId: null,
+              roundNumber: 2,
+              players: [
+                { id: "p1", name: "Alice", status: "active", hand: [], totalScore: 43, uniqueNumberCount: 0, rounds: roundHistory },
+                { id: "p2", name: "Bob", status: "active", hand: [], totalScore: 0, uniqueNumberCount: 0, rounds: [] },
+              ],
+            },
+          }),
+        );
+      });
+
+      expect(screen.getByRole("region", { name: "Scoreboard" })).toBeInTheDocument();
+      expect(screen.getByText("28 + 15 bonus")).toBeInTheDocument();
+    });
+
+    it("hides the scoreboard before any round has completed", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage(
+          flipGameStateMessage({ flip: { phase: "awaiting-round-start", turnPlayerId: null } }),
+        );
+      });
+
+      expect(screen.queryByRole("region", { name: "Scoreboard" })).not.toBeInTheDocument();
+    });
+
+    it("shows the scoreboard alongside the winner on game-over", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage(
+          flipGameStateMessage({
+            flip: {
+              phase: "game-over",
+              winnerId: "p1",
+              players: [
+                { id: "p1", name: "Alice", status: "active", hand: [], totalScore: 210, uniqueNumberCount: 0, rounds: roundHistory },
+                { id: "p2", name: "Bob", status: "active", hand: [], totalScore: 150, uniqueNumberCount: 0, rounds: [] },
+              ],
+            },
+          }),
+        );
+      });
+
+      expect(screen.getByText("Alice wins!")).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "Scoreboard" })).toBeInTheDocument();
+    });
+  });
 });

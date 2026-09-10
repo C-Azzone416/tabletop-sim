@@ -11,8 +11,21 @@
 
 import { FlipTable } from "./FlipTable";
 import { PendingActionPicker } from "./PendingActionPicker";
+import { FlipScoreboard } from "./FlipScoreboard";
 import type { FlipGameState as EngineFlipGameState } from "./engine-types";
 import type { FlipTableView } from "@tabletop/shared";
+
+// #396 — FlipTableView.players already carries `id`/`name`/`rounds` in the
+// exact shape FlipScoreboard wants (see the issue's payload spec, matched
+// field-for-field by #398's FlipPlayerView/FlipRoundScoreView). No adapter
+// beyond narrowing the array — resist the urge to reshape this again.
+function toScoreboardPlayers(players: FlipTableView["players"]) {
+  return players.map((player) => ({
+    id: player.id,
+    name: player.name,
+    rounds: player.rounds,
+  }));
+}
 
 export interface FlipGameRootProps {
   flip: FlipTableView;
@@ -63,17 +76,10 @@ export function FlipGameRoot({
 }: FlipGameRootProps) {
   if (flip.phase === "game-over") {
     const winner = flip.players.find((player) => player.id === flip.winnerId);
-    const ranked = [...flip.players].sort((a, b) => b.totalScore - a.totalScore);
     return (
-      <div data-testid="flip-game-over" className="flex flex-col items-center gap-2 p-6 text-center">
+      <div data-testid="flip-game-over" className="flex flex-col items-center gap-4 p-6 text-center">
         <p className="text-lg font-bold text-ink">{winner ? `${winner.name} wins!` : "Game over"}</p>
-        <ul className="text-sm text-ink-muted">
-          {ranked.map((player) => (
-            <li key={player.id}>
-              {player.name}: {player.totalScore}
-            </li>
-          ))}
-        </ul>
+        <FlipScoreboard players={toScoreboardPlayers(flip.players)} />
       </div>
     );
   }
@@ -81,7 +87,7 @@ export function FlipGameRoot({
   if (flip.phase === "awaiting-round-start") {
     const isDealer = localPlayerId === flip.dealerId;
     return (
-      <div data-testid="flip-awaiting-round-start" className="flex flex-col items-center gap-3 p-6 text-center">
+      <div data-testid="flip-awaiting-round-start" className="flex flex-col items-center gap-4 p-6 text-center">
         <p className="text-sm text-ink-muted">
           {isDealer
             ? "You're the dealer — start the next round when ready."
@@ -95,6 +101,13 @@ export function FlipGameRoot({
           >
             Start Round
           </button>
+        )}
+        {/* Nothing to show before round 1 ever completes — checked on the
+            data itself (every player's rounds is []), not roundNumber,
+            since that field's exact semantics at this phase aren't ours
+            to assume. */}
+        {flip.players.some((p) => p.rounds.length > 0) && (
+          <FlipScoreboard players={toScoreboardPlayers(flip.players)} />
         )}
       </div>
     );
