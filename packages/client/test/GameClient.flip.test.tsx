@@ -4,7 +4,7 @@ import { render, screen, act, fireEvent } from "@testing-library/react";
 import { GameClient } from "../app/game/[joinCode]/GameClient";
 import { makeGame, makePlayer, resetIds } from "./fixtures";
 import type { ServerMessage } from "@tabletop/shared";
-import type { FlipTableView } from "../app/components/flip/flip-view-types";
+import type { FlipTableView } from "@tabletop/shared";
 
 const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({

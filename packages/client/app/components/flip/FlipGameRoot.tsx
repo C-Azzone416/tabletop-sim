@@ -12,7 +12,7 @@
 import { FlipTable } from "./FlipTable";
 import { PendingActionPicker } from "./PendingActionPicker";
 import type { FlipGameState as EngineFlipGameState } from "./engine-types";
-import type { FlipTableView } from "./flip-view-types";
+import type { FlipTableView } from "@tabletop/shared";
 
 export interface FlipGameRootProps {
   flip: FlipTableView;
