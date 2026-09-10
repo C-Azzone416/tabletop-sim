@@ -137,6 +137,38 @@ Five colors, `--p1` through `--p5`, each with a matching `--pN-ink` for text on 
 
 The board must be readable in greyscale and by a colorblind player. This is a hard requirement, not a nice-to-have.
 
+### 3a. Flip's card colours (#364, epic #358) — status: **pending design lead sign-off**
+
+Flip is the second title, and its card colour is the whole visual identity of the game (13 number colours, a shared modifier colour, three named action colours). Unlike Wire's `--wire-*`, which lives directly in `theme.css` because Wire is today's only/default game, Flip's tokens live in their own file, `packages/client/styles/games/flip.css`, scoped to `[data-game="flip"]` so they never leak into the platform frame or another game's table. Namespace is `--flip-*` — disjoint from `--wire-*` and `--p1`–`--p5` by construction, verified by `packages/client/test/flip-theme.test.ts` (same pattern as the #245 guard in `theme.test.ts`).
+
+**Inventory**
+
+| Token(s) | Meaning | Shared? |
+|---|---|---|
+| `--flip-num-0` … `--flip-num-12` | one hue per number card | no — each number is its own token |
+| `--flip-boost` | `+N` and `x2` modifier cards | yes, deliberately — same mechanical family, one desaturated "burnt" red-orange rather than two more hues to discriminate |
+| `--flip-freeze` | Freeze action card | blue, off `--wire-blue` |
+| `--flip-flip3` | Flip 3 action card | yellow, off `--wire-yellow`/`--p3` |
+| `--flip-second-chance` | Second Chance action card | red, off `--wire-red`/`--p1`; paired with a heart glyph in the component, not a colour trick — the "extra life" read is the icon's job, the hue only has to say "red" without colliding |
+
+Every fill token has a matching `-ink` token, same pattern as `--pN-ink`.
+
+**Method — verify, don't eyeball.** 13 simultaneous bright, mutually-distinguishable hues was flagged going in as the hard part. It was checked computationally rather than assumed:
+
+1. Generated as a 13-step hue sweep in **CIE LCH**, not HSL. HSL's "lightness" is not perceptually uniform — a yellow and a blue at the same HSL-L do not look equally bright, which quietly breaks any attempt to reason about separation. LCH's L axis tracks perceived lightness directly.
+2. Lightness **cycles across bands** (4 bands in light mode, 4 in dark) rather than holding one flat value. Pure hue rotation at constant lightness was tried first and measured worse — dichromacy collapses a whole plane of hues onto a line, so varying lightness gives a colourblind viewer a second axis of separation hue alone can't provide at 13 colours.
+3. Simulated **protanopia, deuteranopia, and tritanopia** (full-severity Machado/Oliveira/Fairchild 2009 linear-RGB transform matrices) and measured worst-case pairwise **CIE76 ΔE** across all 13, per scheme, under each simulated vision type and under normal vision.
+4. Checked every fill against `--wire-*`, `--p1`–`--p5`, `--game-concealed`, and `--game-revealed` in the same scheme, same method — not just the 13 against each other.
+5. Checked every fill against its own `--surface`/`--surface-raised` background (WCAG relative-luminance contrast) so a swatch doesn't sink into the page, and every `-ink` against its own fill for ≥3:1 (numerals render at display/heading scale — bold, ≥24px — so the WCAG **large-text** threshold applies, not the 4.5:1 body-text one).
+
+**Result, honestly stated.** Normal vision: comfortably separated, worst-case pairwise ΔE ≈ 19 (well above the ~10 "clearly distinguishable" rule of thumb). Under simulated dichromacy, worst-case pairwise ΔE drops to **≈ 4–5** — real separation, but below a confident distinguishability floor. This held up across three independent generation strategies (flat-lightness HSL, lightness-cycled HSL, lightness-cycled LCH) and is a property of asking for **13 simultaneous bright colours**, not a tuning miss: dichromacy simulation collapses much of the hue circle onto one line, and 13 categories cannot all sit far apart on that line no matter how lightness is distributed. This is the answer to "verify rather than assume" — it was checked, and the honest finding is that full CVD safety at N=13 is not achievable by colour alone.
+
+**Why this ships anyway.** Every Flip card always renders its number as text — colour is never the only channel, same principle as *Player seats* above. A colourblind player who can't tell card 6 from card 8 by hue can still read "6" and "8". This keeps the design within WCAG 1.4.1 (use of color): the numeral is the non-colour path to the same information, and it exists on every card unconditionally, not as a toggle-on accessibility mode. The 13-hue system is the "bright and fun" identity layer on top of that guaranteed-legible base, not a replacement for it.
+
+**Open item — needs a call, not a default.** Whether ΔE ≈ 4–5 under dichromacy is an acceptable floor for a *supplementary* signal, or whether Flip should additionally lean on the confirmed-legible strategy already proven in Wire (seat silhouettes: circle/square/triangle/diamond/hexagon) for anything that reads color *plus* shape, is a design call, not an engineering one — flagged to the design lead per #364's own instruction rather than shipped quietly. Numbers are the current best-effort result; they are not proposed as complete for a genuinely CVD-safe reading and should not be treated as such without that sign-off.
+
+**Implementation note (untested pending the component-migration PR, tracked like #237→#233 for Cabinet):** `flip.css`'s `@theme inline` block assumes Tailwind 4's PostCSS plugin picks it up regardless of which component first `import`s the file, since Next bundles all CSS through one pipeline. This file was not yet wired into a rendered component (#364 is tokens only, no dependencies, run in parallel with bobcat's engine work) — the first PR that actually imports `flip.css` into a mounted `[data-game="flip"]` tree should confirm the utilities generate (`bg-flip-num-7` etc.) before relying on it.
+
 ---
 
 ## 4. Typography
