@@ -48,6 +48,7 @@ describe("getMigrationsStatus", () => {
       "013_wire_candidates.sql",
       "014_game_type.sql",
       "015_spades_games.sql",
+      "016_flip_games.sql",
     ]);
   });
 
