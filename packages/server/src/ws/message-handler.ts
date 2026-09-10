@@ -6,6 +6,7 @@ import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
 import * as connManager from './connection-manager.js';
 import { broadcastGameState, buildPlayerView } from './state-broadcaster.js';
+import { executeFlipAction, type FlipActionKind } from './flip-actions.js';
 
 type ActionLogger = { info: (data: object, msg?: string) => void; debug: (data: object, msg?: string) => void };
 type ActionResult = 'success' | 'fail' | 'explosion' | 'won';
@@ -74,6 +75,20 @@ function validateMessage(parsed: unknown): ClientMessage | null {
       if (typeof mission !== 'number' || !Number.isInteger(mission) || mission < 1 || mission > 8) return null;
       return { type: 'next_mission', mission };
     }
+    // #387 — Flip actions. Shape check only: whether this player may take the
+    // action, and whether the target is legal, are decided server-side in
+    // flip-actions.ts against the engine. Note there is no acting-player field
+    // to validate — the actor comes from the socket binding.
+    case 'flip_hit':
+      return { type: 'flip_hit' };
+    case 'flip_freeze':
+      return { type: 'flip_freeze' };
+    case 'flip_choose_freeze_target':
+      if (!isNonEmptyString(msg.targetPlayerId)) return null;
+      return { type: 'flip_choose_freeze_target', targetPlayerId: msg.targetPlayerId };
+    case 'flip_choose_flip3_target':
+      if (!isNonEmptyString(msg.targetPlayerId)) return null;
+      return { type: 'flip_choose_flip3_target', targetPlayerId: msg.targetPlayerId };
     default:
       return null;
   }
@@ -146,6 +161,18 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       case 'next_mission':
         await handleNextMission(socket, msg.mission);
         break;
+      case 'flip_hit':
+        await handleFlipAction(socket, { kind: 'hit' });
+        break;
+      case 'flip_freeze':
+        await handleFlipAction(socket, { kind: 'freeze' });
+        break;
+      case 'flip_choose_freeze_target':
+        await handleFlipAction(socket, { kind: 'choose-freeze-target', targetPlayerId: msg.targetPlayerId });
+        break;
+      case 'flip_choose_flip3_target':
+        await handleFlipAction(socket, { kind: 'choose-flip3-target', targetPlayerId: msg.targetPlayerId });
+        break;
       default:
         sendError(socket, 'Unknown message type');
     }
@@ -165,6 +192,17 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Game is not in setup phase', 'Can only place info token on your own wire', 'Info token already placed',
       'Opening info token must be placed on a blue wire',
       'Game is not in waiting phase', 'Mission is locked', 'Unknown game type',
+      // #387 — Flip. Every one of these is a rejection the player caused and
+      // can act on, so it is safe (and useful) to name; anything else from the
+      // Flip path still falls through to the generic 'Internal error' below,
+      // which is what keeps engine invariant messages off the wire.
+      // 'Not your turn' is already listed above and covers Flip too.
+      'No round is in progress', 'Resolve the pending action card first',
+      'No action card is awaiting a target',
+      'Only the player who flipped the card may choose its target',
+      'A Freeze target is awaited', 'A Flip 3 target is awaited',
+      'That player is not a legal target', 'Not a Flip game',
+      'This game has no Flip state',
       'Dual cut already pending', 'Cannot target your own wire with dual cut',
       'No pending dual cut', 'Not your wire to respond to',
       'Not your turn to complete dual cut', 'Target wire is not revealed',
@@ -201,6 +239,34 @@ async function handleCreateGame(socket: WebSocket, _playerName: string, gameType
 
   const response: ServerMessage = { type: 'game_created', game, player };
   socket.send(JSON.stringify(response));
+}
+
+/**
+ * #387 — every Flip action takes this one path.
+ *
+ * The acting player is `info.playerId`: the id bound to this socket at
+ * authentication, never anything the message carried. Authorization proper
+ * (turn ownership, flipper ownership, target legality against the engine)
+ * lives in flip-actions.ts so it can be audited and tested in one place.
+ *
+ * There is no bespoke reply. Every seat learns the outcome from the #382
+ * `game_state` broadcast, which is also what makes another player's Freeze or
+ * Flip 3 target choice visible to the whole table.
+ */
+async function handleFlipAction(socket: WebSocket, action: FlipActionKind): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  const game = await withTimeout(gamesDb.getGameById(info.gameId), 'getGameById');
+  if (!game) throw new Error('Game not found');
+  // Guards against a Flip action being replayed at a wire-game room, which
+  // would otherwise reach the engine with no Flip state and fail obscurely.
+  if (game.gameType !== 'flip') throw new Error('Not a Flip game');
+
+  await withTimeout(executeFlipAction(info.gameId, info.playerId, action), 'flipAction');
+
+  const players = await withTimeout(playersDb.getPlayersByGameId(info.gameId), 'getPlayers');
+  await broadcastGameState(info.gameId, game, players);
 }
 
 async function handleJoinGame(socket: WebSocket, joinCode: string, _playerName: string): Promise<void> {

@@ -56,12 +56,19 @@ vi.mock("../src/ws/state-broadcaster.js", () => ({
   buildPlayerView: vi.fn((wires) => wires),
 }));
 
+vi.mock("../src/ws/flip-actions.js", () => ({
+  executeFlipAction: vi.fn(),
+}));
+
 import * as engine from "../src/engine/game-engine.js";
 import * as gamesDb from "../src/db/games.js";
 import * as playersDb from "../src/db/players.js";
 import * as connManager from "../src/ws/connection-manager.js";
 import * as stateBroadcaster from "../src/ws/state-broadcaster.js";
+import * as flipActions from "../src/ws/flip-actions.js";
 import { handleMessage } from "../src/ws/message-handler.js";
+
+const mockFlipActions = vi.mocked(flipActions);
 
 const mockEngine = vi.mocked(engine);
 const mockGamesDb = vi.mocked(gamesDb);
@@ -257,6 +264,139 @@ describe("message-handler", () => {
     it("recognises flip as a registered game id awaiting only its available flag", () => {
       expect(getGameById("flip")).toMatchObject({ id: "flip", minPlayers: 2, maxPlayers: 5 });
       expect(getGameById("checkers")).toBeUndefined();
+    });
+  });
+
+  // #387 — routing and shape validation for the Flip action path. The
+  // authorization rules themselves live in flip-actions.ts and are tested in
+  // flip-actions.test.ts; what matters here is that each message reaches
+  // executeFlipAction with the ACTOR TAKEN FROM THE CONNECTION, and that a
+  // rejection produces an error and no broadcast.
+  describe("flip actions (#387)", () => {
+    const connectFlip = () => {
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1" });
+      mockGamesDb.getGameById.mockResolvedValue(makeGame({ id: "g1", gameType: "flip" }));
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([makePlayer({ id: "p1" })]);
+    };
+
+    it.each([
+      ["flip_hit", { kind: "hit" }],
+      ["flip_freeze", { kind: "freeze" }],
+    ] as const)("routes %s to the action executor", async (type, expected) => {
+      const ws = mockSocket();
+      connectFlip();
+
+      await handleMessage(ws, JSON.stringify({ type }));
+
+      expect(mockFlipActions.executeFlipAction).toHaveBeenCalledWith("g1", "p1", expected);
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalled();
+    });
+
+    it.each([
+      ["flip_choose_freeze_target", "choose-freeze-target"],
+      ["flip_choose_flip3_target", "choose-flip3-target"],
+    ] as const)("routes %s with its target", async (type, kind) => {
+      const ws = mockSocket();
+      connectFlip();
+
+      await handleMessage(ws, JSON.stringify({ type, targetPlayerId: "p2" }));
+
+      expect(mockFlipActions.executeFlipAction).toHaveBeenCalledWith("g1", "p1", {
+        kind,
+        targetPlayerId: "p2",
+      });
+    });
+
+    // The authorization property, asserted at the transport boundary: the
+    // acting id comes from the connection, so a client-supplied one is ignored
+    // rather than honoured. There is no field for it in ClientMessage, but a
+    // hand-rolled socket can still put one on the wire.
+    it("ignores a client-supplied playerId and uses the connection's", async () => {
+      const ws = mockSocket();
+      connectFlip();
+
+      await handleMessage(
+        ws,
+        JSON.stringify({ type: "flip_hit", playerId: "p2", targetPlayerId: "p2" }),
+      );
+
+      expect(mockFlipActions.executeFlipAction).toHaveBeenCalledWith("g1", "p1", { kind: "hit" });
+    });
+
+    it.each(["flip_choose_freeze_target", "flip_choose_flip3_target"])(
+      "rejects %s with no targetPlayerId",
+      async (type) => {
+        const ws = mockSocket();
+        connectFlip();
+
+        await handleMessage(ws, JSON.stringify({ type }));
+
+        expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+        expect(mockFlipActions.executeFlipAction).not.toHaveBeenCalled();
+      },
+    );
+
+    it("rejects a flip action on a wire-game room", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1" });
+      mockGamesDb.getGameById.mockResolvedValue(makeGame({ id: "g1", gameType: "wire-game" }));
+
+      await handleMessage(ws, JSON.stringify({ type: "flip_hit" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Not a Flip game" });
+      expect(mockFlipActions.executeFlipAction).not.toHaveBeenCalled();
+    });
+
+    it("rejects a flip action from a socket not in a game", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue(undefined);
+
+      await handleMessage(ws, JSON.stringify({ type: "flip_hit" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Not connected to a game" });
+      expect(mockFlipActions.executeFlipAction).not.toHaveBeenCalled();
+    });
+
+    // The safeMessages allowlist is a disclosure boundary: a player-caused
+    // rejection is named so they can act on it, but anything unexpected from
+    // the engine must not reach the wire.
+    it.each([
+      "Not your turn",
+      "That player is not a legal target",
+      "Only the player who flipped the card may choose its target",
+      "Resolve the pending action card first",
+    ])("names the player-caused rejection %s", async (message) => {
+      const ws = mockSocket();
+      connectFlip();
+      mockFlipActions.executeFlipAction.mockRejectedValueOnce(new Error(message));
+
+      await handleMessage(ws, JSON.stringify({ type: "flip_hit" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message });
+    });
+
+    it("does not leak an unexpected engine error to the client", async () => {
+      const ws = mockSocket();
+      connectFlip();
+      mockFlipActions.executeFlipAction.mockRejectedValueOnce(
+        new Error("cannot draw: shoe and discard are both empty"),
+      );
+
+      await handleMessage(ws, JSON.stringify({ type: "flip_hit" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Internal error" });
+    });
+
+    // A rejected action must change nothing and tell nobody but the caller.
+    it("surfaces an authorization failure as an error and broadcasts nothing", async () => {
+      const ws = mockSocket();
+      connectFlip();
+      mockFlipActions.executeFlipAction.mockRejectedValueOnce(new Error("Not your turn"));
+
+      await handleMessage(ws, JSON.stringify({ type: "flip_hit" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Not your turn" });
+      expect(mockStateBroadcaster.broadcastGameState).not.toHaveBeenCalled();
     });
   });
 
