@@ -1,0 +1,158 @@
+/* =========================================================================
+   FLIP — game object colors
+   @tabletop/client · epic #358, issue #364
+
+   Flip is the second title, so unlike Wire's --wire-* (which lives directly
+   in theme.css because Wire is today's only/default game), Flip's card
+   colors get their own file and their own selector scope. They apply only
+   inside a Flip table, never bleed into the platform frame or another game.
+
+   Import this from the Flip game shell only (never from the root layout):
+       import "@/styles/games/flip.css";
+
+   Scope: every token below is read only under [data-game="flip"] on the
+   table wrapper, per DESIGN-APPENDIX.md §3's "game interior" layer. Platform
+   chrome (dialogs, toasts, buttons, typography, spacing) stays on platform
+   tokens regardless of which game is mounted — this file must never be
+   referenced from a dialog, toast, button, or nav component.
+
+   Namespace: --flip-*. Deliberately disjoint from --wire-* and --p1..--p5.
+   No hex below is shared with a --wire-*, --p1..--p5, --game-concealed, or
+   --game-revealed value in the same colour scheme — see the ledger in
+   DESIGN-APPENDIX.md §3a for the full cross-check.
+   ========================================================================= */
+
+@layer base {
+  [data-game="flip"] {
+    /* ---------------------------------------------------------------------
+       Number cards, 0-12. One bright hue per number, generated as a 13-step
+       hue sweep in CIE LCH (not HSL — HSL lightness is not perceptually
+       uniform, so an HSL sweep at a single "lightness" makes yellows read
+       much brighter than blues/violets at the same setting; LCH's L axis
+       tracks perceived lightness directly). Lightness cycles across 4 bands
+       (36/46/52/58 in this scheme) rather than one flat value — pure hue
+       rotation collapses hard under red-green colour-vision deficiency,
+       so cycling lightness gives CVD viewers a second axis of separation
+       that hue alone cannot provide at 13 simultaneous colors.
+
+       Verified, not assumed (method + numbers in DESIGN-APPENDIX.md §3a):
+       simulated protanopia/deuteranopia/tritanopia (Machado/Oliveira/
+       Fairchild 2009 matrices) and measured worst-case pairwise CIE76 ΔE
+       across all 13. Worst case lands around ΔE 4-5 under dichromacy —
+       real separation, but well short of "confidently distinguishable"
+       (ΔE >~10). Two adjacent numbers CAN look similar to a colourblind
+       player. This is a verified limit of 13 simultaneous bright hues, not
+       an oversight — see the appendix for why, and why the printed numeral
+       (always rendered, never color-only) is the accessible fallback that
+       makes this acceptable rather than a WCAG 1.4.1 violation. */
+    --flip-num-0: #AA0048;  --flip-num-0-ink: #FBF7EF;
+    --flip-num-1: #CD3025;  --flip-num-1-ink: #FBF7EF;
+    --flip-num-2: #BB6600;  --flip-num-2-ink: #FBF7EF;
+    --flip-num-3: #A38A00;  --flip-num-3-ink: #10233F;
+    --flip-num-4: #405E00;  --flip-num-4-ink: #FBF7EF;
+    --flip-num-5: #007E38;  --flip-num-5-ink: #FBF7EF;
+    --flip-num-6: #008C75;  --flip-num-6-ink: #FBF7EF;
+    --flip-num-7: #009BA1;  --flip-num-7-ink: #10233F;
+    --flip-num-8: #005D72;  --flip-num-8-ink: #FBF7EF;
+    --flip-num-9: #0074A9;  --flip-num-9-ink: #FBF7EF;
+    --flip-num-10: #0078F6; --flip-num-10-ink: #FBF7EF;
+    --flip-num-11: #B26BEB; --flip-num-11-ink: #10233F;
+    --flip-num-12: #A20079; --flip-num-12-ink: #FBF7EF;
+
+    /* Modifier cards. "+N" and "x2" share one token — same mechanical
+       family (score modifiers), so one hue keeps the rack legible instead
+       of adding two more colors to discriminate. Deliberately desaturated
+       relative to the number rainbow ("burnt" red-orange, not a bright
+       one) so it reads as its own family on sight, not as a 14th number. */
+    --flip-boost: #A6501F;     --flip-boost-ink: #FBF7EF;
+
+    /* Action cards. Named by function, not by generic hue, since each one
+       still has to sit apart from wire-blue/wire-yellow/wire-red (#2BB3E8/
+       #FFC53D/#E43126) and from the seat palette in the same view — a
+       player could have both a Wire session's seat chip and a Flip hand
+       on screen during a game switch, so "off-brand" isn't optional here
+       either. */
+    --flip-freeze: #3E6E9E;         --flip-freeze-ink: #FBF7EF;
+    --flip-flip3: #946200;          --flip-flip3-ink: #FBF7EF;
+    /* Second Chance pairs this with a heart glyph in the component, not a
+       color trick — the "extra life" read comes from the icon, this hue
+       only has to say "red" without colliding with wire-red or Boost. */
+    --flip-second-chance: #8E1030; --flip-second-chance-ink: #FBF7EF;
+  }
+}
+
+/* DARK — same LCH generation method, re-run for the dark surface: L bands
+   shift up (56/66/72/78) so every swatch clears a ~4.7:1+ contrast floor
+   against --surface (#0E1B2E) instead of sinking into it, and action-card
+   hexes are re-picked against the dark number set, not reused from light. */
+@layer base {
+  .dark [data-game="flip"] {
+    --flip-num-0: #F53789;  --flip-num-0-ink: #10233F;
+    --flip-num-1: #FF7572;  --flip-num-1-ink: #10233F;
+    --flip-num-2: #FF9656;  --flip-num-2-ink: #10233F;
+    --flip-num-3: #F2B825;  --flip-num-3-ink: #10233F;
+    --flip-num-4: #7C8F00;  --flip-num-4-ink: #10233F;
+    --flip-num-5: #41B73F;  --flip-num-5-ink: #10233F;
+    --flip-num-6: #00C897;  --flip-num-6-ink: #10233F;
+    --flip-num-7: #00D7D3;  --flip-num-7-ink: #10233F;
+    --flip-num-8: #0093AB;  --flip-num-8-ink: #10233F;
+    --flip-num-9: #00ACE9;  --flip-num-9-ink: #10233F;
+    --flip-num-10: #83B1FF; --flip-num-10-ink: #10233F;
+    --flip-num-11: #CDB5FF; --flip-num-11-ink: #10233F;
+    --flip-num-12: #D74FC4; --flip-num-12-ink: #10233F;
+
+    --flip-boost: #CF6E33;         --flip-boost-ink: #10233F;
+    --flip-freeze: #5C8AC9;        --flip-freeze-ink: #10233F;
+    --flip-flip3: #C99400;         --flip-flip3-ink: #10233F;
+    --flip-second-chance: #C4536E; --flip-second-chance-ink: #FBF7EF;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light) [data-game="flip"] {
+      --flip-num-0: #F53789;  --flip-num-0-ink: #10233F;
+      --flip-num-1: #FF7572;  --flip-num-1-ink: #10233F;
+      --flip-num-2: #FF9656;  --flip-num-2-ink: #10233F;
+      --flip-num-3: #F2B825;  --flip-num-3-ink: #10233F;
+      --flip-num-4: #7C8F00;  --flip-num-4-ink: #10233F;
+      --flip-num-5: #41B73F;  --flip-num-5-ink: #10233F;
+      --flip-num-6: #00C897;  --flip-num-6-ink: #10233F;
+      --flip-num-7: #00D7D3;  --flip-num-7-ink: #10233F;
+      --flip-num-8: #0093AB;  --flip-num-8-ink: #10233F;
+      --flip-num-9: #00ACE9;  --flip-num-9-ink: #10233F;
+      --flip-num-10: #83B1FF; --flip-num-10-ink: #10233F;
+      --flip-num-11: #CDB5FF; --flip-num-11-ink: #10233F;
+      --flip-num-12: #D74FC4; --flip-num-12-ink: #10233F;
+
+      --flip-boost: #CF6E33;         --flip-boost-ink: #10233F;
+      --flip-freeze: #5C8AC9;        --flip-freeze-ink: #10233F;
+      --flip-flip3: #C99400;         --flip-flip3-ink: #10233F;
+      --flip-second-chance: #C4536E; --flip-second-chance-ink: #FBF7EF;
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------
+   Tailwind utilities — bg-flip-num-7, text-flip-num-7-ink, border-flip-boost…
+   `inline` keeps the var() indirection so .dark / OS-scheme flips work.
+   ------------------------------------------------------------------------- */
+@theme inline {
+  --color-flip-num-0: var(--flip-num-0);   --color-flip-num-0-ink: var(--flip-num-0-ink);
+  --color-flip-num-1: var(--flip-num-1);   --color-flip-num-1-ink: var(--flip-num-1-ink);
+  --color-flip-num-2: var(--flip-num-2);   --color-flip-num-2-ink: var(--flip-num-2-ink);
+  --color-flip-num-3: var(--flip-num-3);   --color-flip-num-3-ink: var(--flip-num-3-ink);
+  --color-flip-num-4: var(--flip-num-4);   --color-flip-num-4-ink: var(--flip-num-4-ink);
+  --color-flip-num-5: var(--flip-num-5);   --color-flip-num-5-ink: var(--flip-num-5-ink);
+  --color-flip-num-6: var(--flip-num-6);   --color-flip-num-6-ink: var(--flip-num-6-ink);
+  --color-flip-num-7: var(--flip-num-7);   --color-flip-num-7-ink: var(--flip-num-7-ink);
+  --color-flip-num-8: var(--flip-num-8);   --color-flip-num-8-ink: var(--flip-num-8-ink);
+  --color-flip-num-9: var(--flip-num-9);   --color-flip-num-9-ink: var(--flip-num-9-ink);
+  --color-flip-num-10: var(--flip-num-10); --color-flip-num-10-ink: var(--flip-num-10-ink);
+  --color-flip-num-11: var(--flip-num-11); --color-flip-num-11-ink: var(--flip-num-11-ink);
+  --color-flip-num-12: var(--flip-num-12); --color-flip-num-12-ink: var(--flip-num-12-ink);
+
+  --color-flip-boost: var(--flip-boost); --color-flip-boost-ink: var(--flip-boost-ink);
+  --color-flip-freeze: var(--flip-freeze); --color-flip-freeze-ink: var(--flip-freeze-ink);
+  --color-flip-flip3: var(--flip-flip3); --color-flip-flip3-ink: var(--flip-flip3-ink);
+  --color-flip-second-chance: var(--flip-second-chance);
+  --color-flip-second-chance-ink: var(--flip-second-chance-ink);
+}
