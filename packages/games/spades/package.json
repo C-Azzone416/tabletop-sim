@@ -10,7 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@tabletop/cards": "*"
+    "@tabletop/cards": "*",
+    "@tabletop/shared": "*"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.1",
