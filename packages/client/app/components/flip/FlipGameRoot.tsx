@@ -108,6 +108,12 @@ export function FlipGameRoot({
       localPlayerId={localPlayerId}
       onHit={onHit}
       onFreeze={onFreeze}
+      // #366's C4 timeout self-targets through these same two callbacks
+      // (see FlipTable's own doc comment) — without passing them through,
+      // a Freeze/Flip3 target-choice timeout has nothing to call and the
+      // prompt would hang forever even once turnDeadline exists.
+      onChooseFreezeTarget={onChooseFreezeTarget}
+      onChooseFlip3Target={onChooseFlip3Target}
       pendingActionUi={
         <PendingActionPicker
           game={game}

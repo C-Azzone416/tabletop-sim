@@ -183,4 +183,25 @@ describe("GameClient — Flip rendering (#383)", () => {
 
     expect(screen.getByText("Alice wins!")).toBeInTheDocument();
   });
+
+  // Regression: FlipGameRoot built the picker's onChooseFreezeTarget/
+  // onChooseFlip3Target props but never passed them through to FlipTable,
+  // so a target-choice click (and, once it exists, C4's timeout self-target
+  // through the same callbacks) had nothing to call.
+  it("sends flip_choose_freeze_target with targetPlayerId when the flipper picks a target", () => {
+    render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+    act(() => vi.advanceTimersByTime(0));
+    const ws = getWs();
+
+    act(() => {
+      ws.simulateMessage(
+        flipGameStateMessage({ flip: { pendingAction: { kind: "freeze", flipperId: "p1", eligibleTargetIds: ["p1", "p2"] } } }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bob" }));
+    expect(ws.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "flip_choose_freeze_target", targetPlayerId: "p2" }),
+    );
+  });
 });
