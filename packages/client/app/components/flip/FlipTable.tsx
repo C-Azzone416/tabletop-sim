@@ -43,12 +43,17 @@ export interface FlipTableProps {
   turnDeadline?: number | null;
   /**
    * Self-targets the pending Freeze/Flip3 card on timeout (#358's ruled
-   * default — going idle can never damage an opponent). Proposed to bobcat
-   * on control as one of two seam options; wire to whichever #360 exposes.
-   * The hit/freeze prompt's default (auto-Freeze) needs no separate prop —
-   * it's the same `onFreeze` #362 already calls.
+   * default — going idle can never damage an opponent). Per bobcat's #363
+   * call on `control` (2026-09-10 ~06:58Z): reuse the same granular
+   * target-choice calls a manual click would make, just with the flipper's
+   * own id — self-targeting is always a legal target to the engine, so
+   * "timed out" and "clicked yourself" share one code path rather than a
+   * second parallel entry point. The hit/freeze prompt's default
+   * (auto-Freeze) is a different concern — base turn action expiring, not a
+   * target choice — and stays on the existing `onFreeze` prop unchanged.
    */
-  onTurnTimeout?: () => void;
+  onChooseFreezeTarget?: (playerId: string) => void;
+  onChooseFlip3Target?: (playerId: string) => void;
 }
 
 export function FlipTable({
@@ -58,7 +63,8 @@ export function FlipTable({
   onFreeze,
   pendingActionUi,
   turnDeadline = null,
-  onTurnTimeout,
+  onChooseFreezeTarget,
+  onChooseFlip3Target,
 }: FlipTableProps) {
   const [flattened, setFlattened] = useState(false);
   const [timeoutMessage, setTimeoutMessage] = useState<string | null>(null);
@@ -84,12 +90,28 @@ export function FlipTable({
     const kind = timeoutPromptKind(game.pendingAction);
     setTimeoutMessage(describeTimeout(kind, activePlayer.name, activePlayer.id === localPlayerId));
 
-    if (game.pendingAction === null) {
-      onFreeze();
-    } else {
-      onTurnTimeout?.();
+    // Self-target: the flipper targets themself, same as a manual click
+    // would — never the platform inventing a "no-op" action of its own.
+    switch (game.pendingAction?.kind) {
+      case undefined:
+        onFreeze();
+        break;
+      case "freeze":
+        onChooseFreezeTarget?.(activePlayer.id);
+        break;
+      case "flip3":
+        onChooseFlip3Target?.(activePlayer.id);
+        break;
     }
-  }, [game.players, game.turnPlayerId, game.pendingAction, localPlayerId, onFreeze, onTurnTimeout]);
+  }, [
+    game.players,
+    game.turnPlayerId,
+    game.pendingAction,
+    localPlayerId,
+    onFreeze,
+    onChooseFreezeTarget,
+    onChooseFlip3Target,
+  ]);
 
   const { secondsRemaining } = useTurnCountdown({ deadline: turnDeadline, onExpire: handleExpire });
 

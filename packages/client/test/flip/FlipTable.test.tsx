@@ -124,23 +124,40 @@ describe("FlipTable", () => {
       expect(screen.getByTestId("timeout-announcement")).toHaveTextContent("froze for the round");
     });
 
-    it("self-targets via onTurnTimeout when a Freeze/Flip3 target choice expires, never auto-Freezing instead", () => {
+    it("self-targets Flip3 via onChooseFlip3Target(selfId) when the target choice expires, never auto-Freezing instead", () => {
       const onFreeze = vi.fn();
-      const onTurnTimeout = vi.fn();
+      const onChooseFlip3Target = vi.fn();
       render(
         <FlipTable
           game={makeGame({ pendingAction: { kind: "flip3" } })}
           localPlayerId="p1"
           onHit={vi.fn()}
           onFreeze={onFreeze}
-          onTurnTimeout={onTurnTimeout}
+          onChooseFlip3Target={onChooseFlip3Target}
           turnDeadline={Date.now() + 1_000}
         />,
       );
       act(() => vi.advanceTimersByTime(1_100));
-      expect(onTurnTimeout).toHaveBeenCalledTimes(1);
+      expect(onChooseFlip3Target).toHaveBeenCalledWith("p1");
       expect(onFreeze).not.toHaveBeenCalled();
       expect(screen.getByTestId("timeout-announcement")).toHaveTextContent("flipped 3 on");
+    });
+
+    it("self-targets Freeze via onChooseFreezeTarget(selfId) when that target choice expires", () => {
+      const onChooseFreezeTarget = vi.fn();
+      render(
+        <FlipTable
+          game={makeGame({ pendingAction: { kind: "freeze" } })}
+          localPlayerId="p1"
+          onHit={vi.fn()}
+          onFreeze={vi.fn()}
+          onChooseFreezeTarget={onChooseFreezeTarget}
+          turnDeadline={Date.now() + 1_000}
+        />,
+      );
+      act(() => vi.advanceTimersByTime(1_100));
+      expect(onChooseFreezeTarget).toHaveBeenCalledWith("p1");
+      expect(screen.getByTestId("timeout-announcement")).toHaveTextContent("froze yourself");
     });
 
     it("names the non-local player rather than using 'you' when someone else times out", () => {
