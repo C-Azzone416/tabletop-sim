@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { MISSION_CONFIGS, WIRE_MASTER_SET } from '@tabletop/shared';
+import { MISSION_CONFIGS, WIRE_MASTER_SET, getGameById } from '@tabletop/shared';
 import type { Game, GameId, Player, Wire, Turn, WireColor, MissionOutcome, WireCandidate } from '@tabletop/shared';
 import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
@@ -96,7 +96,13 @@ export async function joinGame(joinCode: string, playerName: string, profileId?:
   if (game.status !== 'waiting') throw new Error('Game already started');
 
   const existingPlayers = await playersDb.getPlayersByGameId(game.id);
-  if (existingPlayers.length >= 4) throw new Error('Game is full');
+  // #370 — the seat cap is per game, read from the registry, not the hardcoded
+  // 4 this used to carry. Wire Game still caps at 4; Flip seats 5, and with a
+  // constant here its fifth player could never join. Falls back to 4 for a
+  // game_type somehow absent from the registry, which keeps the old behaviour
+  // rather than opening the table up.
+  const maxPlayers = getGameById(game.gameType)?.maxPlayers ?? 4;
+  if (existingPlayers.length >= maxPlayers) throw new Error('Game is full');
 
   const player = await playersDb.createPlayer(game.id, playerName, existingPlayers.length, profileId);
   const players = await playersDb.getPlayersByGameId(game.id);

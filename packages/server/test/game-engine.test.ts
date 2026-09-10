@@ -161,6 +161,54 @@ describe("game-engine", () => {
 
       await expect(engine.joinGame("ABC123", "Extra")).rejects.toThrow("Game is full");
     });
+
+    // #370 — this cap used to be a hardcoded `>= 4` for every game. Flip
+    // seats 5 (#358), so its fifth player could never join: not via /dev/seed,
+    // and not in a real lobby either. The limit now comes from the registry
+    // entry for the room's own game type.
+    describe("seat cap comes from the registry, not a constant (#370)", () => {
+      const seatedGame = (gameType: "wire-game" | "flip", seated: number) => {
+        const game = makeGame({ id: "g1", status: "waiting", gameType });
+        const players = Array.from({ length: seated }, (_, i) =>
+          makePlayer({ id: `p${i}`, gameId: "g1" })
+        );
+        mockGamesDb.getGameByJoinCode.mockResolvedValue(game);
+        mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+        mockPlayersDb.createPlayer.mockResolvedValue(makePlayer({ id: "new", gameId: "g1" }));
+        return game;
+      };
+
+      // The regression this fix exists for.
+      it("admits a fifth player to a flip game", async () => {
+        seatedGame("flip", 4);
+        await expect(engine.joinGame("ABC123", "Erin")).resolves.toBeDefined();
+      });
+
+      it("rejects a sixth player to a flip game", async () => {
+        seatedGame("flip", 5);
+        await expect(engine.joinGame("ABC123", "Frank")).rejects.toThrow("Game is full");
+      });
+
+      // Raising Flip's ceiling must not raise Wire Game's.
+      it("still rejects a fifth player to a wire game", async () => {
+        seatedGame("wire-game", 4);
+        await expect(engine.joinGame("ABC123", "Erin")).rejects.toThrow("Game is full");
+      });
+
+      // Falls back to 4 rather than opening the table up, if a row somehow
+      // carries a game_type the registry doesn't know.
+      it("falls back to a cap of 4 for an unregistered game type", async () => {
+        const game = makeGame({ id: "g1", status: "waiting" });
+        (game as { gameType: string }).gameType = "checkers";
+        const players = Array.from({ length: 4 }, (_, i) =>
+          makePlayer({ id: `p${i}`, gameId: "g1" })
+        );
+        mockGamesDb.getGameByJoinCode.mockResolvedValue(game);
+        mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+
+        await expect(engine.joinGame("ABC123", "Extra")).rejects.toThrow("Game is full");
+      });
+    });
   });
 
   describe("startGame", () => {

@@ -17,6 +17,7 @@
     "@fastify/websocket": "^11",
     "@neondatabase/serverless": "^1.0.2",
     "@tabletop/cards": "*",
+    "@tabletop/game-flip": "*",
     "@tabletop/game-spades": "*",
     "@tabletop/shared": "*",
     "fastify": "^5",

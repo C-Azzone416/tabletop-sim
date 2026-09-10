@@ -1,7 +1,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify from 'fastify';
 import { GAME_REGISTRY, getGameById, type GameId } from '@tabletop/shared';
+import { buildFlipGameState } from '@tabletop/game-flip';
 import { FLIP_SCENARIOS, isFlipScenarioName } from './dev/flip-scenarios.js';
+import { buildFlipScenarioState } from './dev/flip-scenario-states.js';
+import * as flipGamesDb from './db/flip-games.js';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import * as gamesDb from './db/games.js';
@@ -513,6 +516,52 @@ export async function buildApp() {
       };
     };
 
+    // #370 — a Flip table Caroline can drive immediately: seats filled, a
+    // round already in progress, and (optionally) the shoe stacked for one of
+    // the eight scenarios.
+    //
+    // The state itself is built by the ENGINE's buildFlipGameState, never
+    // assembled here: it validates deck conservation and rejects impossible
+    // hands, and keeping that knowledge in the engine is what stops the
+    // server layer growing rules of its own.
+    const seedDevFlipGame = async (playerCount: number, scenario: unknown) => {
+      const names = DEV_SEED_NAMES.slice(0, playerCount);
+
+      const devProfile = await getOrCreateProfile(names[0]);
+      const { game, player } = await engine.createGame(names[0], 'flip', devProfile.id, 'dev_seed');
+
+      const seats = [{ id: player.id, name: names[0] }];
+      const profilesByName = new Map([[names[0], devProfile]]);
+      for (const name of names.slice(1)) {
+        const profile = await getOrCreateProfile(name);
+        profilesByName.set(name, profile);
+        const { player: joined } = await engine.joinGame(game.joinCode, name, profile.id);
+        seats.push({ id: joined.id, name });
+      }
+
+      const state = isFlipScenarioName(scenario)
+        ? buildFlipScenarioState(scenario, seats)
+        : buildFlipGameState({ players: seats });
+
+      await flipGamesDb.saveFlipGameState(game.id, state);
+      // The room is 'active' rather than 'setup': Flip's seed lands mid-round
+      // with the deal already done, so there is something to drive at once.
+      await gamesDb.updateGameStatus(game.id, 'active');
+
+      return {
+        joinCode: game.joinCode,
+        profileId: devProfile.id,
+        playerName: names[0],
+        gameType: 'flip' as const,
+        scenario: isFlipScenarioName(scenario) ? scenario : null,
+        turnPlayerId: state.turnPlayerId,
+        // Real profileIds for every seat, so a dev client can connect as any
+        // player through the standard WS auth — the seat switcher depends on
+        // this shape (#370 reuses it rather than rebuilding it).
+        players: names.map(name => ({ name, profileId: profilesByName.get(name)!.id })),
+      };
+    };
+
     // Lands the seeded game at the START of the real opening flow (lobby
     // readied + started, captain's turn, no tokens placed) — drivable
     // seat-by-seat through the seat switcher, same as a real game would be.
@@ -536,16 +585,7 @@ export async function buildApp() {
               error: `scenario must be one of: ${FLIP_SCENARIOS.map(s => s.name).join(', ')}`,
             });
           }
-          // The engine (#360) is not a dependency of the server yet, so there
-          // is nothing to seed a real table with. Fails loudly and specifically
-          // rather than silently seeding a wire game under a flip label —
-          // Caroline would read that as Flip being broken.
-          return reply.status(503).send({
-            error: 'Flip dev seeding is not wired yet — blocked on #360 (engine) landing.',
-            gameType,
-            playerCount,
-            scenario: scenario ?? null,
-          });
+          return await seedDevFlipGame(playerCount, scenario);
         }
 
         const mission = parseMissionParam(request.body);

@@ -31,6 +31,13 @@ vi.mock("../src/db/players.js", () => ({
   markDoubleDetectorUsed: vi.fn(),
 }));
 
+vi.mock("../src/db/flip-games.js", () => ({
+  saveFlipGameState: vi.fn(),
+  getFlipGameState: vi.fn(),
+  recordFlipRoundScores: vi.fn(),
+  getFlipRoundScores: vi.fn(),
+}));
+
 vi.mock("../src/db/tokens.js", () => ({
   createInfoToken: vi.fn(),
   deleteDevInfoTokensByGameId: vi.fn(),
@@ -110,6 +117,7 @@ import * as stateBroadcaster from "../src/ws/state-broadcaster.js";
 import * as migrationsDb from "../src/db/migrations.js";
 import * as outcomesDb from "../src/db/outcomes.js";
 import * as wsAuth from "../src/ws/auth.js";
+import * as flipGamesDb from "../src/db/flip-games.js";
 import { buildApp } from "../src/app.js";
 
 const mockProfilesDb = vi.mocked(profilesDb);
@@ -121,6 +129,7 @@ const mockEngine = vi.mocked(engine);
 const mockStateBroadcaster = vi.mocked(stateBroadcaster);
 const mockMigrationsDb = vi.mocked(migrationsDb);
 const mockWsAuth = vi.mocked(wsAuth);
+const mockFlipGamesDb = vi.mocked(flipGamesDb);
 
 describe("routes", () => {
   let app: FastifyInstance;
@@ -769,35 +778,82 @@ describe("routes", () => {
         expect(mockEngine.createGame).not.toHaveBeenCalled();
       });
 
+      // Seeds a Flip room the way the endpoint does: one createGame, then a
+      // joinGame per additional seat, each returning a distinct player id so
+      // the built state has unique seats.
+      const mockFlipSeed = () => {
+        const game = makeGame({ id: "g1", joinCode: "FLIPME", gameType: "flip" });
+        let seat = 0;
+        mockProfilesDb.getProfileByName.mockResolvedValue(null);
+        mockProfilesDb.createProfile.mockImplementation(async (name: string) =>
+          makeProfile({ id: `prof-${name.toLowerCase()}`, name }));
+        mockEngine.createGame.mockResolvedValue({ game, player: makePlayer({ id: "p0", gameId: "g1" }) });
+        mockEngine.joinGame.mockImplementation(async () => {
+          seat += 1;
+          return { game, player: makePlayer({ id: `p${seat}`, gameId: "g1" }), players: [] };
+        });
+        return game;
+      };
+
       // The dev door deliberately reaches registered-but-unavailable games —
       // flip ships available: false, so create_game refuses it and /dev is
-      // the only way to a Flip table. A 503 here (not a 400) proves the id
-      // was accepted and only the engine is missing.
-      it("accepts flip as a game type even though it is not available for create_game", async () => {
+      // the only way to a Flip table at all.
+      it("seeds a flip room even though flip is not available for create_game", async () => {
+        mockFlipSeed();
+
         const res = await seedApp.inject({
           method: "POST", url: "/dev/seed", payload: { gameType: "flip" },
         });
 
-        expect(res.statusCode).toBe(503);
-        expect(res.json()).toMatchObject({ gameType: "flip", scenario: null });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toMatchObject({ gameType: "flip", joinCode: "FLIPME", scenario: null });
+        expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "flip", "prof-dev", "dev_seed");
       });
 
-      it.each([2, 3, 4, 5])("accepts playerCount %i for flip", async (playerCount) => {
+      // Mid-round with the deal already done, so there is something to drive
+      // immediately — that is the whole point of the seed (#370).
+      it("persists engine state and leaves the room active with a turn in progress", async () => {
+        mockFlipSeed();
+
+        const res = await seedApp.inject({
+          method: "POST", url: "/dev/seed", payload: { gameType: "flip" },
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(mockGamesDb.updateGameStatus).toHaveBeenCalledWith("g1", "active");
+        expect(mockFlipGamesDb.saveFlipGameState).toHaveBeenCalledTimes(1);
+
+        const [gameId, state] = mockFlipGamesDb.saveFlipGameState.mock.calls[0];
+        expect(gameId).toBe("g1");
+        expect(state).toMatchObject({ phase: "round-in-progress", dealQueue: null });
+        expect(res.json().turnPlayerId).toBeTruthy();
+      });
+
+      it.each([2, 3, 4, 5])("seeds flip at %i players, every seat with a real profile", async (playerCount) => {
+        mockFlipSeed();
+
         const res = await seedApp.inject({
           method: "POST", url: "/dev/seed", payload: { gameType: "flip", playerCount },
         });
 
-        expect(res.statusCode).toBe(503);
-        expect(res.json()).toMatchObject({ playerCount });
+        expect(res.statusCode).toBe(200);
+        expect(res.json().players).toHaveLength(playerCount);
+        for (const seat of res.json().players) {
+          expect(seat.profileId).toBeTruthy();
+        }
+        const [, state] = mockFlipGamesDb.saveFlipGameState.mock.calls[0];
+        expect((state as { players: unknown[] }).players).toHaveLength(playerCount);
       });
 
       it("accepts `players` as an alias for playerCount, as #370 names it", async () => {
+        mockFlipSeed();
+
         const res = await seedApp.inject({
           method: "POST", url: "/dev/seed", payload: { gameType: "flip", players: 5 },
         });
 
-        expect(res.statusCode).toBe(503);
-        expect(res.json()).toMatchObject({ playerCount: 5 });
+        expect(res.statusCode).toBe(200);
+        expect(res.json().players).toHaveLength(5);
       });
 
       it.each([1, 6])("returns 400 for a flip playerCount of %i", async (playerCount) => {
@@ -811,13 +867,18 @@ describe("routes", () => {
         });
       });
 
-      it("accepts every catalogued scenario name", async () => {
+      it("seeds every catalogued scenario in one action", async () => {
         for (const scenario of FLIP_SCENARIOS) {
+          mockFlipGamesDb.saveFlipGameState.mockClear();
+          mockFlipSeed();
+
           const res = await seedApp.inject({
             method: "POST", url: "/dev/seed", payload: { gameType: "flip", scenario: scenario.name },
           });
-          expect(res.statusCode).toBe(503);
+
+          expect(res.statusCode).toBe(200);
           expect(res.json()).toMatchObject({ scenario: scenario.name });
+          expect(mockFlipGamesDb.saveFlipGameState).toHaveBeenCalledTimes(1);
         }
       });
 
