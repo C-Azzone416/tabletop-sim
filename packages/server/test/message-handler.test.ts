@@ -56,11 +56,20 @@ vi.mock("../src/ws/state-broadcaster.js", () => ({
   buildPlayerView: vi.fn((wires) => wires),
 }));
 
+vi.mock("../src/ws/flip-actions.js", () => ({
+  handleFlipStartRound: vi.fn(),
+  handleFlipHit: vi.fn(),
+  handleFlipFreeze: vi.fn(),
+  handleFlipChooseFreezeTarget: vi.fn(),
+  handleFlipChooseFlip3Target: vi.fn(),
+}));
+
 import * as engine from "../src/engine/game-engine.js";
 import * as gamesDb from "../src/db/games.js";
 import * as playersDb from "../src/db/players.js";
 import * as connManager from "../src/ws/connection-manager.js";
 import * as stateBroadcaster from "../src/ws/state-broadcaster.js";
+import * as flipActions from "../src/ws/flip-actions.js";
 import { handleMessage } from "../src/ws/message-handler.js";
 
 const mockEngine = vi.mocked(engine);
@@ -68,6 +77,7 @@ const mockGamesDb = vi.mocked(gamesDb);
 const mockPlayersDb = vi.mocked(playersDb);
 const mockConnManager = vi.mocked(connManager);
 const mockStateBroadcaster = vi.mocked(stateBroadcaster);
+const mockFlipActions = vi.mocked(flipActions);
 
 function mockSocket(): WebSocket {
   return {
@@ -638,6 +648,92 @@ describe("message-handler", () => {
         type: "error",
         message: "You must hold all remaining uncut wires of that number to solo cut it",
       });
+    });
+  });
+
+  describe("flip actions (#383)", () => {
+    it("dispatches flip_start_round to flip-actions with gameId/playerId from the connection", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ gameId: "g1", playerId: "p1" });
+      mockFlipActions.handleFlipStartRound.mockResolvedValue(undefined);
+
+      await handleMessage(ws, JSON.stringify({ type: "flip_start_round" }));
+
+      expect(mockFlipActions.handleFlipStartRound).toHaveBeenCalledWith("g1", "p1");
+    });
+
+    it("dispatches flip_hit", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ gameId: "g1", playerId: "p1" });
+      mockFlipActions.handleFlipHit.mockResolvedValue(undefined);
+
+      await handleMessage(ws, JSON.stringify({ type: "flip_hit" }));
+
+      expect(mockFlipActions.handleFlipHit).toHaveBeenCalledWith("g1", "p1");
+    });
+
+    it("dispatches flip_freeze", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ gameId: "g1", playerId: "p1" });
+      mockFlipActions.handleFlipFreeze.mockResolvedValue(undefined);
+
+      await handleMessage(ws, JSON.stringify({ type: "flip_freeze" }));
+
+      expect(mockFlipActions.handleFlipFreeze).toHaveBeenCalledWith("g1", "p1");
+    });
+
+    it("dispatches flip_choose_freeze_target with the target id", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ gameId: "g1", playerId: "p1" });
+      mockFlipActions.handleFlipChooseFreezeTarget.mockResolvedValue(undefined);
+
+      await handleMessage(ws, JSON.stringify({ type: "flip_choose_freeze_target", targetId: "p2" }));
+
+      expect(mockFlipActions.handleFlipChooseFreezeTarget).toHaveBeenCalledWith("g1", "p1", "p2");
+    });
+
+    it("dispatches flip_choose_flip3_target with the target id", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ gameId: "g1", playerId: "p1" });
+      mockFlipActions.handleFlipChooseFlip3Target.mockResolvedValue(undefined);
+
+      await handleMessage(ws, JSON.stringify({ type: "flip_choose_flip3_target", targetId: "p2" }));
+
+      expect(mockFlipActions.handleFlipChooseFlip3Target).toHaveBeenCalledWith("g1", "p1", "p2");
+    });
+
+    it("rejects flip_choose_freeze_target with a missing targetId", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({ type: "flip_choose_freeze_target" }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockFlipActions.handleFlipChooseFreezeTarget).not.toHaveBeenCalled();
+    });
+
+    it("rejects flip_choose_flip3_target with a missing targetId", async () => {
+      const ws = mockSocket();
+      await handleMessage(ws, JSON.stringify({ type: "flip_choose_flip3_target" }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockFlipActions.handleFlipChooseFlip3Target).not.toHaveBeenCalled();
+    });
+
+    it("surfaces the engine's own rejection reason rather than a generic Internal error", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ gameId: "g1", playerId: "p1" });
+      mockFlipActions.handleFlipHit.mockRejectedValue(new Error("it is not this player's turn"));
+
+      await handleMessage(ws, JSON.stringify({ type: "flip_hit" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "it is not this player's turn" });
+    });
+
+    it("sends 'Not connected to a game' when no connection info for a flip action", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue(undefined);
+
+      await handleMessage(ws, JSON.stringify({ type: "flip_hit" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Not connected to a game" });
+      expect(mockFlipActions.handleFlipHit).not.toHaveBeenCalled();
     });
   });
 });

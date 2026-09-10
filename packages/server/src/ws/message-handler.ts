@@ -6,6 +6,7 @@ import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
 import * as connManager from './connection-manager.js';
 import { broadcastGameState, buildPlayerView } from './state-broadcaster.js';
+import * as flipActions from './flip-actions.js';
 
 type ActionLogger = { info: (data: object, msg?: string) => void; debug: (data: object, msg?: string) => void };
 type ActionResult = 'success' | 'fail' | 'explosion' | 'won';
@@ -74,6 +75,18 @@ function validateMessage(parsed: unknown): ClientMessage | null {
       if (typeof mission !== 'number' || !Number.isInteger(mission) || mission < 1 || mission > 8) return null;
       return { type: 'next_mission', mission };
     }
+    case 'flip_start_round':
+      return { type: 'flip_start_round' };
+    case 'flip_hit':
+      return { type: 'flip_hit' };
+    case 'flip_freeze':
+      return { type: 'flip_freeze' };
+    case 'flip_choose_freeze_target':
+      if (!isNonEmptyString(msg.targetId)) return null;
+      return { type: 'flip_choose_freeze_target', targetId: msg.targetId };
+    case 'flip_choose_flip3_target':
+      if (!isNonEmptyString(msg.targetId)) return null;
+      return { type: 'flip_choose_flip3_target', targetId: msg.targetId };
     default:
       return null;
   }
@@ -146,6 +159,21 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       case 'next_mission':
         await handleNextMission(socket, msg.mission);
         break;
+      case 'flip_start_round':
+        await handleFlipStartRound(socket);
+        break;
+      case 'flip_hit':
+        await handleFlipHit(socket);
+        break;
+      case 'flip_freeze':
+        await handleFlipFreeze(socket);
+        break;
+      case 'flip_choose_freeze_target':
+        await handleFlipChooseFreezeTarget(socket, msg.targetId);
+        break;
+      case 'flip_choose_flip3_target':
+        await handleFlipChooseFlip3Target(socket, msg.targetId);
+        break;
       default:
         sendError(socket, 'Unknown message type');
     }
@@ -173,6 +201,16 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Must hold a matching wire to propose this guess', 'Must hold a yellow wire to propose this guess',
       'You must hold all remaining uncut wires of that number to solo cut it',
       'Game is not in a won or lost state', 'Only the captain can start the next mission',
+      // Flip (#383) — @tabletop/game-flip's own error messages, safe to
+      // surface verbatim (no internal detail, same convention as above).
+      'Flip game not found', 'player ids must be unique',
+      'a round cannot be started right now', 'only the dealer can start the round',
+      'no round is in progress', 'the opening deal has not finished',
+      'a target choice is pending', 'a Flip 3 is still resolving',
+      "it is not this player's turn", 'player is not active',
+      'no freeze target is pending', 'no flip3 target is pending',
+      "it is not this player's action to resolve",
+      'target is not an eligible (active) player',
     ];
     sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
   } finally {
@@ -440,6 +478,47 @@ async function handlePlayerReady(socket: WebSocket): Promise<void> {
   connManager.broadcastToGame(info.gameId, response);
 }
 
+
+// Flip (#383) — each handler resolves gameId/playerId off the socket's
+// connection, same as every Wire handler above. Persistence and the
+// broadcast (already Flip-aware per #382) happen inside flip-actions.ts, so
+// there is nothing left to do here after the call.
+
+async function handleFlipStartRound(socket: WebSocket): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+  await withTimeout(flipActions.handleFlipStartRound(info.gameId, info.playerId), 'flipStartRound');
+}
+
+async function handleFlipHit(socket: WebSocket): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+  await withTimeout(flipActions.handleFlipHit(info.gameId, info.playerId), 'flipHit');
+}
+
+async function handleFlipFreeze(socket: WebSocket): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+  await withTimeout(flipActions.handleFlipFreeze(info.gameId, info.playerId), 'flipFreeze');
+}
+
+async function handleFlipChooseFreezeTarget(socket: WebSocket, targetId: string): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+  await withTimeout(
+    flipActions.handleFlipChooseFreezeTarget(info.gameId, info.playerId, targetId),
+    'flipChooseFreezeTarget',
+  );
+}
+
+async function handleFlipChooseFlip3Target(socket: WebSocket, targetId: string): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+  await withTimeout(
+    flipActions.handleFlipChooseFlip3Target(info.gameId, info.playerId, targetId),
+    'flipChooseFlip3Target',
+  );
+}
 
 function sendError(socket: WebSocket, message: string): void {
   const response: ServerMessage = { type: 'error', message };
