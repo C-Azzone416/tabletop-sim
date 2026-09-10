@@ -1,4 +1,4 @@
-import { shuffleCards } from '@tabletop/cards';
+import { shuffleCards } from '@tabletop/shared';
 import { generateThemedNames } from './names';
 import { SPADES_SEATS, type BotDifficulty, type HumanLobbyPlayer, type SeatedSpadesPlayer } from './types';
 import { teamForSeat } from './rules';
