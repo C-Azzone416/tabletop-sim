@@ -8,6 +8,7 @@ import type {
   InfoToken,
   ValidationToken,
   ServerMessage,
+  FlipTableView,
 } from "@tabletop/shared";
 
 export interface GameState {
@@ -17,6 +18,8 @@ export interface GameState {
   wires: Wire[];
   infoTokens: InfoToken[];
   validationTokens: ValidationToken[];
+  /** Flip's table state (#382/#383), set from game_state's `flip` field. Null for Wire games. */
+  flip: FlipTableView | null;
   lastTurnResult: Extract<ServerMessage, { type: "turn_result" }> | null;
   pendingDualCut: Extract<ServerMessage, { type: "dual_cut_proposed" }> | null;
   pendingDualCutCorrect: Extract<ServerMessage, { type: "dual_cut_correct" }> | null;
@@ -31,6 +34,7 @@ const initialState: GameState = {
   wires: [],
   infoTokens: [],
   validationTokens: [],
+  flip: null,
   lastTurnResult: null,
   pendingDualCut: null,
   pendingDualCutCorrect: null,
@@ -102,16 +106,14 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
         msg.players.find((p) => p.id === msg.localPlayerId) ??
         state.localPlayer;
 
-      // #382 — game_state is now a union: the Flip variant carries a `flip`
-      // table and no wires/tokens/candidates at all. Narrowing on `flip`
-      // keeps the wire-game branch below exactly as it was.
-      //
-      // This is the minimum needed to keep the client compiling against the
-      // new payload; consuming `msg.flip` into render state is #383
-      // (daring-bobcat). Deliberately left out here rather than half-done,
-      // so there is nothing to unpick when that lands.
+      // #382 — game_state is a union: the Flip variant carries `flip` and no
+      // wires/tokens/candidates at all (no wiresDb call is ever made for a
+      // Flip game). Narrowing on `flip` keeps the wire-game branch exactly
+      // as it was, and leaves wires/infoTokens/validationTokens untouched
+      // (not zeroed) — nothing about Flip's payload implies the wire-game
+      // fields changed, since a client only ever tracks one game.
       if (msg.flip) {
-        return { ...state, game: msg.game, localPlayer, players: msg.players };
+        return { ...state, game: msg.game, localPlayer, players: msg.players, flip: msg.flip };
       }
 
       return {
