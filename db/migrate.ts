@@ -49,6 +49,7 @@ const migrations = [
   '014_game_type.sql',
   '015_spades_games.sql',
   '016_flip_games.sql',
+  '017_flip_round_breakdown.sql',
 ];
 
 // #166 — arbitrary fixed key for this runner's session-level advisory lock.
