@@ -28,6 +28,24 @@ export async function getFlipGameState(gameId: string): Promise<unknown | null> 
   return rows.length > 0 ? rows[0].state : null;
 }
 
+/**
+ * #365 — where a round's points came from. Mirrors the engine's scoring
+ * breakdown; stored, not recomputed, so the scoreboard can never disagree
+ * with the engine about a score it already awarded.
+ *
+ * `total` is the same number as the row's `score` column; it is duplicated
+ * here so the blob is self-describing when read on its own.
+ */
+export interface FlipScoreBreakdown {
+  numbersSum: number;
+  plusSum: number;
+  hasX2: boolean;
+  /** 15 or 0. Added after the multiplier and never doubled (#358). */
+  flip7Bonus: number;
+  total: number;
+  busted: boolean;
+}
+
 export interface FlipRoundScoreRow {
   gameId: string;
   roundNumber: number;
@@ -35,6 +53,11 @@ export interface FlipRoundScoreRow {
   score: number;
   busted: boolean;
   flip7: boolean;
+  /**
+   * Null for rounds scored before migration 017. Absence must degrade to
+   * showing the plain total, never to hiding the row.
+   */
+  breakdown: FlipScoreBreakdown | null;
 }
 
 /**
@@ -46,16 +69,26 @@ export interface FlipRoundScoreRow {
 export async function recordFlipRoundScores(
   gameId: string,
   roundNumber: number,
-  scores: readonly { playerId: string; score: number; busted: boolean; flip7: boolean }[],
+  scores: readonly {
+    playerId: string;
+    score: number;
+    busted: boolean;
+    flip7: boolean;
+    breakdown?: FlipScoreBreakdown | null;
+  }[],
 ): Promise<void> {
   for (const entry of scores) {
+    const breakdown = entry.breakdown === undefined || entry.breakdown === null
+      ? null
+      : JSON.stringify(entry.breakdown);
     await sql`
-      INSERT INTO flip_round_scores (game_id, round_number, player_id, score, busted, flip7)
-      VALUES (${gameId}, ${roundNumber}, ${entry.playerId}, ${entry.score}, ${entry.busted}, ${entry.flip7})
+      INSERT INTO flip_round_scores (game_id, round_number, player_id, score, busted, flip7, breakdown)
+      VALUES (${gameId}, ${roundNumber}, ${entry.playerId}, ${entry.score}, ${entry.busted}, ${entry.flip7}, ${breakdown}::jsonb)
       ON CONFLICT (game_id, round_number, player_id) DO UPDATE SET
         score = EXCLUDED.score,
         busted = EXCLUDED.busted,
-        flip7 = EXCLUDED.flip7
+        flip7 = EXCLUDED.flip7,
+        breakdown = EXCLUDED.breakdown
     `;
   }
 }
@@ -73,5 +106,6 @@ export async function getFlipRoundScores(gameId: string): Promise<FlipRoundScore
     score: row.score as number,
     busted: row.busted as boolean,
     flip7: row.flip7 as boolean,
+    breakdown: (row.breakdown ?? null) as FlipScoreBreakdown | null,
   }));
 }

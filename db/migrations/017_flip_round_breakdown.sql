@@ -1,0 +1,23 @@
+-- #365 — per-round score breakdown for the Flip scoreboard (epic #358).
+--
+-- 016 stores only the final round score. #365 requires the scoreboard to show
+-- where a round's points came from: a Flip 7 must show its +15 as a distinct
+-- line and a `x2` must show the multiplier applied, not silently folded into
+-- a total. Neither is recoverable from the total alone — 30 could be
+-- (15 numbers x2) or (15 numbers + 15 flip7 bonus), and those render
+-- differently.
+--
+-- A separate migration rather than widening 016: 016 is already merged and
+-- applied, and an applied migration is never edited in place.
+--
+-- JSONB rather than one column per component, deliberately. The breakdown is
+-- display data owned by the engine's scoring function, and its shape is more
+-- likely to move than the score itself (#358's ruleset is settled, but how
+-- much detail the scoreboard wants is not). A blob absorbs that without
+-- another migration. `score` in 016 stays the number of record — this column
+-- explains it, never replaces it, and the two are written together.
+--
+-- Nullable because rounds scored before this migration have no breakdown, and
+-- because a breakdown is an explanation: its absence must degrade to showing
+-- the plain total, never to blocking the scoreboard.
+ALTER TABLE flip_round_scores ADD COLUMN IF NOT EXISTS breakdown JSONB;
