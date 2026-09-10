@@ -27,6 +27,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@tabletop/shared": path.resolve(__dirname, "../shared/src"),
+      // #370 — same reason as shared: resolve the engine from source so tests
+      // don't depend on a built dist being fresh.
+      "@tabletop/game-flip": path.resolve(__dirname, "../games/flip/src"),
     },
   },
 });
