@@ -1,5 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify from 'fastify';
+import { GAME_REGISTRY, getGameById, type GameId } from '@tabletop/shared';
+import { FLIP_SCENARIOS, isFlipScenarioName } from './dev/flip-scenarios.js';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import * as gamesDb from './db/games.js';
@@ -424,13 +426,42 @@ export async function buildApp() {
     // count in game-engine.ts/wire-dealer.ts — dealWires' wiresPerPlayer
     // lookup and startGame's `players.length - 1` detonator formula were
     // never hardcoded to 4, so seeding fewer players is the entire fix.
-    const DEV_SEED_NAMES = ['Dev', 'Alice', 'Bob', 'Carol'] as const;
+    //
+    // #370 — 'Erin' is the fifth seat, added for Flip (max 5). Wire Game's
+    // own cap is unchanged: the per-count limit is now read off the registry
+    // per game type rather than off this array's length, precisely so adding
+    // a seat for one game cannot quietly raise another game's maximum.
+    const DEV_SEED_NAMES = ['Dev', 'Alice', 'Bob', 'Carol', 'Erin'] as const;
 
-    const parsePlayerCountParam = (body: unknown): number | { error: string } => {
-      const raw = (body as Record<string, unknown> | null ?? {}).playerCount;
-      if (raw === undefined) return DEV_SEED_NAMES.length;
-      if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 2 || raw > DEV_SEED_NAMES.length) {
-        return { error: `playerCount must be an integer between 2 and ${DEV_SEED_NAMES.length}` };
+    // #370 — the dev seed's game type. Validated against the registry, which
+    // is the same allowlist create_game uses, but via getGameById rather than
+    // isAvailableGameId: dev seeding deliberately reaches games that are
+    // registered-but-not-yet-available (flip ships `available: false`), which
+    // is the whole point of a dev door. Unknown ids are still refused, so a
+    // client-supplied value never reaches the game_type column unchecked.
+    // This route is already behind the ENABLE_DEV_SEED + non-production gate.
+    const parseGameTypeParam = (body: unknown): GameId | { error: string } => {
+      const raw = (body as Record<string, unknown> | null ?? {}).gameType;
+      if (raw === undefined) return 'wire-game';
+      if (typeof raw !== 'string' || getGameById(raw) === undefined) {
+        return { error: `gameType must be one of: ${GAME_REGISTRY.map(g => g.id).join(', ')}` };
+      }
+      return raw as GameId;
+    };
+
+    // Bounds come from the registry entry for the game being seeded, not from
+    // DEV_SEED_NAMES.length — wire-game caps at 4 and flip at 5, and a shared
+    // constant would be wrong for one of them. `players` is accepted as an
+    // alias because #370 names the field that way; `playerCount` stays the
+    // canonical name since the existing /dev client already sends it.
+    const parsePlayerCountParam = (body: unknown, gameType: GameId): number | { error: string } => {
+      const fields = (body as Record<string, unknown> | null ?? {});
+      const raw = fields.playerCount ?? fields.players;
+      const entry = getGameById(gameType)!;
+      const max = Math.min(entry.maxPlayers, DEV_SEED_NAMES.length);
+      if (raw === undefined) return Math.min(entry.maxPlayers, 4, DEV_SEED_NAMES.length);
+      if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < entry.minPlayers || raw > max) {
+        return { error: `playerCount must be an integer between ${entry.minPlayers} and ${max} for ${gameType}` };
       }
       return raw;
     };
@@ -489,10 +520,36 @@ export async function buildApp() {
     // game to the old all-tokens/active state on demand.
     app.post('/dev/seed', async (request, reply) => {
       try {
+        // #370 — the endpoint generalises rather than forks: gameType is
+        // parsed first because it sets the valid player-count range, and an
+        // absent gameType still means wire-game, so every existing caller
+        // sending only { mission } is unaffected.
+        const gameType = parseGameTypeParam(request.body);
+        if (typeof gameType === 'object') return reply.status(400).send(gameType);
+        const playerCount = parsePlayerCountParam(request.body, gameType);
+        if (typeof playerCount === 'object') return reply.status(400).send(playerCount);
+
+        if (gameType === 'flip') {
+          const scenario = (request.body as Record<string, unknown> | null ?? {}).scenario;
+          if (scenario !== undefined && !isFlipScenarioName(scenario)) {
+            return reply.status(400).send({
+              error: `scenario must be one of: ${FLIP_SCENARIOS.map(s => s.name).join(', ')}`,
+            });
+          }
+          // The engine (#360) is not a dependency of the server yet, so there
+          // is nothing to seed a real table with. Fails loudly and specifically
+          // rather than silently seeding a wire game under a flip label —
+          // Caroline would read that as Flip being broken.
+          return reply.status(503).send({
+            error: 'Flip dev seeding is not wired yet — blocked on #360 (engine) landing.',
+            gameType,
+            playerCount,
+            scenario: scenario ?? null,
+          });
+        }
+
         const mission = parseMissionParam(request.body);
         if (typeof mission === 'object') return reply.status(400).send(mission);
-        const playerCount = parsePlayerCountParam(request.body);
-        if (typeof playerCount === 'object') return reply.status(400).send(playerCount);
 
         const result = await seedDevGame(mission, { completeSetup: false, playerCount });
         return result;
@@ -501,6 +558,10 @@ export async function buildApp() {
         return reply.status(500).send({ error: 'Seed failed' });
       }
     });
+
+    // #370 — lets the /dev UI render and validate the stacked-deck buttons
+    // before the engine constructor exists. Catalogue only; no game state.
+    app.get('/dev/flip-scenarios', async () => ({ scenarios: FLIP_SCENARIOS }));
 
     // #256 — colour-scoped (yellow, #190 Phase B) vs value-scoped (every
     // other non-red colour) hidden-wire selection, shared by positionNearWin
@@ -594,7 +655,7 @@ export async function buildApp() {
         const color = colorResult;
         const mission = parseMissionParam(request.body, color === 'yellow' ? 3 : 1);
         if (typeof mission === 'object') return reply.status(400).send(mission);
-        const playerCount = parsePlayerCountParam(request.body);
+        const playerCount = parsePlayerCountParam(request.body, 'wire-game');
         if (typeof playerCount === 'object') return reply.status(400).send(playerCount);
 
         const result = await seedDevGame(mission, { completeSetup: true, playerCount });
@@ -650,7 +711,7 @@ export async function buildApp() {
         const color = colorResult;
         const mission = parseMissionParam(request.body, color === 'yellow' ? 3 : 1);
         if (typeof mission === 'object') return reply.status(400).send(mission);
-        const playerCount = parsePlayerCountParam(request.body);
+        const playerCount = parsePlayerCountParam(request.body, 'wire-game');
         if (typeof playerCount === 'object') return reply.status(400).send(playerCount);
 
         const result = await seedDevGame(mission, { completeSetup: true, playerCount });
