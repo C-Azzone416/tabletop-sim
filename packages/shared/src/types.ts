@@ -139,7 +139,16 @@ export type ClientMessage =
   | { type: 'double_detector'; targetWireId: string; targetWireId2: string }
   | { type: 'reveal_reds' }
   | { type: 'player_ready' }
-  | { type: 'next_mission'; mission: number };
+  | { type: 'next_mission'; mission: number }
+  // Flip (#358/#383) — the dealer starts each round explicitly (#358: "Dealer
+  // triggers round start"); everything else is a live-turn action or a
+  // pending Freeze/Flip 3 target choice. No wireId/mission-shaped payload —
+  // Flip has no equivalent concepts.
+  | { type: 'flip_start_round' }
+  | { type: 'flip_hit' }
+  | { type: 'flip_freeze' }
+  | { type: 'flip_choose_freeze_target'; targetId: string }
+  | { type: 'flip_choose_flip3_target'; targetId: string };
 
 export type ServerMessage =
   | { type: 'game_created'; game: Game; player: Player }

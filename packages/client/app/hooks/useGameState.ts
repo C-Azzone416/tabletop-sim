@@ -9,6 +9,7 @@ import type {
   ValidationToken,
   ServerMessage,
 } from "@tabletop/shared";
+import type { FlipTableView } from "../components/flip/flip-view-types";
 
 export interface GameState {
   game: Game | null;
@@ -17,6 +18,14 @@ export interface GameState {
   wires: Wire[];
   infoTokens: InfoToken[];
   validationTokens: ValidationToken[];
+  /**
+   * Flip's table state (#382/#383) — set from `game_state`'s `flip` field.
+   * `@tabletop/shared` doesn't declare that field on the `game_state`
+   * ServerMessage variant yet (#382 is landing it), so it's read via
+   * `readFlipView` below rather than the message's own type. Wire games
+   * never set this; it stays null for them.
+   */
+  flip: FlipTableView | null;
   lastTurnResult: Extract<ServerMessage, { type: "turn_result" }> | null;
   pendingDualCut: Extract<ServerMessage, { type: "dual_cut_proposed" }> | null;
   pendingDualCutCorrect: Extract<ServerMessage, { type: "dual_cut_correct" }> | null;
@@ -31,12 +40,25 @@ const initialState: GameState = {
   wires: [],
   infoTokens: [],
   validationTokens: [],
+  flip: null,
   lastTurnResult: null,
   pendingDualCut: null,
   pendingDualCutCorrect: null,
   gameOverReason: null,
   error: null,
 };
+
+/**
+ * Reads `game_state`'s `flip` field defensively — see the `flip` field's
+ * doc comment on `GameState` above for why this isn't just `msg.flip`.
+ * Once #382 merges and `@tabletop/shared` declares the field, this
+ * collapses to `(msg as Extract<ServerMessage, {type:"game_state"}>).flip
+ * ?? null`.
+ */
+function readFlipView(msg: ServerMessage & { type: "game_state" }): FlipTableView | null {
+  const flip = (msg as unknown as { flip?: FlipTableView }).flip;
+  return flip ?? null;
+}
 
 type Action =
   | { type: "SET_ERROR"; message: string }
@@ -119,9 +141,12 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
         game: msg.game,
         localPlayer,
         players: msg.players,
-        wires: msg.wires,
-        infoTokens: msg.infoTokens,
-        validationTokens: msg.validationTokens,
+        // Flip's game_state branch (#382) omits these entirely rather than
+        // sending empty arrays — defensive fallback below either way.
+        wires: msg.wires ?? [],
+        infoTokens: msg.infoTokens ?? [],
+        validationTokens: msg.validationTokens ?? [],
+        flip: readFlipView(msg),
       };
     }
 

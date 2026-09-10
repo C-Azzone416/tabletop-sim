@@ -7,6 +7,7 @@ import { useMissionOutcomes } from "../../hooks/useMissionOutcomes";
 import { Lobby } from "../../components/Lobby";
 import { SetupPhase } from "../../components/SetupPhase";
 import { GameBoard } from "../../components/GameBoard";
+import { FlipGameRoot } from "../../components/flip/FlipGameRoot";
 import { GameOverOverlay } from "../../components/GameOverOverlay";
 import { DevPanel } from "../../components/DevPanel";
 import { ErrorToast } from "../../components/ErrorToast";
@@ -200,6 +201,36 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
           }
         />
         {devPanel({ canRevealTokens: true })}
+        <ErrorToast message={state.error} onDismiss={clearError} />
+      </div>
+    );
+  }
+
+  // Active Flip game (#383) — checked ahead of the Wire-only branch below,
+  // which must stay completely unaffected (#383 AC: "the wire game is
+  // completely unaffected — its rendering path must not regress").
+  if (gameStatus === "active" && readRoomGameType(state.game) === "flip") {
+    return (
+      <div className="min-h-screen bg-surface">
+        <JoinCodeBadge joinCode={joinCode} />
+        {state.flip ? (
+          <FlipGameRoot
+            flip={state.flip}
+            localPlayerId={state.localPlayer?.id ?? ""}
+            onHit={() => send({ type: "flip_hit" })}
+            onFreeze={() => send({ type: "flip_freeze" })}
+            onChooseFreezeTarget={(targetId) =>
+              send({ type: "flip_choose_freeze_target", targetId })
+            }
+            onChooseFlip3Target={(targetId) =>
+              send({ type: "flip_choose_flip3_target", targetId })
+            }
+            onStartRound={() => send({ type: "flip_start_round" })}
+          />
+        ) : (
+          <p className="p-6 text-center text-sm text-ink-muted">Loading the table…</p>
+        )}
+        {devPanel()}
         <ErrorToast message={state.error} onDismiss={clearError} />
       </div>
     );
