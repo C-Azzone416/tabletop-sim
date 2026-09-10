@@ -825,8 +825,142 @@ describe("routes", () => {
 
         const [gameId, state] = mockFlipGamesDb.saveFlipGameState.mock.calls[0];
         expect(gameId).toBe("g1");
-        expect(state).toMatchObject({ phase: "round-in-progress", dealQueue: null });
-        expect(res.json().turnPlayerId).toBeTruthy();
+        // #400 — a real deal can pause on a drawn action card, or (rarely)
+        // end the round outright, so the phase is no longer fixed. What must
+        // hold is that a coherent live-or-just-finished round was persisted.
+        expect(["round-in-progress", "awaiting-round-start", "game-over"]).toContain(
+          (state as { phase: string }).phase,
+        );
+      });
+
+      // #400 — the regression. A plain seed used to build a round-in-progress
+      // state with NO hands: a live round where nobody had been dealt in,
+      // which normal play cannot produce. The assertion above passed anyway
+      // because it only checked the phase, which is why this slipped through —
+      // so these check the cards, not the label.
+      describe("plain seed deals the opening round (#400)", () => {
+        const savedState = () =>
+          mockFlipGamesDb.saveFlipGameState.mock.calls[0][1] as {
+            players: { id: string; hand: unknown[]; status: string }[];
+            shoe: unknown[];
+            discard: unknown[];
+            dealQueue: unknown[] | null;
+            pendingAction: unknown | null;
+            turnPlayerId: string | null;
+            dealerIndex: number;
+            roundNumber: number;
+            phase: string;
+          };
+
+        it.each([2, 3, 4, 5])("deals the opening round at %i seats", async (playerCount) => {
+          mockFlipSeed();
+
+          const res = await seedApp.inject({
+            method: "POST", url: "/dev/seed", payload: { gameType: "flip", playerCount },
+          });
+
+          expect(res.statusCode).toBe(200);
+          const state = savedState();
+          expect(state.players).toHaveLength(playerCount);
+
+          // Cards actually left the shoe — the decisive check, and the one
+          // the bug fails outright: it dealt nothing at all.
+          //
+          // Not `<= 94 - playerCount`, because the opening deal legitimately
+          // PAUSES if it turns up a Freeze or Flip 3: the flipper owes a
+          // target choice before the remaining seats are dealt in. Repeated
+          // runs proved that real (a 5-seat deal stopping after 4 cards).
+          // Per-hand assertions are flaky for the same family of reasons — a
+          // discarded Freeze can leave its flipper empty-handed and still
+          // active. What is always true is that the deal started.
+          expect(state.shoe.length).toBeLessThan(94);
+
+          // Deck conservation across the deal, however far it got.
+          const held = state.players.reduce((n, p) => n + p.hand.length, 0);
+          expect(state.shoe.length + held + state.discard.length).toBe(94);
+
+          // Once the deal has fully run and nothing is pending, every active
+          // seat must hold cards — the bug's exact signature.
+          if (state.dealQueue === null && state.pendingAction === null) {
+            for (const player of state.players) {
+              if (player.status === "active") expect(player.hand.length).toBeGreaterThan(0);
+            }
+          }
+        });
+
+        it("draws those cards from the shoe rather than inventing them", async () => {
+          mockFlipSeed();
+
+          await seedApp.inject({
+            method: "POST", url: "/dev/seed", payload: { gameType: "flip", playerCount: 4 } });
+
+          const state = savedState();
+          const held = state.players.reduce((n, p) => n + p.hand.length, 0);
+          // Deck conservation: every card is in the shoe, a hand, or the
+          // discard — nothing invented, nothing lost.
+          expect(state.shoe.length + held + state.discard.length).toBe(94);
+        });
+
+        it("starts the round at round 1 with the turn on a real seat", async () => {
+          mockFlipSeed();
+
+          await seedApp.inject({ method: "POST", url: "/dev/seed", payload: { gameType: "flip" } });
+
+          const state = savedState();
+          expect(state.roundNumber).toBe(1);
+          expect(state.phase).toBe("round-in-progress");
+          expect(state.players.map((p) => p.id)).toContain(state.turnPlayerId);
+        });
+
+        // Play begins to the dealer's left — but only "the first ACTIVE seat
+        // from there", because the opening deal can freeze or bust the seat
+        // immediately left of the dealer before anyone acts. Asserting the
+        // exact seat was flaky for that reason.
+        it("puts the turn on an active seat at or after the dealer's left", async () => {
+          mockFlipSeed();
+
+          await seedApp.inject({
+            method: "POST", url: "/dev/seed", payload: { gameType: "flip", playerCount: 4 } });
+
+          const state = savedState();
+
+          // The round can be over already if the deal itself froze or busted
+          // everyone — rare, but it happened across repeated runs, and then
+          // turnPlayerId is legitimately null. Only assert while it is live.
+          if (state.phase !== "round-in-progress") {
+            expect(state.turnPlayerId).toBeNull();
+            return;
+          }
+
+          const turnSeat = state.players.find((p) => p.id === state.turnPlayerId);
+          expect(turnSeat).toBeDefined();
+          expect(turnSeat!.status).toBe("active");
+
+          // The dealer acts last, so while any other seat is still active the
+          // turn is never theirs at the start of a round.
+          const othersActive = state.players.some(
+            (p, i) => i !== state.dealerIndex && p.status === "active",
+          );
+          if (othersActive) {
+            expect(state.turnPlayerId).not.toBe(state.players[state.dealerIndex]!.id);
+          }
+        });
+
+        // The scenarios supply their own exact hands and shoe by design and
+        // must NOT be re-dealt on top.
+        it("leaves flip7-ready's documented hand exactly as specified", async () => {
+          mockFlipSeed();
+
+          await seedApp.inject({
+            method: "POST", url: "/dev/seed",
+            payload: { gameType: "flip", playerCount: 3, scenario: "flip7-ready" },
+          });
+
+          const state = savedState();
+          const hands = state.players.map((p) => p.hand.length).sort();
+          // One seat holds the six unique numbers; the others hold nothing.
+          expect(hands).toEqual([0, 0, 6]);
+        });
       });
 
       it.each([2, 3, 4, 5])("seeds flip at %i players, every seat with a real profile", async (playerCount) => {

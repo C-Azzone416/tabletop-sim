@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify from 'fastify';
 import { GAME_REGISTRY, getGameById, type GameId } from '@tabletop/shared';
-import { buildFlipGameState } from '@tabletop/game-flip';
+import { startFlipGame, startRound } from '@tabletop/game-flip';
 import { FLIP_SCENARIOS, isFlipScenarioName } from './dev/flip-scenarios.js';
 import { buildFlipScenarioState } from './dev/flip-scenario-states.js';
 import * as flipGamesDb from './db/flip-games.js';
@@ -516,14 +516,54 @@ export async function buildApp() {
       };
     };
 
+    /**
+     * #400 — a genuinely dealt opening round, via the engine's own public
+     * path rather than a hand-built state.
+     *
+     * `startFlipGame` picks the first dealer at random and leaves the game
+     * awaiting a round; `startRound` deals one face-up card to each player
+     * from the dealer's left and hands the turn to the first of them. Going
+     * through these two rather than constructing the state means the dev seed
+     * cannot drift from what a real game produces — including the opening
+     * deal resolving any action card it happens to turn up.
+     */
+    const dealOpeningRound = (seats: { id: string; name: string }[]) => {
+      // Retried because the opening deal legitimately PAUSES when it turns up
+      // a Freeze or Flip 3: the flipper owes a target choice before the
+      // remaining seats are dealt in. If that lands on the very first card,
+      // the seeded table has no cards on it at all — which is the exact
+      // symptom #400 is about, just arriving a different way. Live seeding hit
+      // it roughly one time in ten.
+      //
+      // A dev seed exists to produce a good starting table, and the eight
+      // named scenarios cover the interrupted cases deliberately, so retrying
+      // for a cleanly dealt round is the right trade here. Bounded, and the
+      // last attempt is used regardless so this can never spin.
+      const deal = () => {
+        const fresh = startFlipGame({ players: seats });
+        return startRound(fresh, seats[fresh.dealerIndex]!.id);
+      };
+
+      let attempt = deal();
+      for (let i = 0; i < 10 && !isFullyDealt(attempt); i += 1) {
+        attempt = deal();
+      }
+      return attempt;
+    };
+
+    const isFullyDealt = (state: ReturnType<typeof startRound>): boolean =>
+      state.dealQueue === null &&
+      state.pendingAction === null &&
+      state.phase === 'round-in-progress';
+
     // #370 — a Flip table Caroline can drive immediately: seats filled, a
-    // round already in progress, and (optionally) the shoe stacked for one of
-    // the eight scenarios.
+    // round already dealt and in progress, and (optionally) the shoe stacked
+    // for one of the eight scenarios.
     //
-    // The state itself is built by the ENGINE's buildFlipGameState, never
-    // assembled here: it validates deck conservation and rejects impossible
-    // hands, and keeping that knowledge in the engine is what stops the
-    // server layer growing rules of its own.
+    // The state itself is built by the ENGINE, never assembled here: it
+    // validates deck conservation and rejects impossible hands, and keeping
+    // that knowledge in the engine is what stops the server layer growing
+    // rules of its own.
     const seedDevFlipGame = async (playerCount: number, scenario: unknown) => {
       const names = DEV_SEED_NAMES.slice(0, playerCount);
 
@@ -539,9 +579,22 @@ export async function buildApp() {
         seats.push({ id: joined.id, name });
       }
 
+      // #400 — a plain seed goes through the REAL opening path: startFlipGame
+      // then startRound, so every player is dealt their face-up card and play
+      // begins to the dealer's left, exactly as a live game does.
+      //
+      // This previously called buildFlipGameState directly, whose default is
+      // `round-in-progress` with the deal already complete — which, with no
+      // hands supplied, produced a live round where nobody had cards. That is
+      // a state normal play cannot reach, and clicking seed without choosing a
+      // scenario is the most obvious action on /dev, so it read as the game
+      // being broken.
+      //
+      // The eight scenarios keep using buildFlipScenarioState: each supplies
+      // its own exact hands and shoe by design, and must not be re-dealt.
       const state = isFlipScenarioName(scenario)
         ? buildFlipScenarioState(scenario, seats)
-        : buildFlipGameState({ players: seats });
+        : dealOpeningRound(seats);
 
       await flipGamesDb.saveFlipGameState(game.id, state);
       // The room is 'active' rather than 'setup': Flip's seed lands mid-round
