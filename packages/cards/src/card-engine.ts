@@ -65,23 +65,12 @@ export function createStandardShoe(
   ).flat();
 }
 
-/** Fisher-Yates shuffle. Inject a seeded random function for replayable tests. */
-export function shuffleCards<T>(
-  cards: readonly T[],
-  random: () => number = Math.random,
-): T[] {
-  const shuffled = [...cards];
-
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(random() * (index + 1));
-    [shuffled[index], shuffled[swapIndex]] = [
-      shuffled[swapIndex],
-      shuffled[index],
-    ];
-  }
-
-  return shuffled;
-}
+/**
+ * Re-exported for backward compatibility. Not a card concept — the
+ * implementation lives in `@tabletop/shared`; depend on it directly for new
+ * code.
+ */
+export { shuffleCards } from '@tabletop/shared';
 
 export interface DealResult<T> {
   readonly hands: T[][];
