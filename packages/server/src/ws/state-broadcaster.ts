@@ -4,7 +4,7 @@ import * as wiresDb from '../db/wires.js';
 import * as tokensDb from '../db/tokens.js';
 import * as candidatesDb from '../db/candidates.js';
 import * as flipGamesDb from '../db/flip-games.js';
-import { toFlipTableView } from './flip-view.js';
+import { groupRoundsByPlayer, toFlipTableView } from './flip-view.js';
 import { getGameSockets, sendToPlayer } from './connection-manager.js';
 
 /**
@@ -29,7 +29,12 @@ async function broadcastFlipGameState(
   // half-built view.
   if (!stored) return;
 
-  const flip = toFlipTableView(stored as FlipGameState);
+  // #396 — round history comes from flip_round_scores, not the state blob: a
+  // completed round's score is an immutable fact, and the blob holds only the
+  // current round plus cumulative totals. One extra read per broadcast, which
+  // is what keeps the scoreboard correct across a reconnect.
+  const rounds = await flipGamesDb.getFlipRoundScores(gameId);
+  const flip = toFlipTableView(stored as FlipGameState, groupRoundsByPlayer(rounds));
   const gameSockets = getGameSockets(gameId);
 
   for (const [playerId] of gameSockets) {

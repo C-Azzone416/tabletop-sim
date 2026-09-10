@@ -121,6 +121,53 @@ export async function executeFlipAction(
   const stored = await flipGamesDb.getFlipGameState(gameId);
   if (!stored) throw new Error('This game has no Flip state');
 
-  const next = applyFlipAction(stored as FlipGameState, connectionPlayerId, action);
+  const before = stored as FlipGameState;
+  const next = applyFlipAction(before, connectionPlayerId, action);
   await flipGamesDb.saveFlipGameState(gameId, next);
+  await recordRoundIfJustScored(gameId, before, next);
+}
+
+/**
+ * #396 — the gap this closes: `recordFlipRoundScores` existed and was tested,
+ * but nothing in the live flow ever called it, so `flip_round_scores` stayed
+ * empty and the scoreboard had no history to show.
+ *
+ * A round can finalize inside any of the four actions (a Flip 7 on a hit, the
+ * last player freezing, a Flip 3 busting everyone), so rather than trying to
+ * predict which action ends a round, this compares before and after: a
+ * `lastRoundResult` whose round number just changed means exactly one round
+ * scored during that call.
+ *
+ * Failing to record must not fail the action — the score is already in
+ * `totalScore` in the state blob, which is the figure of record. Losing a
+ * history row degrades the scoreboard's detail; throwing here would lose the
+ * player's turn.
+ */
+async function recordRoundIfJustScored(
+  gameId: string,
+  before: FlipGameState,
+  after: FlipGameState,
+): Promise<void> {
+  const result = after.lastRoundResult;
+  if (!result) return;
+  if (before.lastRoundResult?.roundNumber === result.roundNumber) return;
+
+  try {
+    await flipGamesDb.recordFlipRoundScores(
+      gameId,
+      result.roundNumber,
+      after.players.map((player) => {
+        const breakdown = result.breakdowns?.[player.id] ?? null;
+        return {
+          playerId: player.id,
+          score: result.scores[player.id] ?? 0,
+          busted: breakdown?.busted ?? false,
+          flip7: result.flip7PlayerId === player.id,
+          breakdown,
+        };
+      }),
+    );
+  } catch (err) {
+    console.error('[flip] failed to record round scores', { gameId, roundNumber: result.roundNumber, err });
+  }
 }

@@ -1,7 +1,7 @@
 import { shuffleCards } from '@tabletop/shared';
 import { buildFlipDeck, drawFromShoe } from './deck';
 import { eligibleTargets, isDuplicateNumber, nextActiveSeatIndex, playerIndex } from './rules';
-import { hasSecondChance, isFlip7, scoreHand } from './scoring';
+import { hasSecondChance, isFlip7, scoreHandBreakdown } from './scoring';
 import type {
   FlipCardEffect,
   FlipCardInstance,
@@ -9,6 +9,7 @@ import type {
   FlipPlayerState,
   FlipResolutionEvent,
   FlipRoundResult,
+  FlipScoreBreakdown,
   StartFlipGameOptions,
 } from './types';
 
@@ -349,9 +350,16 @@ function finalizeLiveTurnIfSettled(state: FlipGameState, flipperId: string): Fli
 }
 
 function finalizeRound(state: FlipGameState, flip7PlayerId: string | null): FlipGameState {
+  // #396 — the breakdown is captured HERE, before the hands below are
+  // cleared. `scoreHandBreakdown` is the same computation `scoreHand`
+  // delegates to, so `total` is the score of record by construction and the
+  // two cannot disagree.
   const scores: Record<string, number> = {};
+  const breakdowns: Record<string, FlipScoreBreakdown> = {};
   for (const player of state.players) {
-    scores[player.id] = scoreHand(player.hand, player.status, player.id === flip7PlayerId);
+    const breakdown = scoreHandBreakdown(player.hand, player.status, player.id === flip7PlayerId);
+    breakdowns[player.id] = breakdown;
+    scores[player.id] = breakdown.total;
   }
 
   const discardAdditions = state.players.flatMap((player) => player.hand);
@@ -362,7 +370,7 @@ function finalizeRound(state: FlipGameState, flip7PlayerId: string | null): Flip
     totalScore: player.totalScore + scores[player.id]!,
   }));
 
-  const roundResult: FlipRoundResult = { roundNumber: state.roundNumber, scores, flip7PlayerId };
+  const roundResult: FlipRoundResult = { roundNumber: state.roundNumber, scores, flip7PlayerId, breakdowns };
   const maxTotal = Math.max(...scoredPlayers.map((player) => player.totalScore));
   const base: FlipGameState = {
     ...state,

@@ -14,9 +14,37 @@
 // re-implementing an engine rule and risking disagreement with it.
 
 import { countUniqueNumbers, eligibleTargets, type FlipGameState } from '@tabletop/game-flip';
-import type { FlipCardView, FlipTableView } from '@tabletop/shared';
+import type { FlipCardView, FlipRoundScoreView, FlipTableView } from '@tabletop/shared';
+import type { FlipRoundScoreRow } from '../db/flip-games.js';
 
-export function toFlipTableView(state: FlipGameState): FlipTableView {
+/**
+ * #396 — completed rounds, grouped by player, ascending. Read from
+ * flip_round_scores rather than from the state blob: a round's score is an
+ * immutable historical fact, and the blob deliberately holds only the current
+ * round plus cumulative totals.
+ */
+export function groupRoundsByPlayer(
+  rows: readonly FlipRoundScoreRow[],
+): Map<string, FlipRoundScoreView[]> {
+  const byPlayer = new Map<string, FlipRoundScoreView[]>();
+  for (const row of [...rows].sort((a, b) => a.roundNumber - b.roundNumber)) {
+    const list = byPlayer.get(row.playerId) ?? [];
+    list.push({
+      roundNumber: row.roundNumber,
+      score: row.score,
+      busted: row.busted,
+      flip7: row.flip7,
+      breakdown: row.breakdown,
+    });
+    byPlayer.set(row.playerId, list);
+  }
+  return byPlayer;
+}
+
+export function toFlipTableView(
+  state: FlipGameState,
+  roundsByPlayer: Map<string, FlipRoundScoreView[]> = new Map(),
+): FlipTableView {
   const dealer = state.players[state.dealerIndex];
   if (!dealer) throw new Error(`flip state has no seat at dealerIndex ${state.dealerIndex}`);
 
@@ -33,6 +61,7 @@ export function toFlipTableView(state: FlipGameState): FlipTableView {
       hand: player.hand as readonly FlipCardView[],
       totalScore: player.totalScore,
       uniqueNumberCount: countUniqueNumbers(player.hand),
+      rounds: roundsByPlayer.get(player.id) ?? [],
     })),
     shoeRemaining: state.shoe.length,
     discardCount: state.discard.length,

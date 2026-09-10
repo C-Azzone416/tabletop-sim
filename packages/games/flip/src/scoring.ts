@@ -1,4 +1,8 @@
-import type { FlipCardInstance, FlipPlayerStatus } from './types';
+import type { FlipCardInstance, FlipPlayerStatus, FlipScoreBreakdown } from './types';
+
+// Re-exported so existing importers of this module keep working; the type
+// itself lives in types.ts because FlipRoundResult references it (#396).
+export type { FlipScoreBreakdown };
 
 const MODIFIER_PLUS_VALUE: Readonly<Record<string, number>> = {
   '+2': 2,
@@ -33,18 +37,6 @@ export function hasSecondChance(hand: readonly FlipCardInstance[]): boolean {
  * scoreboard because summing card values, and knowing that `x2` doubles the
  * `+` cards but never the Flip 7 bonus, IS the scoring rule.
  */
-export interface FlipScoreBreakdown {
-  readonly numbersSum: number;
-  readonly plusSum: number;
-  readonly hasX2: boolean;
-  /** 15 or 0. Added after the multiplier, never doubled. */
-  readonly flip7Bonus: number;
-  /** Identical to `scoreHand` for the same arguments — the number of record. */
-  readonly total: number;
-  /** True ⇒ every other field is 0: a busted hand scores nothing it held. */
-  readonly busted: boolean;
-}
-
 export function scoreHandBreakdown(
   hand: readonly FlipCardInstance[],
   status: FlipPlayerStatus,

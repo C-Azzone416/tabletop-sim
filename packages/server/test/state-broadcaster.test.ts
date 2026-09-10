@@ -145,6 +145,11 @@ describe("state-broadcaster", () => {
       mockConnManager.getGameSockets.mockReturnValue(
         new Map(ids.map((id) => [id, {}])) as Map<string, WebSocket>,
       );
+      // #396 — the broadcaster reads round history on every broadcast. No
+      // completed rounds unless a test says otherwise.
+      if (mockFlipGamesDb.getFlipRoundScores.getMockImplementation() === undefined) {
+        mockFlipGamesDb.getFlipRoundScores.mockResolvedValue([]);
+      }
     };
 
     it("broadcasts a renderable flip table to every connected seat", async () => {
@@ -230,6 +235,89 @@ describe("state-broadcaster", () => {
       expect((message as { flip: { pendingAction: unknown } }).flip.pendingAction).toMatchObject({
         kind: "flip3",
         flipperId: "p0",
+      });
+    });
+
+    // #396 — the scoreboard's data. Round history is read from
+    // flip_round_scores and attached per player; before this it did not exist
+    // in the payload at all, so the client had nothing to render.
+    describe("round history (#396)", () => {
+      const row = (over = {}) => ({
+        gameId: "g1",
+        roundNumber: 1,
+        playerId: "p0",
+        score: 12,
+        busted: false,
+        flip7: false,
+        breakdown: { numbersSum: 12, plusSum: 0, hasX2: false, flip7Bonus: 0, total: 12, busted: false },
+        ...over,
+      });
+
+      it("attaches each player's completed rounds", async () => {
+        mockFlipGamesDb.getFlipGameState.mockResolvedValue(buildFlipGameState({ players: twoSeats }));
+        mockFlipGamesDb.getFlipRoundScores.mockResolvedValue([
+          row({ playerId: "p0", roundNumber: 1, score: 12 }),
+          row({ playerId: "p1", roundNumber: 1, score: 0, busted: true }),
+          row({ playerId: "p0", roundNumber: 2, score: 30 }),
+        ]);
+        connect("p0");
+
+        await broadcastGameState("g1", flipGame(), flipPlayers());
+
+        const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+        const view = (message as { flip: { players: { id: string; rounds: unknown[] }[] } }).flip;
+        expect(view.players.find((p) => p.id === "p0")!.rounds).toHaveLength(2);
+        expect(view.players.find((p) => p.id === "p1")!.rounds).toHaveLength(1);
+      });
+
+      it("orders a player's rounds ascending", async () => {
+        mockFlipGamesDb.getFlipGameState.mockResolvedValue(buildFlipGameState({ players: twoSeats }));
+        mockFlipGamesDb.getFlipRoundScores.mockResolvedValue([
+          row({ roundNumber: 3 }),
+          row({ roundNumber: 1 }),
+          row({ roundNumber: 2 }),
+        ]);
+        connect("p0");
+
+        await broadcastGameState("g1", flipGame(), flipPlayers());
+
+        const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+        const rounds = (message as { flip: { players: { id: string; rounds: { roundNumber: number }[] }[] } })
+          .flip.players.find((p) => p.id === "p0")!.rounds;
+        expect(rounds.map((r) => r.roundNumber)).toEqual([1, 2, 3]);
+      });
+
+      // The #365 acceptance criterion: the +15 and the x2 must survive as
+      // distinct terms rather than being folded into the total.
+      it("carries the breakdown through so a Flip 7 and a x2 stay distinct", async () => {
+        mockFlipGamesDb.getFlipGameState.mockResolvedValue(buildFlipGameState({ players: twoSeats }));
+        mockFlipGamesDb.getFlipRoundScores.mockResolvedValue([
+          row({
+            score: 57,
+            flip7: true,
+            breakdown: { numbersSum: 21, plusSum: 0, hasX2: true, flip7Bonus: 15, total: 57, busted: false },
+          }),
+        ]);
+        connect("p0");
+
+        await broadcastGameState("g1", flipGame(), flipPlayers());
+
+        const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+        const round = (message as { flip: { players: { id: string; rounds: { breakdown: Record<string, unknown> }[] }[] } })
+          .flip.players.find((p) => p.id === "p0")!.rounds[0];
+        expect(round.breakdown).toMatchObject({ hasX2: true, flip7Bonus: 15, total: 57 });
+      });
+
+      it("gives a player with no completed rounds an empty list, not undefined", async () => {
+        mockFlipGamesDb.getFlipGameState.mockResolvedValue(buildFlipGameState({ players: twoSeats }));
+        mockFlipGamesDb.getFlipRoundScores.mockResolvedValue([]);
+        connect("p0");
+
+        await broadcastGameState("g1", flipGame(), flipPlayers());
+
+        const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+        const view = (message as { flip: { players: { rounds: unknown[] }[] } }).flip;
+        expect(view.players.every((p) => Array.isArray(p.rounds) && p.rounds.length === 0)).toBe(true);
       });
     });
 
