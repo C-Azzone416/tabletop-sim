@@ -67,6 +67,9 @@ jobs:
       - name: Build game-spades
         run: npm run build -w packages/games/spades
 
+      - name: Build game-flip
+        run: npm run build -w packages/games/flip
+
       - name: Type check (server)
         run: npx tsc --noEmit -p packages/server/tsconfig.json
 
