@@ -119,6 +119,20 @@ describe("theme.css — wire colours are not reused for non-wire meanings (#245)
   });
 });
 
+// #393: a per-game token file (styles/games/*.css) only gets its Tailwind
+// utilities generated (bg-flip-num-7 etc.) if it's reached via CSS @import
+// from this file's own `@import "tailwindcss"` graph — a JS-level
+// `import "*.css"` from a component looks identical in the browser (the
+// raw custom properties still load) but silently produces zero utility
+// classes. This is a text-level guard against losing that @import again,
+// same rationale as the #245 guard above: the failure mode is invisible
+// until someone looks at a rendered page.
+describe("theme.css — per-game token files are chained via @import (#393)", () => {
+  it("imports styles/games/flip.css", () => {
+    expect(css).toMatch(/@import\s+["']\.\/games\/flip\.css["'];/);
+  });
+});
+
 /** WCAG 2.1 relative-luminance contrast ratio. */
 function contrast(a: string, b: string): number {
   const lum = (hex: string) => {

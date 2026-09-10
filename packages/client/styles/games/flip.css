@@ -7,8 +7,13 @@
    colors get their own file and their own selector scope. They apply only
    inside a Flip table, never bleed into the platform frame or another game.
 
-   Import this from the Flip game shell only (never from the root layout):
-       import "@/styles/games/flip.css";
+   Chained from theme.css via CSS @import, not a JS-level `import "*.css"`
+   from a component (#393 correction — the original plan here didn't work:
+   Tailwind 4 only turns @theme inline into utility classes within the CSS
+   graph rooted at theme.css's `@import "tailwindcss"`; a file pulled in
+   independently by Next's bundler never gets its utilities generated).
+   Runtime scope is still [data-game="flip"] below, so this costs a Wire-only
+   player nothing — the values just sit unused.
 
    Scope: every token below is read only under [data-game="flip"] on the
    table wrapper, per DESIGN-APPENDIX.md §3's "game interior" layer. Platform

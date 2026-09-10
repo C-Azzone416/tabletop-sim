@@ -19,6 +19,21 @@
 
 @import "tailwindcss";
 
+/* Per-game token files (--wire-* stays here directly since Wire is the
+   default game; a second title's own object colors get their own file —
+   see styles/games/flip.css). Chained via CSS @import, not a JS-level
+   `import "*.css"` from a component: Tailwind 4's `@theme` processing only
+   activates within the CSS graph rooted at `@import "tailwindcss"` above,
+   so a file pulled in independently by Next's bundler never gets its
+   `@theme inline` block turned into utility classes — its plain custom
+   properties still pass through (harmless), but no `bg-flip-num-*` class
+   is ever generated. Confirmed by a real build (#364/#393): the raw
+   `--flip-num-7` variable was present in the compiled CSS, the `.bg-flip-num-7`
+   utility was not. Chaining here, scoped entirely by [data-game="flip"]
+   selectors inside the file itself, costs Wire players nothing at runtime
+   and is the only way Tailwind will actually generate the classes. */
+@import "./games/flip.css";
+
 /* Class-based dark mode. Tailwind 4 has no darkMode config key — this is it. */
 @custom-variant dark (&:where(.dark, .dark *));
 
