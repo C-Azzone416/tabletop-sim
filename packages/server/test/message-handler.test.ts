@@ -280,6 +280,7 @@ describe("message-handler", () => {
     };
 
     it.each([
+      ["flip_start_round", { kind: "start-round" }],
       ["flip_hit", { kind: "hit" }],
       ["flip_freeze", { kind: "freeze" }],
     ] as const)("routes %s to the action executor", async (type, expected) => {

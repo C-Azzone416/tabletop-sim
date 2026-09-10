@@ -148,6 +148,10 @@ export type ClientMessage =
   // `targetPlayerId` is the game-scoped player id, matching what the client
   // already holds: FlipTableView speaks player ids throughout, and the target
   // picker renders straight off `pendingAction.eligibleTargetIds`.
+  // #358 — the dealer triggers each round explicitly, including the first;
+  // without this there is no way to start play after a seed, or the next
+  // round after one ends.
+  | { type: 'flip_start_round' }
   | { type: 'flip_hit' }
   | { type: 'flip_freeze' }
   | { type: 'flip_choose_freeze_target'; targetPlayerId: string }

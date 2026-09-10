@@ -79,6 +79,8 @@ function validateMessage(parsed: unknown): ClientMessage | null {
     // action, and whether the target is legal, are decided server-side in
     // flip-actions.ts against the engine. Note there is no acting-player field
     // to validate — the actor comes from the socket binding.
+    case 'flip_start_round':
+      return { type: 'flip_start_round' };
     case 'flip_hit':
       return { type: 'flip_hit' };
     case 'flip_freeze':
@@ -161,6 +163,9 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       case 'next_mission':
         await handleNextMission(socket, msg.mission);
         break;
+      case 'flip_start_round':
+        await handleFlipAction(socket, { kind: 'start-round' });
+        break;
       case 'flip_hit':
         await handleFlipAction(socket, { kind: 'hit' });
         break;
@@ -203,6 +208,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'A Freeze target is awaited', 'A Flip 3 target is awaited',
       'That player is not a legal target', 'Not a Flip game',
       'This game has no Flip state',
+      'a round cannot be started right now', 'only the dealer can start the round',
       'Dual cut already pending', 'Cannot target your own wire with dual cut',
       'No pending dual cut', 'Not your wire to respond to',
       'Not your turn to complete dual cut', 'Target wire is not revealed',
