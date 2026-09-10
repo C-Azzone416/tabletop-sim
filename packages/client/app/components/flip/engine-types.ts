@@ -35,6 +35,30 @@ export interface FlipPlayerState {
   totalScore: number;
 }
 
+/**
+ * What resolving one drawn card did, for #363's narration — mirrors
+ * @tabletop/game-flip's FlipCardEffect/FlipResolutionEvent (#360, merged to
+ * develop 2026-09-10 as 6600a49). Added here, not backfilled onto every
+ * existing FlipGameState fixture, hence optional on FlipGameState below.
+ */
+export type FlipResolutionEffect =
+  | "number-added"
+  | "number-busted"
+  | "number-saved"
+  | "number-flip7"
+  | "modifier-added"
+  | "second-chance-gained"
+  | "second-chance-discarded"
+  | "freeze-drawn"
+  | "flip3-drawn";
+
+export interface FlipResolutionEvent {
+  targetId: string;
+  card: FlipCardInstance;
+  effect: FlipResolutionEffect;
+  context: "deal" | "hit" | "flip3";
+}
+
 export interface FlipGameState {
   players: readonly FlipPlayerState[];
   dealerIndex: number;
@@ -51,4 +75,10 @@ export interface FlipGameState {
     flip7PlayerId: string | null;
   } | null;
   winnerId: string | null;
+  /**
+   * Optional — added for #363 after this file was first drafted. The real
+   * engine (@tabletop/game-flip) always provides it; kept optional here so
+   * #362's existing fixtures that predate this field still typecheck.
+   */
+  resolutionLog?: readonly FlipResolutionEvent[];
 }
