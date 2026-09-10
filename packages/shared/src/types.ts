@@ -139,7 +139,19 @@ export type ClientMessage =
   | { type: 'double_detector'; targetWireId: string; targetWireId2: string }
   | { type: 'reveal_reds' }
   | { type: 'player_ready' }
-  | { type: 'next_mission'; mission: number };
+  | { type: 'next_mission'; mission: number }
+  // #387 — Flip actions. Note what these deliberately do NOT carry: an
+  // acting-player id. The server takes the actor from the socket's
+  // authenticated binding, so there is no field in which a client could claim
+  // to be another seat.
+  //
+  // `targetPlayerId` is the game-scoped player id, matching what the client
+  // already holds: FlipTableView speaks player ids throughout, and the target
+  // picker renders straight off `pendingAction.eligibleTargetIds`.
+  | { type: 'flip_hit' }
+  | { type: 'flip_freeze' }
+  | { type: 'flip_choose_freeze_target'; targetPlayerId: string }
+  | { type: 'flip_choose_flip3_target'; targetPlayerId: string };
 
 export type ServerMessage =
   | { type: 'game_created'; game: Game; player: Player }
