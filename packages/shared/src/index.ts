@@ -4,3 +4,4 @@ export * from './types';
 export * from './constants';
 export * from './game-registry';
 export * from './shuffle';
+export * from './flip-view';

@@ -101,6 +101,19 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
       const localPlayer =
         msg.players.find((p) => p.id === msg.localPlayerId) ??
         state.localPlayer;
+
+      // #382 — game_state is now a union: the Flip variant carries a `flip`
+      // table and no wires/tokens/candidates at all. Narrowing on `flip`
+      // keeps the wire-game branch below exactly as it was.
+      //
+      // This is the minimum needed to keep the client compiling against the
+      // new payload; consuming `msg.flip` into render state is #383
+      // (daring-bobcat). Deliberately left out here rather than half-done,
+      // so there is nothing to unpick when that lands.
+      if (msg.flip) {
+        return { ...state, game: msg.game, localPlayer, players: msg.players };
+      }
+
       return {
         ...state,
         game: msg.game,
