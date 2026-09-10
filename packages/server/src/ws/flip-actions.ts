@@ -21,11 +21,13 @@ import {
   eligibleTargets,
   freeze,
   hit,
+  startRound,
   type FlipGameState,
 } from '@tabletop/game-flip';
 import * as flipGamesDb from '../db/flip-games.js';
 
 export type FlipActionKind =
+  | { readonly kind: 'start-round' }
   | { readonly kind: 'hit' }
   | { readonly kind: 'freeze' }
   | { readonly kind: 'choose-freeze-target'; readonly targetPlayerId: string }
@@ -44,6 +46,15 @@ export function applyFlipAction(
   connectionPlayerId: string,
   action: FlipActionKind,
 ): FlipGameState {
+  // #358 — the dealer triggers each round explicitly, including the first.
+  // Handled before the round-in-progress guard below: this is the one
+  // action that is only ever legal when a round is NOT in progress. The
+  // engine's own startRound already enforces dealer-only and phase, so
+  // there is nothing further to check here.
+  if (action.kind === 'start-round') {
+    return startRound(state, connectionPlayerId);
+  }
+
   if (state.phase !== 'round-in-progress') {
     throw new Error('No round is in progress');
   }

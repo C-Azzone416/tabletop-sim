@@ -225,3 +225,30 @@ describe("applyFlipAction — the action actually advances the game", () => {
     expect(JSON.stringify(before)).toBe(snapshot);
   });
 });
+
+describe("applyFlipAction — start-round (#358: the dealer triggers each round)", () => {
+  const awaitingState = (over: Parameters<typeof buildFlipGameState>[0] extends infer T ? Partial<T> : never = {}): FlipGameState =>
+    buildFlipGameState({
+      players: seats,
+      phase: "awaiting-round-start",
+      dealerIndex: 0,
+      ...over,
+    } as Parameters<typeof buildFlipGameState>[0]);
+
+  it("lets the dealer start the round", () => {
+    const next = applyFlipAction(awaitingState(), "p0", { kind: "start-round" });
+    expect(next.phase).toBe("round-in-progress");
+  });
+
+  it("rejects a non-dealer trying to start the round", () => {
+    expect(() => applyFlipAction(awaitingState(), "p1", { kind: "start-round" })).toThrow(
+      "only the dealer can start the round",
+    );
+  });
+
+  it("rejects starting a round that is already in progress", () => {
+    expect(() => applyFlipAction(liveState(), "p0", { kind: "start-round" })).toThrow(
+      "a round cannot be started right now",
+    );
+  });
+});
