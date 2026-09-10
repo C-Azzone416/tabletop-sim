@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FlipTable } from "../../app/components/flip/FlipTable";
 import type { FlipGameState } from "../../app/components/flip/engine-types";
@@ -84,5 +84,78 @@ describe("FlipTable", () => {
   it("has no discard-browsing affordance", () => {
     render(<FlipTable game={makeGame()} localPlayerId="p1" onHit={vi.fn()} onFreeze={vi.fn()} />);
     expect(screen.queryByText(/discard/i)).not.toBeInTheDocument();
+  });
+
+  describe("contract C4 — turn timeout defaults (#366)", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it("shows no countdown without a turnDeadline", () => {
+      render(<FlipTable game={makeGame()} localPlayerId="p1" onHit={vi.fn()} onFreeze={vi.fn()} />);
+      expect(screen.queryByTestId("turn-countdown")).not.toBeInTheDocument();
+    });
+
+    it("shows a live countdown once turnDeadline is set", () => {
+      render(
+        <FlipTable
+          game={makeGame()}
+          localPlayerId="p1"
+          onHit={vi.fn()}
+          onFreeze={vi.fn()}
+          turnDeadline={Date.now() + 10_000}
+        />,
+      );
+      expect(screen.getByTestId("turn-countdown")).toBeInTheDocument();
+    });
+
+    it("auto-Freezes on the hit/freeze prompt expiring — the ruled default", () => {
+      const onFreeze = vi.fn();
+      render(
+        <FlipTable
+          game={makeGame()}
+          localPlayerId="p1"
+          onHit={vi.fn()}
+          onFreeze={onFreeze}
+          turnDeadline={Date.now() + 1_000}
+        />,
+      );
+      act(() => vi.advanceTimersByTime(1_100));
+      expect(onFreeze).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("timeout-announcement")).toHaveTextContent("froze for the round");
+    });
+
+    it("self-targets via onTurnTimeout when a Freeze/Flip3 target choice expires, never auto-Freezing instead", () => {
+      const onFreeze = vi.fn();
+      const onTurnTimeout = vi.fn();
+      render(
+        <FlipTable
+          game={makeGame({ pendingAction: { kind: "flip3" } })}
+          localPlayerId="p1"
+          onHit={vi.fn()}
+          onFreeze={onFreeze}
+          onTurnTimeout={onTurnTimeout}
+          turnDeadline={Date.now() + 1_000}
+        />,
+      );
+      act(() => vi.advanceTimersByTime(1_100));
+      expect(onTurnTimeout).toHaveBeenCalledTimes(1);
+      expect(onFreeze).not.toHaveBeenCalled();
+      expect(screen.getByTestId("timeout-announcement")).toHaveTextContent("flipped 3 on");
+    });
+
+    it("names the non-local player rather than using 'you' when someone else times out", () => {
+      const onFreeze = vi.fn();
+      render(
+        <FlipTable
+          game={makeGame({ turnPlayerId: "p2" })}
+          localPlayerId="p1"
+          onHit={vi.fn()}
+          onFreeze={onFreeze}
+          turnDeadline={Date.now() + 1_000}
+        />,
+      );
+      act(() => vi.advanceTimersByTime(1_100));
+      expect(screen.getByTestId("timeout-announcement")).toHaveTextContent("Bea's gone quiet");
+    });
   });
 });
