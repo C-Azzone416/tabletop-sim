@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { makeProfile, makeGame, makePlayer, makeWire, resetIds } from "./fixtures.js";
+import { FLIP_SCENARIOS } from "../src/dev/flip-scenarios.js";
 
 vi.mock("../src/db/profiles.js", () => ({
   getProfileByName: vi.fn(),
@@ -722,6 +723,10 @@ describe("routes", () => {
       expect(mockEngine.joinGame).not.toHaveBeenCalledWith("DEVGAME", "Carol", expect.anything());
     });
 
+    // #370 — the bound is now read off the registry per game type rather than
+    // DEV_SEED_NAMES.length, so wire-game still caps at 4 even though a fifth
+    // dev seat name exists for Flip. `playerCount: 5` staying rejected here is
+    // the assertion that adding Flip's seat did not raise Wire Game's ceiling.
     it.each([
       { playerCount: 1, label: "below range" },
       { playerCount: 5, label: "above range" },
@@ -730,7 +735,144 @@ describe("routes", () => {
     ])("returns 400 for invalid playerCount ($label)", async ({ playerCount }) => {
       const res = await seedApp.inject({ method: "POST", url: "/dev/seed", payload: { playerCount } });
       expect(res.statusCode).toBe(400);
-      expect(res.json()).toEqual({ error: "playerCount must be an integer between 2 and 4" });
+      expect(res.json()).toEqual({ error: "playerCount must be an integer between 2 and 4 for wire-game" });
+    });
+
+    // #370 — Flip dev seeding. The engine (#360) is not a server dependency
+    // yet, so these cover the parts that exist: game-type plumbing, the
+    // per-game player range, and scenario validation. The seed itself
+    // deliberately 503s rather than quietly falling back to a wire game.
+    describe("gameType: flip (#370)", () => {
+      it("defaults to wire-game when gameType is absent, so existing callers are unaffected", async () => {
+        const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
+        const player = makePlayer({ id: "p1", gameId: "g1" });
+        mockProfilesDb.getProfileByName.mockResolvedValue(null);
+        mockProfilesDb.createProfile.mockImplementation(async (name: string) =>
+          makeProfile({ id: `prof-${name.toLowerCase()}`, name }));
+        mockEngine.createGame.mockResolvedValue({ game, player });
+        mockEngine.joinGame.mockResolvedValue({ game, player, players: [player] });
+        mockEngine.startGame.mockResolvedValue({ game: { ...game, status: "setup" as const }, players: [player], wires: [] });
+
+        const res = await seedApp.inject({ method: "POST", url: "/dev/seed", payload: { mission: 2 } });
+
+        expect(res.statusCode).toBe(200);
+        expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "wire-game", "prof-dev", "dev_seed");
+      });
+
+      it("rejects an unknown gameType and creates nothing", async () => {
+        const res = await seedApp.inject({
+          method: "POST", url: "/dev/seed", payload: { gameType: "checkers" },
+        });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.json().error).toContain("gameType must be one of");
+        expect(mockEngine.createGame).not.toHaveBeenCalled();
+      });
+
+      // The dev door deliberately reaches registered-but-unavailable games —
+      // flip ships available: false, so create_game refuses it and /dev is
+      // the only way to a Flip table. A 503 here (not a 400) proves the id
+      // was accepted and only the engine is missing.
+      it("accepts flip as a game type even though it is not available for create_game", async () => {
+        const res = await seedApp.inject({
+          method: "POST", url: "/dev/seed", payload: { gameType: "flip" },
+        });
+
+        expect(res.statusCode).toBe(503);
+        expect(res.json()).toMatchObject({ gameType: "flip", scenario: null });
+      });
+
+      it.each([2, 3, 4, 5])("accepts playerCount %i for flip", async (playerCount) => {
+        const res = await seedApp.inject({
+          method: "POST", url: "/dev/seed", payload: { gameType: "flip", playerCount },
+        });
+
+        expect(res.statusCode).toBe(503);
+        expect(res.json()).toMatchObject({ playerCount });
+      });
+
+      it("accepts `players` as an alias for playerCount, as #370 names it", async () => {
+        const res = await seedApp.inject({
+          method: "POST", url: "/dev/seed", payload: { gameType: "flip", players: 5 },
+        });
+
+        expect(res.statusCode).toBe(503);
+        expect(res.json()).toMatchObject({ playerCount: 5 });
+      });
+
+      it.each([1, 6])("returns 400 for a flip playerCount of %i", async (playerCount) => {
+        const res = await seedApp.inject({
+          method: "POST", url: "/dev/seed", payload: { gameType: "flip", playerCount },
+        });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.json()).toEqual({
+          error: "playerCount must be an integer between 2 and 5 for flip",
+        });
+      });
+
+      it("accepts every catalogued scenario name", async () => {
+        for (const scenario of FLIP_SCENARIOS) {
+          const res = await seedApp.inject({
+            method: "POST", url: "/dev/seed", payload: { gameType: "flip", scenario: scenario.name },
+          });
+          expect(res.statusCode).toBe(503);
+          expect(res.json()).toMatchObject({ scenario: scenario.name });
+        }
+      });
+
+      it("rejects an unknown scenario name", async () => {
+        const res = await seedApp.inject({
+          method: "POST", url: "/dev/seed", payload: { gameType: "flip", scenario: "flip9-ready" },
+        });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.json().error).toContain("scenario must be one of");
+      });
+    });
+  });
+
+  // #370 — the /dev UI reads this to render the stacked-deck buttons, so it
+  // has to list every scenario the seed endpoint will accept. Asserting the
+  // two against each other is what stops the catalogue and the validator
+  // drifting apart.
+  describe("GET /dev/flip-scenarios", () => {
+    let seedApp: FastifyInstance;
+
+    beforeEach(async () => {
+      process.env.ENABLE_DEV_SEED = "true";
+      seedApp = await buildApp();
+    });
+
+    afterEach(async () => {
+      await seedApp.close();
+      delete process.env.ENABLE_DEV_SEED;
+    });
+
+    it("lists all eight scenarios from #370, each with a summary", async () => {
+      const res = await seedApp.inject({ method: "GET", url: "/dev/flip-scenarios" });
+
+      expect(res.statusCode).toBe(200);
+      const names = res.json().scenarios.map((s: { name: string }) => s.name);
+      expect(names).toEqual([
+        "flip7-ready",
+        "flip3-bust",
+        "flip3-nested",
+        "flip3-freeze",
+        "second-chance-save",
+        "second-chance-midflip3",
+        "deck-exhaustion",
+        "near-200",
+      ]);
+      for (const scenario of res.json().scenarios) {
+        expect(scenario.summary).toBeTruthy();
+        expect(scenario.exercises).toBeTruthy();
+      }
+    });
+
+    it("is not reachable without the dev gate", async () => {
+      const res = await app.inject({ method: "GET", url: "/dev/flip-scenarios" });
+      expect(res.statusCode).toBe(404);
     });
   });
 
