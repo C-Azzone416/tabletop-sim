@@ -112,8 +112,17 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
       // as it was, and leaves wires/infoTokens/validationTokens untouched
       // (not zeroed) — nothing about Flip's payload implies the wire-game
       // fields changed, since a client only ever tracks one game.
-      if (msg.flip) {
-        return { ...state, game: msg.game, localPlayer, players: msg.players, flip: msg.flip };
+      //
+      // #406 — narrow on the KEY, not its truthiness. `flip` is null in the
+      // Flip lobby, before the dealer starts the first round, and that is a
+      // normal state; testing truthiness sent those messages down the
+      // wire-game branch to read a `wires` field that isn't there.
+      // `?? null` because the wire variant declares `flip?: undefined`, so the
+      // `in` check narrows to both variants at the type level even though at
+      // runtime a wire-game broadcast has no `flip` key at all and never
+      // reaches here.
+      if ("flip" in msg) {
+        return { ...state, game: msg.game, localPlayer, players: msg.players, flip: msg.flip ?? null };
       }
 
       return {
