@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Player } from "@tabletop/shared";
+import { getGameById, type Player } from "@tabletop/shared";
 import { resolveLobbyConfigSlot } from "./lobbyConfig/registry";
 import type { LobbyStartArg } from "./lobbyConfig/types";
 
@@ -36,7 +36,12 @@ export function Lobby({
   const isLocalPlayerReady = localPlayer?.ready ?? false;
   const allPlayersReady = players.every((p) => p.ready);
   const notReadyPlayerNames = players.filter((p) => !p.ready).map((p) => p.name);
-  const canStart = players.length >= 1 && players.length <= 4 && allPlayersReady;
+  // #407: the cap must come from the room's own game, not Wire Game's. A null
+  // gameType falls back to Wire Game's bounds for the same reason
+  // resolveLobbyConfigSlot does (see registry.tsx) — until #313/#325 carries
+  // gameType, Wire Game is the only game a room can be.
+  const maxPlayers = (gameType !== null ? getGameById(gameType) : undefined)?.maxPlayers ?? 4;
+  const canStart = players.length >= 1 && players.length <= maxPlayers && allPlayersReady;
   const [isStarting, setIsStarting] = useState(false);
 
   // #319: the lobby holds the config value but never interprets it — the slot
@@ -86,7 +91,7 @@ export function Lobby({
 
       <div className="w-full max-w-sm">
         <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-muted">
-          Players ({players.length}/4)
+          Players ({players.length}/{maxPlayers})
         </h3>
         <ul className="space-y-2">
           {players.map((player) => (
