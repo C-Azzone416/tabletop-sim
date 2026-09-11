@@ -207,6 +207,10 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Only the player who flipped the card may choose its target',
       'A Freeze target is awaited', 'A Flip 3 target is awaited',
       'That player is not a legal target', 'Not a Flip game',
+      // #402 — a host whose lobby is over Flip's seat cap needs to know why
+      // Start did nothing. 'Need at least 2 players' is already listed above
+      // and covers Flip's minimum too.
+      'Flip seats at most 5 players',
       'This game has no Flip state',
       'a round cannot be started right now', 'only the dealer can start the round',
       'Dual cut already pending', 'Cannot target your own wire with dual cut',
@@ -294,6 +298,23 @@ async function handleJoinGame(socket: WebSocket, joinCode: string, _playerName: 
 async function handleStartGame(socket: WebSocket, mission: number): Promise<void> {
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
+
+  // #402 — branch before engine.startGame, which is wire-game shaped end to
+  // end. Running it for a Flip room dealt 24 wire tiles into it, landed on
+  // `setup`, and created no Flip state at all, so the broadcaster had nothing
+  // to send and the client sat on the lobby forever.
+  const existing = await withTimeout(gamesDb.getGameById(info.gameId), 'getGameById');
+  if (existing?.gameType === 'flip') {
+    const { game, players } = await withTimeout(
+      engine.startFlipRoom(info.gameId, info.playerId),
+      'startFlipRoom',
+    );
+    // Flip has no per-player view, so the ordinary broadcast is the whole
+    // story — no `game_started` snowflake needed. The table arrives at
+    // awaiting-round-start with the dealer's Start Round button live.
+    await broadcastGameState(info.gameId, game, players);
+    return;
+  }
 
   const { game, players, wires, candidates } = await withTimeout(engine.startGame(info.gameId, info.playerId, mission), 'startGame');
 

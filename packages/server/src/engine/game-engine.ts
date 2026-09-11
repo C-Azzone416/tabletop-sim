@@ -8,6 +8,8 @@ import * as tokensDb from '../db/tokens.js';
 import * as turnsDb from '../db/turns.js';
 import * as outcomesDb from '../db/outcomes.js';
 import * as candidatesDb from '../db/candidates.js';
+import { startFlipGame } from '@tabletop/game-flip';
+import * as flipGamesDb from '../db/flip-games.js';
 import { dealWires } from './wire-dealer.js';
 
 // #170 — the single way a game reaches 'won'/'lost'. Besides the status
@@ -107,6 +109,50 @@ export async function joinGame(joinCode: string, playerName: string, profileId?:
   const player = await playersDb.createPlayer(game.id, playerName, existingPlayers.length, profileId);
   const players = await playersDb.getPlayersByGameId(game.id);
   return { game, player, players };
+}
+
+/**
+ * #402 — starting a Flip room from the real lobby.
+ *
+ * `startGame` below is wire-game shaped end to end: it deals wire tiles,
+ * validates a mission, and lands on `setup`. Running it for a Flip room wrote
+ * 24 wire tiles into it and never created any Flip state, so the broadcaster
+ * had nothing to send and the client sat on the lobby forever. Flip needs its
+ * own start, not a branch threaded through that one.
+ *
+ * Lands on the engine's `awaiting-round-start`, where the dealer's existing
+ * "Start Round" button drives the opening deal through the normal
+ * `flip_start_round` action. That keeps one path for dealing a round rather
+ * than a second one here.
+ */
+export async function startFlipRoom(
+  gameId: string,
+  requestingPlayerId: string,
+): Promise<{ game: Game; players: Player[] }> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.gameType !== 'flip') throw new Error('Not a Flip game');
+  if (game.status !== 'waiting') throw new Error('Game already started');
+  if (game.captainId !== requestingPlayerId) throw new Error('Only the captain can start the game');
+
+  const players = await playersDb.getPlayersByGameId(gameId);
+  if (!players.every(p => p.ready)) throw new Error('Not all players are ready');
+
+  // Bounds come from the registry, the same source the join gate uses, so the
+  // two cannot disagree about how many seats Flip takes.
+  const entry = getGameById(game.gameType);
+  const min = entry?.minPlayers ?? 2;
+  const max = entry?.maxPlayers ?? 5;
+  if (players.length < min) throw new Error(`Need at least ${min} players`);
+  if (players.length > max) throw new Error(`Flip seats at most ${max} players`);
+
+  const state = startFlipGame({
+    players: players.map(p => ({ id: p.id, name: p.name })),
+  });
+  await flipGamesDb.saveFlipGameState(gameId, state);
+
+  const updatedGame = await gamesDb.updateGameStatus(gameId, 'active');
+  return { game: updatedGame, players };
 }
 
 export async function startGame(gameId: string, requestingPlayerId: string, mission: number = 1): Promise<{ game: Game; players: Player[]; wires: Wire[]; candidates: WireCandidate[] }> {
