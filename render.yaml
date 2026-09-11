@@ -1,0 +1,87 @@
+# Render Blueprint — #414.
+#
+# WHY THIS FILE EXISTS
+#
+# The develop server stopped deploying the moment Flip landed, and nothing in
+# this repository could have caught it. `packages/server` gained a dependency
+# on `@tabletop/game-flip`, a workspace package created in #360; Render's build
+# command — which lives in Render's DASHBOARD, not here — never learned to
+# build it, so `tsc` found no declarations:
+#
+#   src/app.ts(4,43): error TS2307: Cannot find module '@tabletop/game-flip'
+#   ==> Build failed
+#
+# Every server-side change from #358 sat unreleased behind that, while the
+# Vercel client deployed fine and reported "Unknown game type" — because
+# `vercel.json` IS version-controlled and stayed correct. That difference is
+# the entire point of this file: the server's build belongs under review like
+# any other change, so adding a workspace package is a reviewable diff rather
+# than a dashboard edit nobody sees.
+#
+# This is the second build-order break in two days (#359 was the first, in
+# CI). Both had the same shape: a new workspace package that one build
+# pipeline knew about and another did not.
+#
+# ADOPTING IT
+#
+# A Blueprint does not take effect merely by existing. The existing service was
+# created from the dashboard, so someone with Render access must either point
+# that service at this Blueprint, or keep managing it by hand — in which case
+# the build command below is still the one to paste in, and this file remains
+# the reviewable record of what it should be.
+#
+# KEEPING IT CORRECT
+#
+# `buildCommand` must build every workspace package `packages/server` depends
+# on, in dependency order, before building the server. That order is mirrored
+# in .github/workflows/ci.yml — if you add a workspace package, change BOTH,
+# or this breaks again exactly as it did here.
+#
+#   shared -> cards -> games/spades -> games/flip -> server
+
+services:
+  - type: web
+    name: tabletop-sim-dev
+    runtime: node
+    plan: free
+    branch: develop
+
+    buildCommand: >-
+      npm ci &&
+      npm run build -w packages/shared &&
+      npm run build -w packages/cards &&
+      npm run build -w packages/games/spades &&
+      npm run build -w packages/games/flip &&
+      npm run build -w packages/server
+
+    startCommand: npm run start -w packages/server
+
+    # /health and /healthz both return {status:"ok"}; /health is excluded from
+    # request logging in app.ts, so it is the cheaper one to poll.
+    healthCheckPath: /health
+
+    envVars:
+      # Secrets and environment-specific values stay in the dashboard —
+      # `sync: false` means "this service needs it, but its value is not in
+      # source control". Listing them here documents what the service requires
+      # without putting any value in the repo.
+      #
+      # DATABASE_URL       — Postgres connection string (Neon)
+      # API_ACCESS_KEY     — #252 shared secret; a startup failure if unset in production
+      # PROFILE_ALLOWLIST  — #252 invite list; likewise required in production
+      # CORS_ORIGINS       — comma-separated client origins
+      - key: DATABASE_URL
+        sync: false
+      - key: API_ACCESS_KEY
+        sync: false
+      - key: PROFILE_ALLOWLIST
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: NODE_ENV
+        value: production
+      # Dev seeding must never be reachable here. app.ts gates /dev/* on
+      # ENABLE_DEV_SEED === 'true' AND NODE_ENV !== 'production', so this is
+      # belt-and-braces with the line above rather than the only guard.
+      - key: ENABLE_DEV_SEED
+        value: "false"
