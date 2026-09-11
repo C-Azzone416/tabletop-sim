@@ -608,6 +608,20 @@ export async function buildApp() {
         gameType: 'flip' as const,
         scenario: isFlipScenarioName(scenario) ? scenario : null,
         turnPlayerId: state.turnPlayerId,
+        // #416 — who is dealing, reported rather than inferable.
+        //
+        // A plain seed used to build state directly, which left the dealer at
+        // seat 0, and callers relied on that. #400 routed the plain seed
+        // through the real path (startFlipGame -> startRound), and
+        // startFlipGame picks the first dealer AT RANDOM — correctly, since
+        // that is what a real game does. That silently broke the assumption
+        // and made an E2E 50% flaky.
+        //
+        // Reporting the dealer is the right fix: the seed should not fake
+        // determinism the real game doesn't have, and a caller that needs to
+        // know who deals should be told rather than guess.
+        dealerId: state.players[state.dealerIndex]?.id ?? null,
+        dealerName: state.players[state.dealerIndex]?.name ?? null,
         // Real profileIds for every seat, so a dev client can connect as any
         // player through the standard WS auth — the seat switcher depends on
         // this shape (#370 reuses it rather than rebuilding it).
