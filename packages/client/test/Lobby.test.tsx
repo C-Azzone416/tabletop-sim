@@ -110,6 +110,52 @@ describe("Lobby", () => {
     });
   });
 
+  // #407: canStart and the player-count display hardcoded Wire Game's cap of
+  // 4 instead of reading the room's own game from the registry. Flip's max is
+  // 5, so a 5th player joined fine (server-side gate is registry-aware) but
+  // Start then stayed disabled forever with no explanation. Flip is used here
+  // specifically because its max (5) is not 4 — a max-4 game type can't catch
+  // this class of bug, which is exactly how it shipped.
+  describe("player cap by game type (#407)", () => {
+    const makeFivePlayers = (readyOverride: boolean) =>
+      Array.from({ length: 5 }, (_, i) =>
+        makePlayer({ id: `p${i + 1}`, name: `Player${i + 1}`, ready: readyOverride }),
+      );
+
+    it("shows the room's own max, not Wire Game's, for a non-Wire game type", () => {
+      const props = { ...defaultProps(), players: makeFivePlayers(false), gameType: "flip" };
+      render(<Lobby {...props} />);
+      expect(screen.getByText("Players (5/5)")).toBeInTheDocument();
+    });
+
+    it("does not disable Start for a 5th player on a game whose max is 5", () => {
+      const players = makeFivePlayers(true);
+      const props = {
+        ...defaultProps(),
+        players,
+        localPlayerId: players[0].id,
+        captainId: players[0].id,
+        gameType: "flip",
+      };
+      render(<Lobby {...props} />);
+      expect(screen.getByRole("button", { name: "Start Game" })).not.toBeDisabled();
+    });
+
+    it("still caps Wire Game at 4 when gameType is explicitly wire-game", () => {
+      const players = makeFivePlayers(true);
+      const props = {
+        ...defaultProps(),
+        players,
+        localPlayerId: players[0].id,
+        captainId: players[0].id,
+        gameType: "wire-game",
+      };
+      render(<Lobby {...props} />);
+      expect(screen.getByText("Players (5/4)")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Start Mission/ })).toBeDisabled();
+    });
+  });
+
   describe("waiting indicators", () => {
     it("shows who isn't ready yet once the local player has readied up", () => {
       const captain = makePlayer({ id: "p1", name: "Alice", ready: true });
