@@ -46,15 +46,29 @@ services:
     plan: free
     branch: develop
 
-    buildCommand: >-
-      npm ci &&
-      npm run build -w packages/shared &&
-      npm run build -w packages/cards &&
-      npm run build -w packages/games/spades &&
-      npm run build -w packages/games/flip &&
-      npm run build -w packages/server
+    # Delegates to the root `build:server` script rather than repeating the
+    # chain here, so there is ONE ordered list of what the server needs built.
+    # The root `build` script now calls the same one and adds the client.
+    buildCommand: npm ci && npm run build:server
 
+    # MUST be dist/index.js — `npm run start -w packages/server` resolves to
+    # exactly that. NOT dist/app.js.
+    #
+    # src/index.ts is the entrypoint that calls runMigrationsOrExit() (#140):
+    # migrations run at BOOT, not at build, and a failure is fatal rather than
+    # skipped. app.js only exports buildApp() and migrates nothing — starting
+    # from it gives a server that builds fine, boots fine, and has no
+    # flip_games or flip_round_scores.breakdown. That trades a loud build
+    # failure for a silent runtime one, which is strictly worse.
     startCommand: npm run start -w packages/server
+
+    # The deployed tree MUST include the repo-root `db/` directory.
+    # index.ts resolves the migration runner as
+    # `join(__dirname, '../../../db/migrate.ts')` — from packages/server/dist
+    # that is repo-root db/ — and shells out via `npx tsx`. If Render ever
+    # builds from a subdirectory or prunes db/, the auto-migrate dies at boot
+    # with a spawn failure rather than a missing-table error later.
+    # Nothing here prunes it; this is a note for whoever changes rootDir.
 
     # /health and /healthz both return {status:"ok"}; /health is excluded from
     # request logging in app.ts, so it is the cheaper one to poll.
