@@ -250,26 +250,30 @@ describe("message-handler", () => {
       expect(mockEngine.createGame).not.toHaveBeenCalled();
     });
 
-    // #361 — flip is registered but `available: false` until the game is
-    // playable, so today it takes the same path as spades. The gate is the
-    // registry's available flag rather than a hard-coded id list, so this
-    // starts passing through to createGame the moment #358's last mission
-    // flips the flag.
-    it("rejects flip while it is registered-but-unavailable and creates no room", async () => {
+    // #361's original acceptance criterion — "create_game accepts flip" —
+    // which could not hold while the game was registered-but-unavailable.
+    // #402 flipped the flag once the real path was walked end to end, and the
+    // gate was always the registry's available flag rather than a hard-coded
+    // id list, so this needed no production change to start passing.
+    it("creates a flip game now that flip is available", async () => {
       const ws = mockSocket();
+      const game = makeGame({ id: "gf", captainId: "pf", gameType: "flip" });
+      const player = makePlayer({ id: "pf", name: "Alice" });
+
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+      mockEngine.createGame.mockResolvedValue({ game, player });
 
       await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "flip" }));
 
-      expect(lastSent(ws)).toEqual({ type: "error", message: "Unknown game type" });
-      expect(mockEngine.createGame).not.toHaveBeenCalled();
-      expect(mockConnManager.registerConnection).not.toHaveBeenCalled();
+      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "flip", "prof-1");
+      expect(mockConnManager.registerConnection).toHaveBeenCalledWith(ws, "pf", "gf");
+      expect((lastSent(ws) as { type: string }).type).toBe("game_created");
     });
 
-    // The half of "create_game accepts flip" (#361 AC) that can be asserted
-    // before the game is playable: the id is genuinely registered, and the
-    // only thing between it and a created room is the available flag.
-    it("recognises flip as a registered game id awaiting only its available flag", () => {
+    // The registry is the allowlist, so a registered id and an unknown one
+    // must stay clearly distinguishable — a real entry with its seat range,
+    // versus nothing at all.
+    it("recognises flip as a registered game id and checkers as not one", () => {
       expect(getGameById("flip")).toMatchObject({ id: "flip", minPlayers: 2, maxPlayers: 5 });
       expect(getGameById("checkers")).toBeUndefined();
     });

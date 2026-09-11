@@ -14,6 +14,18 @@ export interface GameRegistryEntry {
   /**
    * Games register here before they're playable (#311 ruling: unavailable
    * games render greyed as "Coming soon", they are not hidden).
+   *
+   * Flip this LAST, after the real `/play/host` -> lobby -> start -> play path
+   * has been walked end to end — not after the game merely works in `/dev`.
+   * Holding it caught three live defects on Flip that every other form of
+   * testing missed, because each one lived in the real path a dev seed skips:
+   *   #404 — the real start dealt wire tiles into a Flip room and created no
+   *          Flip state (`/dev/seed` builds that state itself, so it never
+   *          exercised the real start)
+   *   #406 — every real host landed on a permanently blank lobby, because the
+   *          broadcaster sent nothing before a table existed
+   *   #407 — the lobby hardcoded Wire Game's cap and blocked a 5th player
+   * All three would have shipped to a player's first click.
    */
   available: boolean;
 }
@@ -44,7 +56,7 @@ export const GAME_REGISTRY: readonly GameRegistryEntry[] = Object.freeze([
     description: 'Press your luck: keep flipping cards for a bigger score, but a duplicate busts your hand.',
     minPlayers: 2,
     maxPlayers: 5,
-    available: false,
+    available: true,
   }),
 ]);
 
