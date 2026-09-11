@@ -70,7 +70,15 @@ vi.mock("../src/db/candidates.js", () => ({
   deleteByGameId: vi.fn(),
 }));
 
+vi.mock("../src/db/flip-games.js", () => ({
+  getFlipGameState: vi.fn(),
+  saveFlipGameState: vi.fn(),
+  recordFlipRoundScores: vi.fn(),
+  getFlipRoundScores: vi.fn(),
+}));
+
 import * as gamesDb from "../src/db/games.js";
+import * as flipGamesDb from "../src/db/flip-games.js";
 import * as playersDb from "../src/db/players.js";
 import * as wiresDb from "../src/db/wires.js";
 import * as tokensDb from "../src/db/tokens.js";
@@ -84,6 +92,7 @@ const mockWiresDb = vi.mocked(wiresDb);
 const mockTokensDb = vi.mocked(tokensDb);
 const mockTurnsDb = vi.mocked(turnsDb);
 const mockOutcomesDb = vi.mocked(outcomesDb);
+const mockFlipGamesDb = vi.mocked(flipGamesDb);
 
 describe("game-engine", () => {
   beforeEach(() => {
@@ -208,6 +217,101 @@ describe("game-engine", () => {
 
         await expect(engine.joinGame("ABC123", "Extra")).rejects.toThrow("Game is full");
       });
+    });
+  });
+
+  // #402 — the real lobby's Start for a Flip room. Before this, start_game
+  // ran engine.startGame for every game type: a Flip room got 24 wire tiles
+  // dealt into it, landed on `setup`, and never had any Flip state created,
+  // so the broadcaster had nothing to send and the client sat on the lobby.
+  describe("startFlipRoom", () => {
+    const flipLobby = (over: { players?: number; ready?: boolean; status?: string } = {}) => {
+      const count = over.players ?? 3;
+      const game = makeGame({
+        id: "g1",
+        gameType: "flip",
+        status: (over.status ?? "waiting") as "waiting",
+        captainId: "p0",
+      });
+      const players = Array.from({ length: count }, (_, i) =>
+        makePlayer({ id: `p${i}`, gameId: "g1", name: `P${i}`, seatOrder: i, ready: over.ready ?? true }),
+      );
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      mockGamesDb.updateGameStatus.mockResolvedValue({ ...game, status: "active" });
+      return { game, players };
+    };
+
+    it("creates and persists initial Flip state", async () => {
+      flipLobby();
+
+      await engine.startFlipRoom("g1", "p0");
+
+      expect(mockFlipGamesDb.saveFlipGameState).toHaveBeenCalledTimes(1);
+      const [gameId, state] = mockFlipGamesDb.saveFlipGameState.mock.calls[0];
+      expect(gameId).toBe("g1");
+      expect(state).toMatchObject({ phase: "awaiting-round-start", roundNumber: 0 });
+      expect((state as { players: unknown[] }).players).toHaveLength(3);
+    });
+
+    // The bug's signature: wire-game machinery running on a Flip room.
+    it("deals no wire tiles and validates no mission", async () => {
+      flipLobby();
+
+      await engine.startFlipRoom("g1", "p0");
+
+      expect(mockWiresDb.createWire).not.toHaveBeenCalled();
+    });
+
+    it("sets the room active so the Flip client renders it", async () => {
+      flipLobby();
+
+      await engine.startFlipRoom("g1", "p0");
+
+      expect(mockGamesDb.updateGameStatus).toHaveBeenCalledWith("g1", "active");
+    });
+
+    it("gives every seat a place in the state, keyed by player id", async () => {
+      const { players } = flipLobby({ players: 5 });
+
+      await engine.startFlipRoom("g1", "p0");
+
+      const [, state] = mockFlipGamesDb.saveFlipGameState.mock.calls[0];
+      expect((state as { players: { id: string }[] }).players.map((p) => p.id)).toEqual(
+        players.map((p) => p.id),
+      );
+    });
+
+    it("rejects a start from someone who is not the captain", async () => {
+      flipLobby();
+      await expect(engine.startFlipRoom("g1", "p1")).rejects.toThrow("Only the captain can start the game");
+      expect(mockFlipGamesDb.saveFlipGameState).not.toHaveBeenCalled();
+    });
+
+    it("rejects a start when a player is not ready", async () => {
+      flipLobby({ ready: false });
+      await expect(engine.startFlipRoom("g1", "p0")).rejects.toThrow("Not all players are ready");
+    });
+
+    it("rejects a start on an already-started room", async () => {
+      flipLobby({ status: "active" });
+      await expect(engine.startFlipRoom("g1", "p0")).rejects.toThrow("Game already started");
+    });
+
+    // Bounds come from the registry, the same source the join gate uses.
+    it("rejects a solo lobby, below Flip's minimum of 2", async () => {
+      flipLobby({ players: 1 });
+      await expect(engine.startFlipRoom("g1", "p0")).rejects.toThrow("Need at least 2 players");
+    });
+
+    it.each([2, 3, 4, 5])("accepts a lobby of %i, within Flip's registry range", async (players) => {
+      flipLobby({ players });
+      await expect(engine.startFlipRoom("g1", "p0")).resolves.toBeDefined();
+    });
+
+    it("refuses to start a wire game through the Flip path", async () => {
+      mockGamesDb.getGameById.mockResolvedValue(makeGame({ id: "g1", gameType: "wire-game", captainId: "p0" }));
+      await expect(engine.startFlipRoom("g1", "p0")).rejects.toThrow("Not a Flip game");
     });
   });
 

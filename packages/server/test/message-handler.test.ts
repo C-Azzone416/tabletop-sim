@@ -8,6 +8,7 @@ vi.mock("../src/engine/game-engine.js", () => ({
   createGame: vi.fn(),
   joinGame: vi.fn(),
   startGame: vi.fn(),
+  startFlipRoom: vi.fn(),
   completeSetup: vi.fn(),
   executePlaceInfoToken: vi.fn(),
   executeProposeDualCut: vi.fn(),
@@ -93,6 +94,13 @@ describe("message-handler", () => {
   beforeEach(() => {
     resetIds();
     vi.clearAllMocks();
+    // #402 — handleStartGame now reads the game to route by type, so every
+    // test needs gamesDb.getGameById to answer something. Defaulted to a wire
+    // game here rather than per-test: vi.clearAllMocks() clears calls but NOT
+    // implementations, so a flip game set by one test would otherwise leak
+    // into every later one and silently send it down the flip branch. Flip
+    // tests override this explicitly.
+    mockGamesDb.getGameById.mockResolvedValue(makeGame({ id: "g1", gameType: "wire-game" }));
   });
 
   describe("message validation", () => {
@@ -264,6 +272,61 @@ describe("message-handler", () => {
     it("recognises flip as a registered game id awaiting only its available flag", () => {
       expect(getGameById("flip")).toMatchObject({ id: "flip", minPlayers: 2, maxPlayers: 5 });
       expect(getGameById("checkers")).toBeUndefined();
+    });
+  });
+
+  // #402 — start_game used to run engine.startGame for every game type, so a
+  // Flip room got wire tiles dealt into it and no Flip state at all.
+  describe("start_game routes by game type (#402)", () => {
+    it("starts a flip room through startFlipRoom and broadcasts, not game_started", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", gameType: "flip", status: "active" });
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p0", gameId: "g1" });
+      mockGamesDb.getGameById.mockResolvedValue(makeGame({ id: "g1", gameType: "flip" }));
+      mockEngine.startFlipRoom.mockResolvedValue({ game, players: [makePlayer({ id: "p0" })] });
+
+      await handleMessage(ws, JSON.stringify({ type: "start_game" }));
+
+      expect(mockEngine.startFlipRoom).toHaveBeenCalledWith("g1", "p0");
+      expect(mockEngine.startGame).not.toHaveBeenCalled();
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalled();
+    });
+
+    it("still starts a wire game through startGame, untouched", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", gameType: "wire-game", status: "setup" });
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p0", gameId: "g1" });
+      mockGamesDb.getGameById.mockResolvedValue(makeGame({ id: "g1", gameType: "wire-game" }));
+      mockEngine.startGame.mockResolvedValue({ game, players: [makePlayer({ id: "p0" })], wires: [], candidates: [] });
+      mockConnManager.getGameSockets.mockReturnValue(new Map([["p0", ws]]));
+
+      await handleMessage(ws, JSON.stringify({ type: "start_game", mission: 3 }));
+
+      expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p0", 3);
+      expect(mockEngine.startFlipRoom).not.toHaveBeenCalled();
+    });
+
+    it("surfaces a flip start rejection to the host rather than a generic error", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1" });
+      mockGamesDb.getGameById.mockResolvedValue(makeGame({ id: "g1", gameType: "flip" }));
+      mockEngine.startFlipRoom.mockRejectedValueOnce(new Error("Only the captain can start the game"));
+
+      await handleMessage(ws, JSON.stringify({ type: "start_game" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Only the captain can start the game" });
+      expect(mockStateBroadcaster.broadcastGameState).not.toHaveBeenCalled();
+    });
+
+    it("names the seat-cap rejection instead of collapsing it to Internal error", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p0", gameId: "g1" });
+      mockGamesDb.getGameById.mockResolvedValue(makeGame({ id: "g1", gameType: "flip" }));
+      mockEngine.startFlipRoom.mockRejectedValueOnce(new Error("Flip seats at most 5 players"));
+
+      await handleMessage(ws, JSON.stringify({ type: "start_game" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Flip seats at most 5 players" });
     });
   });
 
