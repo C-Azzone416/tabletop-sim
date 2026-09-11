@@ -36,12 +36,18 @@ export async function seedFlipGame(playerCount: number, scenario?: string): Prom
  * Game URL with every seeded player's profileId carried in `seatOptions`
  * (same convention as the wire game's gameUrlWithSeats) so the DevPanel
  * seat switcher can re-authenticate as any of them.
+ *
+ * #410: also opts out of DevPanel's follow-the-acting-seat default. This
+ * suite drives named seats deterministically via switchToSeat — auto-follow
+ * is a convenience for a human keeping a solo-driven game moving, not what
+ * a test asking for seat X and expecting to land on seat X wants. The
+ * product default stays on; only the driven test client opts out.
  */
 export function flipGameUrl(seed: FlipSeedResult, name = seed.playerName, profileId = seed.profileId): string {
   const seats = seed.players.map((p) => ({ name: p.name, profileId: p.profileId }));
   return `${BASE_URL}/game/${seed.joinCode}?profileId=${profileId}&playerName=${encodeURIComponent(
     name,
-  )}&seatOptions=${encodeURIComponent(JSON.stringify(seats))}`;
+  )}&seatOptions=${encodeURIComponent(JSON.stringify(seats))}&followActingSeat=0`;
 }
 
 /**
@@ -68,6 +74,11 @@ export async function waitForTurnToPass(page: Page, actedPlayerName: string): Pr
  * after can otherwise still be in flight on the outgoing connection,
  * producing a server-side "Not your turn" (or a UI race where the clicked
  * button is mid-unmount as the reconnect's fresh state arrives).
+ *
+ * #410 note: this suite deliberately drives named seats, so flipGameUrl
+ * opts every game out of the new follow-the-acting-seat default (see its
+ * own doc comment) — this helper's manual-switch semantics are otherwise
+ * unchanged.
  */
 export async function switchToSeat(page: Page, name: string): Promise<void> {
   const openToggle = page.getByRole("button", { name: "Open dev tools" });

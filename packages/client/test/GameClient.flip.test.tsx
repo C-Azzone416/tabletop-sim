@@ -359,6 +359,30 @@ describe("GameClient — Flip rendering (#383)", () => {
       expect(MockWebSocket.instances).toHaveLength(1);
     });
 
+    it("initialFollowActingSeat=false opts a session out of the default entirely (#410's E2E-harness escape hatch)", () => {
+      render(
+        <GameClient
+          joinCode="ABC123"
+          profileId="p1"
+          playerName="Alice"
+          seatOptions={seatOptions}
+          initialFollowActingSeat={false}
+        />,
+      );
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage(flipGameStateMessage({ flip: { turnPlayerId: "p2", pendingAction: null } }));
+      });
+      act(() => vi.advanceTimersByTime(0));
+
+      // No auto-follow to Bob despite seatOptions being present (which
+      // would otherwise default the toggle on) — still just the one
+      // connection, as Alice.
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
     it("stops auto-following once the toggle is switched off, without touching a manual switch", () => {
       render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" seatOptions={seatOptions} />);
       act(() => vi.advanceTimersByTime(0));

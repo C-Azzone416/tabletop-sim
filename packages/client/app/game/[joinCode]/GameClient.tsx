@@ -43,9 +43,17 @@ interface GameClientProps {
   profileId: string;
   playerName: string;
   seatOptions?: DevSeatOption[];
+  /** #410: overrides the follow-acting-seat default (on for dev-seeded games) when set. */
+  initialFollowActingSeat?: boolean;
 }
 
-export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }: GameClientProps) {
+export function GameClient({
+  joinCode,
+  profileId,
+  playerName,
+  seatOptions = [],
+  initialFollowActingSeat,
+}: GameClientProps) {
   const { state, handleMessage, clearError } = useGameState();
   const [activeSeat, setActiveSeat] = useState<DevSeatOption>({ profileId, name: playerName });
   const { status, connect, disconnect, send } = useWebSocket(
@@ -129,7 +137,9 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   // left alone ("manual switching untouched" — #410's scope line), and the
   // view only snaps when the acted-for seat actually changes, or the toggle
   // is switched back on.
-  const [followActingSeat, setFollowActingSeat] = useState(seatOptions.length > 0);
+  const [followActingSeat, setFollowActingSeat] = useState(
+    initialFollowActingSeat ?? seatOptions.length > 0,
+  );
   const actingId = state.flip ? actingPlayerId(state.flip) : null;
   const followKey = `${followActingSeat}:${actingId ?? ""}`;
   const [prevFollowKey, setPrevFollowKey] = useState(followKey);
