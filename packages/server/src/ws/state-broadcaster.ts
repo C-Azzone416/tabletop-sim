@@ -23,18 +23,29 @@ async function broadcastFlipGameState(
   players: Player[],
 ): Promise<void> {
   const stored = await flipGamesDb.getFlipGameState(gameId);
-  // A Flip room that has no persisted state yet (created but not seeded) has
-  // nothing to render. Sending a malformed table would be worse than sending
-  // nothing — the client keeps whatever it last had rather than crashing on a
-  // half-built view.
-  if (!stored) return;
 
+  // #406 — a Flip room in the lobby has no table yet, and that is NORMAL under
+  // the ruled awaiting-round-start flow: no Flip state exists until the dealer
+  // starts the first round. This used to `return` here, sending the client
+  // nothing at all, so every real host landed on a permanently blank lobby.
+  //
+  // The original reasoning — "the client keeps whatever it last had rather
+  // than crashing on a half-built view" — was written for a half-built table
+  // mid-round, and is simply false on a FRESH socket: a reconnecting client
+  // has no last-had to keep. `/play/host` opens exactly such a socket.
+  //
+  // So suppress the TABLE, not the message: the room and player state still go
+  // out, which is all the lobby needs to render. `flip: null` is a first-class
+  // "no table yet", never a malformed one.
+  //
   // #396 — round history comes from flip_round_scores, not the state blob: a
   // completed round's score is an immutable fact, and the blob holds only the
   // current round plus cumulative totals. One extra read per broadcast, which
-  // is what keeps the scoreboard correct across a reconnect.
-  const rounds = await flipGamesDb.getFlipRoundScores(gameId);
-  const flip = toFlipTableView(stored as FlipGameState, groupRoundsByPlayer(rounds));
+  // is what keeps the scoreboard correct across a reconnect. Skipped entirely
+  // when there is no table, since there can be no history either.
+  const flip = stored
+    ? toFlipTableView(stored as FlipGameState, groupRoundsByPlayer(await flipGamesDb.getFlipRoundScores(gameId)))
+    : null;
   const gameSockets = getGameSockets(gameId);
 
   for (const [playerId] of gameSockets) {

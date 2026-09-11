@@ -238,6 +238,37 @@ describe("state-broadcaster", () => {
       });
     });
 
+    // #406 — the case the old early-return was actually protecting. Suppressing
+    // the table in the lobby must not weaken a mid-round reconnect, which has
+    // to come back with everything.
+    it("still restores the full table mid-round, table and all", async () => {
+      mockFlipGamesDb.getFlipGameState.mockResolvedValue(
+        buildFlipGameState({
+          players: twoSeats,
+          hands: { p0: flipCards(["7", "+4"]), p1: flipCards(["9"]) },
+          turnPlayerId: "p0",
+          pendingAction: { kind: "flip3" },
+        }),
+      );
+      connect("p0");
+
+      await broadcastGameState("g1", flipGame(), flipPlayers());
+
+      const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+      const flip = (message as { flip: {
+        players: { id: string; hand: unknown[] }[];
+        turnPlayerId: string;
+        pendingAction: unknown;
+        shoeRemaining: number;
+      } }).flip;
+
+      expect(flip).not.toBeNull();
+      expect(flip.players.find((p) => p.id === "p0")!.hand).toHaveLength(2);
+      expect(flip.turnPlayerId).toBe("p0");
+      expect(flip.pendingAction).toMatchObject({ kind: "flip3" });
+      expect(flip.shoeRemaining).toBeGreaterThan(0);
+    });
+
     // #396 — the scoreboard's data. Round history is read from
     // flip_round_scores and attached per player; before this it did not exist
     // in the payload at all, so the client had nothing to render.
@@ -321,16 +352,75 @@ describe("state-broadcaster", () => {
       });
     });
 
-    // A room created but not yet seeded has nothing to render. Sending a
-    // half-built table would be worse than sending nothing.
-    it("sends nothing when the game has no persisted flip state yet", async () => {
-      mockFlipGamesDb.getFlipGameState.mockResolvedValue(null);
-      connect("p0");
+    // #406 — the lobby. A Flip room legitimately has NO table until the dealer
+    // starts the first round (the ruled awaiting-round-start flow), so this is
+    // a normal state, not an error.
+    //
+    // This used to return early and send nothing, which meant every real host
+    // navigating /play/host -> /game/<code> landed on a permanently blank
+    // lobby: that route opens a FRESH socket, so the old reasoning ("the
+    // client keeps whatever it last had") had nothing to keep. Nothing covered
+    // this case, which is why it shipped.
+    describe("pre-deal lobby, before any round has started (#406)", () => {
+      const lobby = () => {
+        mockFlipGamesDb.getFlipGameState.mockResolvedValue(null);
+        connect("p0", "p1");
+      };
 
-      await broadcastGameState("g1", flipGame(), flipPlayers());
+      it("still broadcasts room and player state", async () => {
+        lobby();
+        const game = flipGame();
+        const players = flipPlayers();
 
-      expect(mockConnManager.sendToPlayer).not.toHaveBeenCalled();
-      expect(mockWiresDb.getWiresByGameId).not.toHaveBeenCalled();
+        await broadcastGameState("g1", game, players);
+
+        expect(mockConnManager.sendToPlayer).toHaveBeenCalledTimes(2);
+        const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+        expect(message).toMatchObject({ type: "game_state", game, players });
+      });
+
+      // Suppress the table, not the message — and `flip: null` must be a
+      // first-class "no table yet", never a half-built one.
+      it("sends flip as an explicit null rather than a partial table", async () => {
+        lobby();
+
+        await broadcastGameState("g1", flipGame(), flipPlayers());
+
+        const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+        expect(message).toHaveProperty("flip");
+        expect((message as { flip: unknown }).flip).toBeNull();
+      });
+
+      // The key must be present even when null: the client narrows on its
+      // presence, so an absent one would be read as a wire-game message.
+      it("keeps the flip key present so the client narrows correctly", async () => {
+        lobby();
+
+        await broadcastGameState("g1", flipGame(), flipPlayers());
+
+        const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+        expect("flip" in (message as object)).toBe(true);
+        expect(message).not.toHaveProperty("wires");
+      });
+
+      it("reaches every seat in the lobby, not just the host", async () => {
+        lobby();
+
+        await broadcastGameState("g1", flipGame(), flipPlayers());
+
+        const recipients = mockConnManager.sendToPlayer.mock.calls.map((c) => c[1]);
+        expect(recipients).toEqual(["p0", "p1"]);
+      });
+
+      it("touches no wire-game tables and reads no round history", async () => {
+        lobby();
+
+        await broadcastGameState("g1", flipGame(), flipPlayers());
+
+        expect(mockWiresDb.getWiresByGameId).not.toHaveBeenCalled();
+        // No table means there can be no history either — don't query for it.
+        expect(mockFlipGamesDb.getFlipRoundScores).not.toHaveBeenCalled();
+      });
     });
   });
 

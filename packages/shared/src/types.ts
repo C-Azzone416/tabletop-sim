@@ -167,7 +167,15 @@ export type ServerMessage =
   // #382 — Flip carries no wires/tokens/candidates at all, and no wiresDb call
   // is made to produce it. Identical for every player: `localPlayerId` says
   // which seat is yours, never what you may see (#358 — no hidden state).
-  | { type: 'game_state'; game: Game; players: Player[]; localPlayerId: string; flip: FlipTableView }
+  //
+  // #406 — `flip` is NULL in the lobby, before the dealer starts the first
+  // round. That is a normal state, not an error: under the ruled
+  // awaiting-round-start flow a Flip room legitimately has no table until the
+  // round begins, and the client still needs `game` and `players` to render
+  // the lobby at all. The KEY is always present on this variant, so narrow on
+  // its presence (`'flip' in msg`) rather than its truthiness — a null would
+  // otherwise fall through to the wire-game branch and read `wires`.
+  | { type: 'game_state'; game: Game; players: Player[]; localPlayerId: string; flip: FlipTableView | null }
   | { type: 'player_joined'; player: Player }
   | { type: 'dual_cut_proposed'; proposingPlayerId: string; targetPlayerId: string; targetWireId: string; targetWireRackPosition: number; guessedValue: string }
   | { type: 'dual_cut_correct'; targetWireId: string; targetWireRackPosition: number; targetWireColor: WireColor }
