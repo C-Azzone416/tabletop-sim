@@ -16,16 +16,20 @@ describe("game registry", () => {
   // ahead of being playable on purpose — the #311 ruling renders an
   // unavailable game greyed as "Coming soon" rather than hiding it, so the
   // entry has to exist for Flip to appear at all.
-  it("registers flip as not yet available, for 2-5 players", () => {
+  // #402 — available since the real /play/host -> lobby -> start -> play walk
+  // passed end to end in a clean production build. It was held at false
+  // through all of #358's build-out, which caught #404, #406 and #407 — each
+  // living in the real path a dev seed skips.
+  it("registers flip as available, for 2-5 players", () => {
     expect(getGameById("flip")).toMatchObject({
       id: "flip",
       minPlayers: 2,
       maxPlayers: 5,
-      available: false,
+      available: true,
     });
   });
 
-  it("gives flip a display name and description for the Coming soon tile", () => {
+  it("gives flip a display name and description for its tile", () => {
     const flip = getGameById("flip");
     expect(flip?.displayName).toBeTruthy();
     expect(flip?.description).toBeTruthy();
@@ -45,8 +49,10 @@ describe("game registry", () => {
 
   it("isAvailableGameId reflects the available flag", () => {
     expect(isAvailableGameId("wire-game")).toBe(true);
+    expect(isAvailableGameId("flip")).toBe(true);
+    // Spades is still registered-but-unavailable — the flag genuinely
+    // discriminates rather than being true for everything registered.
     expect(isAvailableGameId("spades")).toBe(false);
-    expect(isAvailableGameId("flip")).toBe(false);
     expect(isAvailableGameId("checkers")).toBe(false);
   });
 
