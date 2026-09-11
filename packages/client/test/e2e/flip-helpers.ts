@@ -15,13 +15,28 @@ export interface FlipSeedResult {
   gameType: "flip";
   scenario: string | null;
   turnPlayerId: string;
+  /**
+   * #416 — who is dealing. Read this; do NOT assume seat 0.
+   *
+   * A plain seed goes through the real path (#400), and the engine picks the
+   * first dealer at random, exactly as a real game does. Assuming
+   * `players[0]` was the dealer made a test 50% flaky.
+   */
+  dealerId: string | null;
+  dealerName: string | null;
   players: FlipSeedPlayer[];
 }
 
 /**
- * Seeds a Flip game via POST /dev/seed. Omit `scenario` for a fresh
- * just-dealt table (buildFlipGameState with no stacked deck); pass one of
- * #370's eight names for a deterministic table set up on one exact case.
+ * Seeds a Flip game via POST /dev/seed.
+ *
+ * Omit `scenario` for a fresh just-dealt table — that path runs the real
+ * startFlipGame/startRound (#400), so the DEALER IS RANDOM and the deal can
+ * legitimately pause on an action card. Read `dealerName` rather than
+ * assuming a seat.
+ *
+ * Pass one of #370's eight scenario names for a deterministic table set up on
+ * one exact case; those stack the shoe and are reproducible.
  */
 export async function seedFlipGame(playerCount: number, scenario?: string): Promise<FlipSeedResult> {
   const ctx = await request.newContext({ baseURL: API_URL });
