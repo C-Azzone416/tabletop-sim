@@ -283,4 +283,131 @@ describe("GameClient — Flip rendering (#383)", () => {
       expect(screen.getByRole("region", { name: "Scoreboard" })).toBeInTheDocument();
     });
   });
+
+  // #410 (Caroline, off standby): the dev view didn't follow whoever owed
+  // the next action — TurnControls only renders for the turn-holder, and a
+  // flipper owed a Freeze/Flip 3 target choice mid-Flip-3 often isn't the
+  // turn-holder, so that case showed zero controls anywhere.
+  describe("dev view follows whoever owes the next action (#410)", () => {
+    const seatOptions = [
+      { name: "Alice", profileId: "p1" },
+      { name: "Bob", profileId: "p2" },
+    ];
+
+    beforeEach(() => {
+      process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS = "true";
+    });
+
+    afterEach(() => {
+      delete process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS;
+    });
+
+    it("follows the flipper owed a target choice even though a different player holds the turn", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" seatOptions={seatOptions} />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage(
+          flipGameStateMessage({
+            flip: {
+              turnPlayerId: "p1",
+              pendingAction: { kind: "freeze", flipperId: "p2", eligibleTargetIds: ["p1", "p2"] },
+            },
+          }),
+        );
+      });
+      act(() => vi.advanceTimersByTime(0));
+
+      const finalWs = getWs();
+      expect(finalWs.url).toContain("profileId=p2");
+      expect(finalWs.url).toContain("name=Bob");
+    });
+
+    it("follows the dealer at the awaiting-round-start boundary", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" seatOptions={seatOptions} />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage(
+          flipGameStateMessage({
+            flip: { phase: "awaiting-round-start", dealerId: "p2", turnPlayerId: null },
+          }),
+        );
+      });
+      act(() => vi.advanceTimersByTime(0));
+
+      const finalWs = getWs();
+      expect(finalWs.url).toContain("profileId=p2");
+    });
+
+    it("holds still on round-over/game-over instead of jumping to a phase with no controls to land on", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" seatOptions={seatOptions} />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage(
+          flipGameStateMessage({
+            flip: { phase: "game-over", winnerId: "p2", turnPlayerId: null },
+          }),
+        );
+      });
+      act(() => vi.advanceTimersByTime(0));
+
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    it("stops auto-following once the toggle is switched off, without touching a manual switch", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" seatOptions={seatOptions} />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      // Land on the Flip active view first — the toggle only renders there.
+      act(() => {
+        ws.simulateMessage(flipGameStateMessage({ flip: { turnPlayerId: "p1", pendingAction: null } }));
+      });
+      act(() => vi.advanceTimersByTime(0));
+      expect(MockWebSocket.instances).toHaveLength(1);
+
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      fireEvent.click(screen.getByLabelText("Follow acting seat"));
+
+      act(() => {
+        ws.simulateMessage(flipGameStateMessage({ flip: { turnPlayerId: "p2", pendingAction: null } }));
+      });
+      act(() => vi.advanceTimersByTime(0));
+
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    it("'Go to acting seat' jumps once even while the toggle is off", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" seatOptions={seatOptions} />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage(flipGameStateMessage({ flip: { turnPlayerId: "p1", pendingAction: null } }));
+      });
+      act(() => vi.advanceTimersByTime(0));
+
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      fireEvent.click(screen.getByLabelText("Follow acting seat"));
+
+      act(() => {
+        ws.simulateMessage(flipGameStateMessage({ flip: { turnPlayerId: "p2", pendingAction: null } }));
+      });
+      act(() => vi.advanceTimersByTime(0));
+      expect(MockWebSocket.instances).toHaveLength(1);
+
+      act(() => {
+        fireEvent.click(screen.getByRole("button", { name: "Go to acting seat" }));
+      });
+      act(() => vi.advanceTimersByTime(0));
+
+      const finalWs = getWs();
+      expect(finalWs.url).toContain("profileId=p2");
+    });
+  });
 });
