@@ -16,6 +16,7 @@ import { LAST_MISSION } from "../../lib/missions";
 import { highestUnlockedMission } from "../../lib/missionUnlocks";
 import { readRoomGameType } from "../../lib/roomGameType";
 import { apiHeaders } from "../../lib/serverApi";
+import { actingPlayerId } from "../../components/flip/actingSeat";
 import type { ClientMessage } from "@tabletop/shared";
 
 /**
@@ -42,9 +43,17 @@ interface GameClientProps {
   profileId: string;
   playerName: string;
   seatOptions?: DevSeatOption[];
+  /** #410: overrides the follow-acting-seat default (on for dev-seeded games) when set. */
+  initialFollowActingSeat?: boolean;
 }
 
-export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }: GameClientProps) {
+export function GameClient({
+  joinCode,
+  profileId,
+  playerName,
+  seatOptions = [],
+  initialFollowActingSeat,
+}: GameClientProps) {
   const { state, handleMessage, clearError } = useGameState();
   const [activeSeat, setActiveSeat] = useState<DevSeatOption>({ profileId, name: playerName });
   const { status, connect, disconnect, send } = useWebSocket(
@@ -78,6 +87,15 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
     setActiveSeat(seat);
   };
 
+  // Player id -> the seatOptions entry for that player, by name (the only
+  // link between #370's seed-time seat list and a live player record — same
+  // lookup the setup->active turn-holder follow below already used).
+  const seatForPlayerId = (playerId: string | null): DevSeatOption | undefined => {
+    if (!playerId) return undefined;
+    const player = state.players.find((p) => p.id === playerId);
+    return player ? seatOptions.find((s) => s.name === player.name) : undefined;
+  };
+
   const gameStatus = state.game?.status;
   const currentTurnPlayerId = state.game?.currentTurnPlayerId;
 
@@ -100,15 +118,43 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
   if (gameStatus !== prevGameStatus) {
     setPrevGameStatus(gameStatus);
     if (prevGameStatus === "setup" && gameStatus === "active" && seatOptions.length > 0 && currentTurnPlayerId) {
-      const turnHolderPlayer = state.players.find((p) => p.id === currentTurnPlayerId);
-      const turnHolderSeat = turnHolderPlayer
-        ? seatOptions.find((s) => s.name === turnHolderPlayer.name)
-        : undefined;
+      const turnHolderSeat = seatForPlayerId(currentTurnPlayerId);
       if (turnHolderSeat) {
         handleSwitchSeat(turnHolderSeat);
       }
     }
   }
+
+  // #410: Flip's dev view following whoever owes the next action — not just
+  // the turn-holder (the flipper owed a Freeze/Flip 3 target choice often
+  // isn't), and not just once at setup->active like the block above (every
+  // turn hands the action to someone new, and a round boundary hands it to
+  // the dealer). Default on for dev-seeded games; the explicit toggle in
+  // DevPanel can turn it off, and "Go to acting seat" jumps once without it.
+  //
+  // Edge-triggered on (followActingSeat, actingId) rather than firing on
+  // every render: a manual look-around mid-turn (acting id unchanged) is
+  // left alone ("manual switching untouched" — #410's scope line), and the
+  // view only snaps when the acted-for seat actually changes, or the toggle
+  // is switched back on.
+  const [followActingSeat, setFollowActingSeat] = useState(
+    initialFollowActingSeat ?? seatOptions.length > 0,
+  );
+  const actingId = state.flip ? actingPlayerId(state.flip) : null;
+  const followKey = `${followActingSeat}:${actingId ?? ""}`;
+  const [prevFollowKey, setPrevFollowKey] = useState(followKey);
+  if (followKey !== prevFollowKey) {
+    setPrevFollowKey(followKey);
+    if (followActingSeat && actingId) {
+      const actingSeat = seatForPlayerId(actingId);
+      if (actingSeat) handleSwitchSeat(actingSeat);
+    }
+  }
+
+  const goToActingSeat = () => {
+    const actingSeat = seatForPlayerId(actingId);
+    if (actingSeat) handleSwitchSeat(actingSeat);
+  };
 
   const devToolsEnabled = process.env.NEXT_PUBLIC_ENABLE_DEV_TOOLS === "true";
   const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:3001";
@@ -156,7 +202,9 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
     });
   };
 
-  function devPanel(options: { canRevealTokens?: boolean; canSkipTurn?: boolean } = {}) {
+  function devPanel(
+    options: { canRevealTokens?: boolean; canSkipTurn?: boolean; showFollowActingSeat?: boolean } = {},
+  ) {
     if (!devToolsEnabled) return null;
     return (
       <DevPanel
@@ -167,6 +215,12 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
         onHideDevTokens={options.canRevealTokens ? hideDevTokens : undefined}
         tokensRevealed={devTokensRevealed}
         onSkipTurn={options.canSkipTurn ? skipTurn : undefined}
+        followActingSeat={options.showFollowActingSeat ? followActingSeat : undefined}
+        onToggleFollowActingSeat={options.showFollowActingSeat ? setFollowActingSeat : undefined}
+        onGoToActingSeat={options.showFollowActingSeat ? goToActingSeat : undefined}
+        canGoToActingSeat={
+          options.showFollowActingSeat ? !!actingId && actingId !== state.localPlayer?.id : undefined
+        }
       />
     );
   }
@@ -246,7 +300,7 @@ export function GameClient({ joinCode, profileId, playerName, seatOptions = [] }
         ) : (
           <p className="p-6 text-center text-sm text-ink-muted">Loading the table…</p>
         )}
-        {devPanel()}
+        {devPanel({ showFollowActingSeat: true })}
         <ErrorToast message={state.error} onDismiss={clearError} />
       </div>
     );

@@ -17,6 +17,12 @@ interface DevPanelProps {
   onHideDevTokens?: () => void;
   tokensRevealed?: boolean;
   onSkipTurn?: () => void;
+  // #410: presence of onToggleFollowActingSeat gates this whole block —
+  // only the Flip route passes it, so Wire's panel is unaffected.
+  followActingSeat?: boolean;
+  onToggleFollowActingSeat?: (next: boolean) => void;
+  onGoToActingSeat?: () => void;
+  canGoToActingSeat?: boolean;
 }
 
 // #144 (Caroline, 2026-07-23): consolidates what used to be separate
@@ -49,6 +55,10 @@ export function DevPanel({
   onHideDevTokens,
   tokensRevealed,
   onSkipTurn,
+  followActingSeat,
+  onToggleFollowActingSeat,
+  onGoToActingSeat,
+  canGoToActingSeat,
 }: DevPanelProps) {
   const [open, setOpen] = useState(false);
   const showHideToggle = !!tokensRevealed && !!onHideDevTokens;
@@ -125,6 +135,28 @@ export function DevPanel({
           </button>
         )}
       </div>
+
+      {onToggleFollowActingSeat && (
+        <div className="flex flex-col gap-1 border-t border-amber-200 pt-2 dark:border-amber-800">
+          <label className="flex items-center gap-2 text-amber-800 dark:text-amber-400">
+            <input
+              type="checkbox"
+              checked={!!followActingSeat}
+              onChange={(e) => onToggleFollowActingSeat(e.target.checked)}
+            />
+            Follow acting seat
+          </label>
+          {onGoToActingSeat && (
+            <button
+              onClick={onGoToActingSeat}
+              disabled={!canGoToActingSeat}
+              className="rounded border border-amber-300 px-2 py-1 text-left text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950"
+            >
+              Go to acting seat
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
