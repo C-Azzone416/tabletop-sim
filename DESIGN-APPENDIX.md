@@ -169,6 +169,14 @@ Every fill token has a matching `-ink` token, same pattern as `--pN-ink`.
 
 **Implementation note (untested pending the component-migration PR, tracked like #237→#233 for Cabinet):** `flip.css`'s `@theme inline` block assumes Tailwind 4's PostCSS plugin picks it up regardless of which component first `import`s the file, since Next bundles all CSS through one pipeline. This file was not yet wired into a rendered component (#364 is tokens only, no dependencies, run in parallel with bobcat's engine work) — the first PR that actually imports `flip.css` into a mounted `[data-game="flip"]` tree should confirm the utilities generate (`bg-flip-num-7` etc.) before relying on it.
 
+### 3b. Landing illustration colors (#419)
+
+`GameRoomScene.tsx` (the unauthenticated landing page's illustrated room, behind the sign-in card) is neither platform frame nor game interior — it's a fixed decorative scene, not a UI surface a player operates. It gets its own `--scene-*` namespace in `theme.css`'s base `:root` block rather than reusing platform or game tokens, for one reason: it deliberately does **not** re-theme with `.dark`. It's a warm evening room lit by one pendant lamp; that reading has to survive regardless of the viewer's OS/app theme setting, so `--scene-*` tokens carry no `.dark` override, unlike every other token in the file.
+
+`--scene-*` covers colors with no brand equivalent — wall, floor, wood, lamplight, table wood-grain, meeple highlight/shadow pairs (`--scene-meeple-red-light` / `--scene-meeple-red-dark`, etc., one pair per seat hue so pieces can carry a gradient without inventing a sixth color per piece). Where a brand hue already applies — string-light bulbs, playing-card accents — the component pulls `--cab-red`/`--cab-sky`/`--cab-sun`/`--cab-grass` directly rather than duplicating them under `--scene-*`.
+
+Exempt from Definition of done (§13) rule 2 (`.dark` on/off) for the reason above — everything else in §13 still applies.
+
 ---
 
 ## 4. Typography

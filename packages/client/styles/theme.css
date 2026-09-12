@@ -150,6 +150,48 @@
   --p3: #FFC53D; --p3-ink: #10233F;
   --p4: #2E9E5B; --p4-ink: #FFFFFF;
   --p5: #7B4CC4; --p5-ink: #FFFFFF;
+
+  /* landing illustration (GameRoomScene, #419) — a fixed evening room, not
+     re-themed by light/dark: these never get a .dark override, same as the
+     hardcoded hex they replace. String-light bulbs and card/piece accents
+     still pull from the brand tokens above; only colors with no brand
+     equivalent (wood, wall, floor, lamplight) get their own token here. */
+  --scene-wall-top: #2A1F3D;
+  --scene-wall-bottom: #4A3A2A;
+  --scene-floor-far: #5A3A1E;
+  --scene-floor-near: #8A5A2E;
+  --scene-horizon: #2A1A0E;
+  --scene-wood-light: #8A5A32;
+  --scene-wood-dark: #4A2C14;
+  --scene-lamp-glow: #FFE9B0;
+  --scene-lamp-cord: #2C2C2C;
+  --scene-lamp-shade: #E8943A;
+  --scene-lamp-shade-rim: #FFCF82;
+  --scene-table-top-1: #E8B876;
+  --scene-table-top-2: #C98A44;
+  --scene-table-top-3: #9A6428;
+  --scene-table-side-top: #8A5A28;
+  --scene-table-side-bottom: #5C3A18;
+  --scene-shadow-ink: #160D05;
+  --scene-contact-shadow: #1A0F06;
+  --scene-window-frame: #3A6F8F;
+  --scene-window-glow: #BFE4F2;
+  --scene-string-wire: #3A2F27;
+  --scene-card-face: #FFFFFF;
+  --scene-die-pip: #333333;
+  --scene-die-edge: #CCCCCC;
+  --scene-die-accent-bg: #FFE1DC;
+  --scene-die-accent-pip: #C0392B;
+  --scene-meeple-red-light: #FF7A6E;
+  --scene-meeple-red-dark: #C21F16;
+  --scene-meeple-sky-light: #7FD6F5;
+  --scene-meeple-sky-dark: #1D86AE;
+  --scene-meeple-sun-light: #FFE18F;
+  --scene-meeple-sun-dark: #D89A16;
+  --scene-meeple-grass-light: #68C98D;
+  --scene-meeple-grass-dark: #1F7A45;
+  --scene-meeple-grape-light: #AD86E0;
+  --scene-meeple-grape-dark: #5C3699;
 }
 }
 
