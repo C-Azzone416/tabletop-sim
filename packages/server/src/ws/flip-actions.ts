@@ -23,6 +23,7 @@ import {
   hit,
   startRound,
   type FlipGameState,
+  type FlipPlayerState,
 } from '@tabletop/game-flip';
 import * as flipGamesDb from '../db/flip-games.js';
 
@@ -156,7 +157,7 @@ async function recordRoundIfJustScored(
     await flipGamesDb.recordFlipRoundScores(
       gameId,
       result.roundNumber,
-      after.players.map((player) => {
+      after.players.map((player: FlipPlayerState) => {
         const breakdown = result.breakdowns?.[player.id] ?? null;
         return {
           playerId: player.id,
