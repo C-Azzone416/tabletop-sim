@@ -68,6 +68,8 @@ Every message resolves `playerId`/`gameId` from the server-tracked socket→conn
 | `/` (Home) | No route gate; renders signed-in/signed-out UI conditionally | Public landing page; actions (create/join) gated behind a session-derived identity, not the route itself |
 | `/signin` | None (intentional) | Public entry point |
 
+**`NEXT_PUBLIC_*` vars are scoped per Vercel environment (2026-09-13 incident).** `NEXT_PUBLIC_ENABLE_DEV_TOOLS` and `NEXT_PUBLIC_SERVER_URL` are baked in at build time, and Vercel's Production/Preview/Development environments each hold their own independent value for the same variable name — setting one for Production does nothing for Preview builds (the per-commit `*.vercel.app` links). A Preview deployment with either var empty/unset for that environment renders `/dev` as a genuine `notFound()` 404 (not an auth wall — no `401`, homepage and `/api/auth/session` both `200`), which reads exactly like the route was removed. After changing either var, redeploy with a fresh (non-cached) build — a cached rebuild can keep the old baked-in value.
+
 **Mission-unlock client gating (#209):** `highestUnlockedMission()` drives the mission picker UI in `Lobby.tsx`/`GameOverOverlay.tsx` — cosmetic only. The real backstop is server-side `assertMissionUnlocked()` (#206), enforced independently of what the client sends. Depends on `/profiles/:id/mission-outcomes`, now own-profile-gated (#222/#224).
 
 ## Summary
