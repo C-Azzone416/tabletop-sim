@@ -40,3 +40,7 @@ next-env.d.ts
 .clubhouse/.local/
 .clubhouse/agents.json
 .clubhouse/settings.local.json
+
+# Clubhouse runtime state (never commit)
+.clubhouse/agents.json.bak
+.clubhouse/plugin-data/
