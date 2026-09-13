@@ -13,7 +13,14 @@
 // unique-number counts — so the client renders a list instead of
 // re-implementing an engine rule and risking disagreement with it.
 
-import { countUniqueNumbers, eligibleTargets, type FlipGameState } from '@tabletop/game-flip';
+import {
+  countUniqueNumbers,
+  eligibleTargets,
+  type FlipGameState,
+  type FlipPlayerState,
+  type FlipResolutionEvent,
+  type FlipThreeLevel,
+} from '@tabletop/game-flip';
 import type { FlipCardView, FlipRoundScoreView, FlipTableView } from '@tabletop/shared';
 import type { FlipRoundScoreRow } from '../db/flip-games.js';
 
@@ -53,7 +60,7 @@ export function toFlipTableView(
     roundNumber: state.roundNumber,
     dealerId: dealer.id,
     turnPlayerId: state.turnPlayerId,
-    players: state.players.map((player) => ({
+    players: state.players.map((player: FlipPlayerState) => ({
       id: player.id,
       name: player.name,
       status: player.status,
@@ -73,9 +80,9 @@ export function toFlipTableView(
             flipperId: state.turnPlayerId,
             // Resolved from the engine's own eligibility rule rather than
             // re-derived client-side (#363's picker renders this array).
-            eligibleTargetIds: eligibleTargets(state.players).map((player) => player.id),
+            eligibleTargetIds: eligibleTargets(state.players).map((player: FlipPlayerState) => player.id),
           },
-    flip3Stack: state.flip3Stack.map((level) => ({
+    flip3Stack: state.flip3Stack.map((level: FlipThreeLevel) => ({
       targetId: level.targetId,
       remaining: level.remaining,
     })),
@@ -87,7 +94,7 @@ export function toFlipTableView(
         }
       : null,
     winnerId: state.winnerId,
-    resolutionLog: state.resolutionLog.map((event) => ({
+    resolutionLog: state.resolutionLog.map((event: FlipResolutionEvent) => ({
       targetId: event.targetId,
       card: event.card as FlipCardView,
       effect: event.effect,
