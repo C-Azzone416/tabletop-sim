@@ -9,11 +9,13 @@
  * winner display.
  */
 
+import { useState } from "react";
 import { FlipTable } from "./FlipTable";
 import { PendingActionPicker } from "./PendingActionPicker";
 import { FlipScoreboard } from "./FlipScoreboard";
+import { BustNotice } from "./BustNotice";
 import type { FlipGameState as EngineFlipGameState } from "./engine-types";
-import type { FlipTableView } from "@tabletop/shared";
+import type { FlipResolutionEventView, FlipTableView } from "@tabletop/shared";
 
 // #396 — FlipTableView.players already carries `id`/`name`/`rounds` in the
 // exact shape FlipScoreboard wants (see the issue's payload spec, matched
@@ -65,6 +67,18 @@ function toEngineGameState(view: FlipTableView): EngineFlipGameState {
   };
 }
 
+/**
+ * A stable identity for one "batch" of resolutionLog events — the log is
+ * "reset per action, not a history" (FlipTableView's own doc comment), so a
+ * fresh WS broadcast of the *same* action's events is indistinguishable from
+ * the array by reference alone (every broadcast deserializes new objects).
+ * Comparing this string catches "the log actually changed" without needing
+ * the engine to hand out event ids.
+ */
+function resolutionLogSignature(events: readonly FlipResolutionEventView[]): string {
+  return events.map((e) => `${e.targetId}:${e.effect}:${e.card.id}`).join("|");
+}
+
 export function FlipGameRoot({
   flip,
   localPlayerId,
@@ -74,67 +88,104 @@ export function FlipGameRoot({
   onChooseFlip3Target,
   onStartRound,
 }: FlipGameRootProps) {
+  // #422 — every bust gets an explicit, dismissed notice, not just the ones
+  // that happen to fall inside a Freeze/Flip3 pending-action pause. Queued
+  // (not just "the latest") because one Flip 3 resolution can bust more than
+  // one player in a single broadcast.
+  const logSignature = resolutionLogSignature(flip.resolutionLog);
+  // Sentinel, not the initial signature: a bust already present in the very
+  // first resolutionLog this component ever sees (e.g. mounting mid-game
+  // after a reconnect) must still show a notice, not be treated as "already
+  // seen" just because it was there on mount.
+  const [trackedLogSignature, setTrackedLogSignature] = useState("");
+  const [bustQueue, setBustQueue] = useState<readonly FlipResolutionEventView[]>([]);
+  if (logSignature !== trackedLogSignature) {
+    setTrackedLogSignature(logSignature);
+    const newBusts = flip.resolutionLog.filter((e) => e.effect === "number-busted");
+    if (newBusts.length > 0) setBustQueue((queue) => [...queue, ...newBusts]);
+  }
+
+  const activeBust = bustQueue[0];
+  const bustNotice = activeBust ? (
+    <BustNotice
+      playerName={flip.players.find((p) => p.id === activeBust.targetId)?.name ?? activeBust.targetId}
+      isLocalPlayer={activeBust.targetId === localPlayerId}
+      card={activeBust.card}
+      queuePosition={bustQueue.length > 1 ? { index: 1, total: bustQueue.length } : undefined}
+      onDismiss={() => setBustQueue((queue) => queue.slice(1))}
+    />
+  ) : null;
+
   if (flip.phase === "game-over") {
     const winner = flip.players.find((player) => player.id === flip.winnerId);
     return (
-      <div data-testid="flip-game-over" className="flex flex-col items-center gap-4 p-6 text-center">
-        <p className="text-lg font-bold text-ink">{winner ? `${winner.name} wins!` : "Game over"}</p>
-        <FlipScoreboard players={toScoreboardPlayers(flip.players)} />
-      </div>
+      <>
+        {bustNotice}
+        <div data-testid="flip-game-over" className="flex flex-col items-center gap-4 p-6 text-center">
+          <p className="text-lg font-bold text-ink">{winner ? `${winner.name} wins!` : "Game over"}</p>
+          <FlipScoreboard players={toScoreboardPlayers(flip.players)} />
+        </div>
+      </>
     );
   }
 
   if (flip.phase === "awaiting-round-start") {
     const isDealer = localPlayerId === flip.dealerId;
     return (
-      <div data-testid="flip-awaiting-round-start" className="flex flex-col items-center gap-4 p-6 text-center">
-        <p className="text-sm text-ink-muted">
-          {isDealer
-            ? "You're the dealer — start the next round when ready."
-            : "Waiting on the dealer to start the round…"}
-        </p>
-        {isDealer && (
-          <button
-            type="button"
-            onClick={onStartRound}
-            className="press rounded-cab border-2 border-outline bg-accent px-6 py-3 text-base font-bold text-accent-ink shadow-print-md"
-          >
-            Start Round
-          </button>
-        )}
-        {/* Nothing to show before round 1 ever completes — checked on the
-            data itself (every player's rounds is []), not roundNumber,
-            since that field's exact semantics at this phase aren't ours
-            to assume. */}
-        {flip.players.some((p) => p.rounds.length > 0) && (
-          <FlipScoreboard players={toScoreboardPlayers(flip.players)} />
-        )}
-      </div>
+      <>
+        {bustNotice}
+        <div data-testid="flip-awaiting-round-start" className="flex flex-col items-center gap-4 p-6 text-center">
+          <p className="text-sm text-ink-muted">
+            {isDealer
+              ? "You're the dealer — start the next round when ready."
+              : "Waiting on the dealer to start the round…"}
+          </p>
+          {isDealer && (
+            <button
+              type="button"
+              onClick={onStartRound}
+              className="press rounded-cab border-2 border-outline bg-accent px-6 py-3 text-base font-bold text-accent-ink shadow-print-md"
+            >
+              Start Round
+            </button>
+          )}
+          {/* Nothing to show before round 1 ever completes — checked on the
+              data itself (every player's rounds is []), not roundNumber,
+              since that field's exact semantics at this phase aren't ours
+              to assume. */}
+          {flip.players.some((p) => p.rounds.length > 0) && (
+            <FlipScoreboard players={toScoreboardPlayers(flip.players)} />
+          )}
+        </div>
+      </>
     );
   }
 
   const game = toEngineGameState(flip);
 
   return (
-    <FlipTable
-      game={game}
-      localPlayerId={localPlayerId}
-      onHit={onHit}
-      onFreeze={onFreeze}
-      // #366's C4 timeout self-targets through these same two callbacks
-      // (see FlipTable's own doc comment) — without passing them through,
-      // a Freeze/Flip3 target-choice timeout has nothing to call and the
-      // prompt would hang forever even once turnDeadline exists.
-      onChooseFreezeTarget={onChooseFreezeTarget}
-      onChooseFlip3Target={onChooseFlip3Target}
-      pendingActionUi={
-        <PendingActionPicker
-          game={game}
-          localPlayerId={localPlayerId}
-          onChooseFreezeTarget={onChooseFreezeTarget}
-          onChooseFlip3Target={onChooseFlip3Target}
-        />
-      }
-    />
+    <>
+      {bustNotice}
+      <FlipTable
+        game={game}
+        localPlayerId={localPlayerId}
+        onHit={onHit}
+        onFreeze={onFreeze}
+        // #366's C4 timeout self-targets through these same two callbacks
+        // (see FlipTable's own doc comment) — without passing them through,
+        // a Freeze/Flip3 target-choice timeout has nothing to call and the
+        // prompt would hang forever even once turnDeadline exists.
+        onChooseFreezeTarget={onChooseFreezeTarget}
+        onChooseFlip3Target={onChooseFlip3Target}
+        pendingActionUi={
+          <PendingActionPicker
+            game={game}
+            localPlayerId={localPlayerId}
+            onChooseFreezeTarget={onChooseFreezeTarget}
+            onChooseFlip3Target={onChooseFlip3Target}
+          />
+        }
+      />
+    </>
   );
 }

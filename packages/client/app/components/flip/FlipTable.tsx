@@ -15,7 +15,7 @@
 import { useCallback, useState } from "react";
 import { PlaySurface } from "./PlaySurface";
 import { SeatRail } from "./SeatRail";
-import { Hand } from "./Hand";
+import { TableSeating } from "./TableSeating";
 import { TurnControls } from "./TurnControls";
 import { PendingActionSlot } from "./PendingActionSlot";
 import { CardsRemaining } from "./CardsRemaining";
@@ -128,16 +128,7 @@ export function FlipTable({
         onToggleFlatten={() => setFlattened((f) => !f)}
         turnInProgress={game.phase === "round-in-progress" && isMyTurn}
       >
-        <div className="flex flex-col gap-3">
-          {game.players.map((player) => (
-            <div key={player.id}>
-              <p className="mb-1 text-xs font-medium text-ink-muted">
-                {player.id === localPlayerId ? "You" : player.name}
-              </p>
-              <Hand cards={player.hand} />
-            </div>
-          ))}
-        </div>
+        <TableSeating players={game.players} localPlayerId={localPlayerId} />
       </PlaySurface>
 
       <CardsRemaining count={game.shoe.length} />

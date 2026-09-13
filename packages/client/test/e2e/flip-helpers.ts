@@ -66,6 +66,22 @@ export async function waitForTurnToPass(page: Page, actedPlayerName: string): Pr
 }
 
 /**
+ * Dismisses a #422 bust notice if one is currently up. It's a blocking,
+ * explicitly-dismissed `fixed inset-0` overlay by design (that's the whole
+ * point — a bust must be acknowledged, not missed) — which also means it can
+ * cover the DevPanel's own seat-switch buttons if a bust happened on the
+ * previous action. Anything in this suite that clicks after an action that
+ * might have busted someone should tolerate the notice being up.
+ */
+export async function dismissBustNotice(page: Page): Promise<void> {
+  const notice = page.getByTestId("bust-notice");
+  if (await notice.isVisible().catch(() => false)) {
+    await page.getByRole("button", { name: "Got it" }).click();
+    await notice.waitFor({ state: "detached" }).catch(() => {});
+  }
+}
+
+/**
  * Opens the DevPanel (if collapsed) and switches to the named seat.
  *
  * Waits for the panel's "Viewing: <name>" label to confirm the switch before
@@ -81,6 +97,7 @@ export async function waitForTurnToPass(page: Page, actedPlayerName: string): Pr
  * unchanged.
  */
 export async function switchToSeat(page: Page, name: string): Promise<void> {
+  await dismissBustNotice(page);
   const openToggle = page.getByRole("button", { name: "Open dev tools" });
   if (await openToggle.isVisible().catch(() => false)) {
     await openToggle.click();
