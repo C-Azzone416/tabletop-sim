@@ -1,297 +1,229 @@
 "use client";
 
+// Bulb positions/colors along the string-light wire, alternating between
+// two seat hues so the blink animation reads as two interleaved circuits.
+const BULBS: Array<{ x: number; y: number; color: string }> = [
+  { x: 150, y: 66, color: "var(--cab-red)" },
+  { x: 260, y: 76, color: "var(--cab-sun)" },
+  { x: 380, y: 70, color: "var(--cab-grass)" },
+  { x: 500, y: 52, color: "var(--cab-sky)" },
+  { x: 610, y: 64, color: "var(--cab-red)" },
+  { x: 720, y: 72, color: "var(--cab-sun)" },
+  { x: 840, y: 58, color: "var(--cab-grass)" },
+  { x: 950, y: 55, color: "var(--cab-sky)" },
+  { x: 1070, y: 66, color: "var(--cab-red)" },
+];
+
+const MEEPLES: Array<{ x: number; y: number; gradient: string }> = [
+  { x: 420, y: 500, gradient: "grs-meeple-red" },
+  { x: 560, y: 510, gradient: "grs-meeple-sky" },
+  { x: 650, y: 504, gradient: "grs-meeple-grass" },
+  { x: 760, y: 514, gradient: "grs-meeple-sun" },
+  { x: 600, y: 508, gradient: "grs-meeple-grape" },
+];
+
 export function GameRoomScene() {
   return (
     <svg
-      viewBox="0 0 1200 800"
+      viewBox="0 0 1200 780"
       className="absolute inset-0 h-full w-full"
       preserveAspectRatio="xMidYMid slice"
       aria-hidden="true"
     >
-      {/* Background wall */}
-      <rect width="1200" height="800" fill="#3d2b1f" />
-      <rect width="1200" height="550" fill="#f5e6d0" />
-
-      {/* Wainscoting / lower wall */}
-      <rect y="400" width="1200" height="150" fill="#e8d5b8" />
-      <rect y="395" width="1200" height="8" fill="#c4a882" rx="2" />
-
-      {/* Floor */}
-      <rect y="550" width="1200" height="250" fill="#8b6914" />
-      {/* Floor boards */}
-      {[0, 150, 300, 450, 600, 750, 900, 1050].map((x) => (
-        <line
-          key={x}
-          x1={x}
-          y1="550"
-          x2={x}
-          y2="800"
-          stroke="#7a5c10"
-          strokeWidth="2"
-        />
-      ))}
-
-      {/* Left window */}
-      <g>
-        <rect x="80" y="100" width="200" height="260" rx="8" fill="#87ceeb" />
-        <rect
-          x="80"
-          y="100"
-          width="200"
-          height="260"
-          rx="8"
-          fill="none"
-          stroke="#c4a882"
-          strokeWidth="12"
-        />
-        {/* Window cross */}
-        <line
-          x1="180"
-          y1="100"
-          x2="180"
-          y2="360"
-          stroke="#c4a882"
-          strokeWidth="6"
-        />
-        <line
-          x1="80"
-          y1="230"
-          x2="280"
-          y2="230"
-          stroke="#c4a882"
-          strokeWidth="6"
-        />
-        {/* Soft light glow */}
-        <rect
-          x="86"
-          y="106"
-          width="88"
-          height="118"
-          fill="#fffbe6"
-          opacity="0.3"
-        />
-        {/* Left curtain */}
-        <path d="M60,90 Q80,90 85,100 L85,380 Q75,370 60,380 Z" fill="#b44" opacity="0.85" />
-        <path d="M60,90 Q70,200 65,380" stroke="#922" strokeWidth="2" fill="none" />
-        {/* Right curtain */}
-        <path d="M300,90 Q280,90 275,100 L275,380 Q285,370 300,380 Z" fill="#b44" opacity="0.85" />
-        <path d="M300,90 Q290,200 295,380" stroke="#922" strokeWidth="2" fill="none" />
-      </g>
-
-      {/* Right window */}
-      <g>
-        <rect x="920" y="100" width="200" height="260" rx="8" fill="#87ceeb" />
-        <rect
-          x="920"
-          y="100"
-          width="200"
-          height="260"
-          rx="8"
-          fill="none"
-          stroke="#c4a882"
-          strokeWidth="12"
-        />
-        <line
-          x1="1020"
-          y1="100"
-          x2="1020"
-          y2="360"
-          stroke="#c4a882"
-          strokeWidth="6"
-        />
-        <line
-          x1="920"
-          y1="230"
-          x2="1120"
-          y2="230"
-          stroke="#c4a882"
-          strokeWidth="6"
-        />
-        <rect
-          x="926"
-          y="106"
-          width="88"
-          height="118"
-          fill="#fffbe6"
-          opacity="0.3"
-        />
-        <path d="M900,90 Q920,90 925,100 L925,380 Q915,370 900,380 Z" fill="#b44" opacity="0.85" />
-        <path d="M900,90 Q910,200 905,380" stroke="#922" strokeWidth="2" fill="none" />
-        <path d="M1140,90 Q1120,90 1115,100 L1115,380 Q1125,370 1140,380 Z" fill="#b44" opacity="0.85" />
-        <path d="M1140,90 Q1130,200 1135,380" stroke="#922" strokeWidth="2" fill="none" />
-      </g>
-
-      {/* CSS animations for alternating string lights */}
       <defs>
         <style>{`
-          @keyframes bulb-on {
-            0%, 45% { opacity: 1; }
-            50%, 95% { opacity: 0.4; }
-            100% { opacity: 1; }
-          }
-          @keyframes bulb-off {
-            0%, 45% { opacity: 0.4; }
-            50%, 95% { opacity: 1; }
-            100% { opacity: 0.4; }
-          }
-          .bulb-0, .bulb-2, .bulb-4, .bulb-6, .bulb-8 { animation: bulb-on 2s ease-in-out infinite; }
-          .bulb-1, .bulb-3, .bulb-5, .bulb-7 { animation: bulb-off 2s ease-in-out infinite; }
+          @keyframes bulb-on { 0%, 45% { opacity: 1; } 50%, 95% { opacity: 0.4; } 100% { opacity: 1; } }
+          @keyframes bulb-off { 0%, 45% { opacity: 0.4; } 50%, 95% { opacity: 1; } 100% { opacity: 0.4; } }
+          .grs-bulb:nth-child(odd) { animation: bulb-on 2s ease-in-out infinite; }
+          .grs-bulb:nth-child(even) { animation: bulb-off 2s ease-in-out infinite; }
         `}</style>
+
+        <linearGradient id="grs-wall" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="var(--scene-wall-top)" />
+          <stop offset="1" stopColor="var(--scene-wall-bottom)" />
+        </linearGradient>
+        <linearGradient id="grs-floor" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="var(--scene-floor-far)" />
+          <stop offset="1" stopColor="var(--scene-floor-near)" />
+        </linearGradient>
+        <linearGradient id="grs-wood" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="var(--scene-wood-light)" />
+          <stop offset="1" stopColor="var(--scene-wood-dark)" />
+        </linearGradient>
+        <radialGradient id="grs-lampglow" cx="0.5" cy="0.5" r="0.9">
+          <stop offset="0" stopColor="var(--scene-lamp-glow)" stopOpacity="0.4" />
+          <stop offset="1" stopColor="var(--scene-lamp-glow)" stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id="grs-tabletop" cx="0.42" cy="0.32" r="0.75">
+          <stop offset="0" stopColor="var(--scene-table-top-1)" />
+          <stop offset="0.6" stopColor="var(--scene-table-top-2)" />
+          <stop offset="1" stopColor="var(--scene-table-top-3)" />
+        </radialGradient>
+        <linearGradient id="grs-tableside" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="var(--scene-table-side-top)" />
+          <stop offset="1" stopColor="var(--scene-table-side-bottom)" />
+        </linearGradient>
+        <filter id="grs-soft" x="-40%" y="-40%" width="180%" height="180%">
+          <feDropShadow dx="0" dy="10" stdDeviation="10" floodColor="var(--scene-shadow-ink)" floodOpacity="0.35" />
+        </filter>
+        <filter id="grs-blur" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="6" />
+        </filter>
+
+        {/* one gradient per seat hue — a shared gradient can't be recolored
+            per <use> instance, since <stop> lives outside the use's shadow
+            tree and never sees a custom property set on the <use> itself */}
+        <linearGradient id="grs-meeple-red" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="var(--scene-meeple-red-light)" />
+          <stop offset="1" stopColor="var(--scene-meeple-red-dark)" />
+        </linearGradient>
+        <linearGradient id="grs-meeple-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="var(--scene-meeple-sky-light)" />
+          <stop offset="1" stopColor="var(--scene-meeple-sky-dark)" />
+        </linearGradient>
+        <linearGradient id="grs-meeple-sun" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="var(--scene-meeple-sun-light)" />
+          <stop offset="1" stopColor="var(--scene-meeple-sun-dark)" />
+        </linearGradient>
+        <linearGradient id="grs-meeple-grass" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="var(--scene-meeple-grass-light)" />
+          <stop offset="1" stopColor="var(--scene-meeple-grass-dark)" />
+        </linearGradient>
+        <linearGradient id="grs-meeple-grape" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="var(--scene-meeple-grape-light)" />
+          <stop offset="1" stopColor="var(--scene-meeple-grape-dark)" />
+        </linearGradient>
+        {/* body path has no fill of its own — it inherits whatever `fill` the
+            <use> element sets, so one symbol serves every seat color */}
+        <symbol id="grs-meeple" viewBox="-16 -30 32 60">
+          <ellipse cx="0" cy="27" rx="13" ry="4" fill="var(--scene-contact-shadow)" opacity="0.22" />
+          <path d="M-13,26 Q-14,6 -5,3 Q-9,-6 -9,-13 Q-9,-24 0,-24 Q9,-24 9,-13 Q9,-6 5,3 Q14,6 13,26 Q0,32 -13,26 Z" />
+          <ellipse cx="-4" cy="-16" rx="3.4" ry="2.4" fill="#fff" opacity="0.55" />
+        </symbol>
       </defs>
 
-      {/* Pendant lamp — larger, hung lower */}
-      <line x1="600" y1="0" x2="600" y2="120" stroke="#333" strokeWidth="3" />
-      <path d="M545,120 Q600,165 655,120 Z" fill="#f4a460" />
-      <ellipse cx="600" cy="130" rx="30" ry="8" fill="#e8943a" />
-      {/* Light glow */}
-      <ellipse cx="600" cy="170" rx="200" ry="120" fill="#fff8dc" opacity="0.12" />
+      <rect width="1200" height="780" fill="url(#grs-wall)" />
 
-      {/* String lights — bulbs on the wire path */}
+      {/* windows, soft-lit, blurred to sit behind the scene */}
+      <g filter="url(#grs-blur)" opacity="0.9">
+        <rect x="90" y="90" width="190" height="250" rx="14" fill="var(--scene-window-frame)" />
+        <rect x="100" y="100" width="170" height="230" rx="10" fill="var(--scene-window-glow)" opacity="0.5" />
+        <rect x="930" y="90" width="190" height="250" rx="14" fill="var(--scene-window-frame)" />
+        <rect x="940" y="100" width="170" height="230" rx="10" fill="var(--scene-window-glow)" opacity="0.5" />
+      </g>
+
+      {/* wall / floor boundary — the room's one hard horizon line */}
+      <rect y="466" width="1200" height="6" fill="var(--scene-horizon)" />
+      <rect y="472" width="1200" height="308" fill="url(#grs-floor)" />
+      {/* floorboards, fanning slightly toward the viewer for depth */}
+      <g stroke="var(--scene-horizon)" strokeOpacity="0.3" strokeWidth="2">
+        <line x1="60" y1="472" x2="-40" y2="780" />
+        <line x1="260" y1="472" x2="200" y2="780" />
+        <line x1="460" y1="472" x2="440" y2="780" />
+        <line x1="660" y1="472" x2="680" y2="780" />
+        <line x1="860" y1="472" x2="920" y2="780" />
+        <line x1="1060" y1="472" x2="1160" y2="780" />
+        <line x1="1240" y1="472" x2="1360" y2="780" />
+      </g>
+
+      {/* pendant lamp */}
+      <line x1="600" y1="10" x2="600" y2="120" stroke="var(--scene-lamp-cord)" strokeWidth="3" />
+      <path d="M540,120 Q600,175 660,120 Z" fill="var(--scene-lamp-shade)" filter="url(#grs-soft)" />
+      <ellipse cx="600" cy="132" rx="32" ry="9" fill="var(--scene-lamp-shade-rim)" />
+      <ellipse cx="600" cy="205" rx="150" ry="90" fill="url(#grs-lampglow)" />
+
+      {/* string lights */}
       <path
-        d="M100,60 Q300,90 500,55 Q700,85 900,50 Q1050,75 1150,60"
-        stroke="#555"
-        strokeWidth="2"
+        d="M110,58 Q320,95 520,52 Q720,90 920,48 Q1050,72 1140,56"
+        stroke="var(--scene-string-wire)"
+        strokeWidth="2.5"
         fill="none"
-        id="string-path"
       />
-      {/* Bulbs — hanging from the wire. Y = computed wire position at each X */}
-      {[
-        { x: 150, y: 65 },
-        { x: 250, y: 73 },
-        { x: 370, y: 72 },
-        { x: 500, y: 55 },
-        { x: 610, y: 66 },
-        { x: 720, y: 69 },
-        { x: 840, y: 60 },
-        { x: 950, y: 57 },
-        { x: 1080, y: 68 },
-      ].map((pos, i) => {
-        const colors = ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#ff6b6b"];
-        return (
-          <g key={i}>
-            {/* Connector — always visible, solid */}
-            <line x1={pos.x} y1={pos.y - 2} x2={pos.x} y2={pos.y + 5} stroke="#444" strokeWidth="3" />
-            {/* Bulb — animates independently */}
-            <circle className={`bulb-${i}`} cx={pos.x} cy={pos.y + 12} r="9" fill={colors[i]} />
+      {BULBS.map((b, i) => (
+        <g key={i}>
+          <line x1={b.x} y1={b.y - 2} x2={b.x} y2={b.y + 5} stroke="var(--scene-string-wire)" strokeWidth="3" />
+          <circle className="grs-bulb" cx={b.x} cy={b.y + 12} r="9" fill={b.color} />
+        </g>
+      ))}
+
+      {/* whole table + seating cluster, pulled forward off the wall/floor seam */}
+      <g transform="translate(0,48)">
+        {/* back chair — behind the table, only the back shows above the tabletop */}
+        <g transform="translate(520,410)" filter="url(#grs-soft)">
+          <rect x="0" y="-58" width="10" height="86" rx="4" fill="url(#grs-wood)" />
+          <rect x="86" y="-58" width="10" height="86" rx="4" fill="url(#grs-wood)" />
+          <rect x="-3" y="-64" width="102" height="15" rx="5" fill="url(#grs-wood)" />
+          <rect x="1" y="-30" width="94" height="9" rx="3" fill="url(#grs-wood)" />
+        </g>
+
+        {/* left + right chairs, feet grounded on the floor — back posts run tall, legs run long */}
+        {[120, 984].map((cx) => (
+          <g key={cx} transform={`translate(${cx},560)`}>
+            <ellipse cx="52" cy="134" rx="74" ry="15" fill="var(--scene-contact-shadow)" opacity="0.3" />
+            <g filter="url(#grs-soft)">
+              <rect x="0" y="-96" width="13" height="140" rx="5" fill="url(#grs-wood)" />
+              <rect x="92" y="-96" width="13" height="140" rx="5" fill="url(#grs-wood)" />
+              <rect x="-3" y="-102" width="112" height="16" rx="5" fill="url(#grs-wood)" />
+              <rect x="1" y="-56" width="104" height="9" rx="3" fill="url(#grs-wood)" />
+              <rect x="-3" y="26" width="112" height="18" rx="6" fill="url(#grs-wood)" />
+              <rect x="4" y="44" width="14" height="90" rx="4" fill="url(#grs-wood)" />
+              <rect x="87" y="44" width="14" height="90" rx="4" fill="url(#grs-wood)" />
+            </g>
           </g>
-        );
-      })}
+        ))}
 
-      {/* Chairs — 3 scaled-up chairs, pushed back from table */}
-      {/* Left chair */}
-      <g transform="translate(140, 540)">
-        {/* Back posts */}
-        <rect x="0" y="-60" width="12" height="90" rx="4" fill="#6b4226" />
-        <rect x="88" y="-60" width="12" height="90" rx="4" fill="#6b4226" />
-        {/* Back rail */}
-        <rect x="-2" y="-65" width="104" height="14" rx="4" fill="#8b5e3c" />
-        {/* Mid rail */}
-        <rect x="2" y="-35" width="96" height="8" rx="3" fill="#8b5e3c" />
-        {/* Seat */}
-        <rect x="0" y="24" width="100" height="16" rx="5" fill="#a0714a" />
-        {/* Front legs */}
-        <rect x="4" y="40" width="12" height="55" rx="3" fill="#6b4226" />
-        <rect x="84" y="40" width="12" height="55" rx="3" fill="#6b4226" />
-      </g>
-      {/* Right chair */}
-      <g transform="translate(960, 540)">
-        <rect x="0" y="-60" width="12" height="90" rx="4" fill="#6b4226" />
-        <rect x="88" y="-60" width="12" height="90" rx="4" fill="#6b4226" />
-        <rect x="-2" y="-65" width="104" height="14" rx="4" fill="#8b5e3c" />
-        <rect x="2" y="-35" width="96" height="8" rx="3" fill="#8b5e3c" />
-        <rect x="0" y="24" width="100" height="16" rx="5" fill="#a0714a" />
-        <rect x="4" y="40" width="12" height="55" rx="3" fill="#6b4226" />
-        <rect x="84" y="40" width="12" height="55" rx="3" fill="#6b4226" />
-      </g>
-      {/* Back chair (behind table, back visible above) */}
-      <g transform="translate(520, 420)">
-        <rect x="0" y="-45" width="12" height="72" rx="4" fill="#6b4226" />
-        <rect x="88" y="-45" width="12" height="72" rx="4" fill="#6b4226" />
-        <rect x="-2" y="-50" width="104" height="14" rx="4" fill="#8b5e3c" />
-        <rect x="2" y="-25" width="96" height="8" rx="3" fill="#8b5e3c" />
-        <rect x="0" y="22" width="100" height="16" rx="5" fill="#a0714a" />
-      </g>
+        {/* table's own contact shadow, cast onto the floor */}
+        <ellipse cx="600" cy="705" rx="300" ry="36" fill="var(--scene-contact-shadow)" opacity="0.32" />
 
-      {/* Table — 4 corner legs, all matching tabletop wood tone */}
-      <rect x="350" y="610" width="14" height="70" rx="3" fill="#a0522d" />
-      <rect x="836" y="610" width="14" height="70" rx="3" fill="#a0522d" />
-      <rect x="500" y="625" width="14" height="55" rx="3" fill="#a0522d" />
-      <rect x="686" y="625" width="14" height="55" rx="3" fill="#a0522d" />
-      {/* Table top */}
-      <ellipse cx="600" cy="560" rx="340" ry="100" fill="#a0522d" />
-      <ellipse cx="600" cy="550" rx="340" ry="100" fill="#cd853f" />
-      <ellipse cx="600" cy="545" rx="320" ry="90" fill="#deb887" />
+        {/* table — four real tapered legs under a shallow apron, not a fused pedestal */}
+        <g filter="url(#grs-soft)">
+          <path d="M494,600 L484,700 L500,700 L512,604 Z" fill="url(#grs-wood)" />
+          <path d="M706,604 L718,700 L734,700 L724,600 Z" fill="url(#grs-wood)" />
+          <path d="M342,580 L328,688 L348,688 L364,584 Z" fill="url(#grs-wood)" />
+          <path d="M856,584 L872,688 L892,688 L878,580 Z" fill="url(#grs-wood)" />
+          <path d="M330,555 L330,596 Q600,626 870,596 L870,555 Z" fill="url(#grs-tableside)" />
+          <ellipse cx="600" cy="555" rx="340" ry="98" fill="url(#grs-tabletop)" />
+        </g>
 
-      {/* Cards on table */}
-      <g transform="translate(480, 510) rotate(-15)">
-        <rect width="40" height="56" rx="4" fill="white" stroke="#ddd" strokeWidth="1" />
-        <rect x="4" y="4" width="32" height="48" rx="2" fill="#e74c3c" opacity="0.3" />
-      </g>
-      <g transform="translate(500, 515) rotate(5)">
-        <rect width="40" height="56" rx="4" fill="white" stroke="#ddd" strokeWidth="1" />
-        <rect x="4" y="4" width="32" height="48" rx="2" fill="#3498db" opacity="0.3" />
-      </g>
+        {/* cards */}
+        <g transform="translate(470,510) rotate(-14)" filter="url(#grs-soft)">
+          <rect width="46" height="64" rx="6" fill="var(--scene-card-face)" />
+          <rect x="5" y="5" width="36" height="54" rx="4" fill="var(--cab-red)" opacity="0.75" />
+        </g>
+        <g transform="translate(500,518) rotate(8)" filter="url(#grs-soft)">
+          <rect width="46" height="64" rx="6" fill="var(--scene-card-face)" />
+          <rect x="5" y="5" width="36" height="54" rx="4" fill="var(--cab-sky)" opacity="0.75" />
+        </g>
 
-      {/* Dice */}
-      <g transform="translate(700, 520) rotate(20)">
-        <rect width="24" height="24" rx="4" fill="white" stroke="#ccc" strokeWidth="1" />
-        <circle cx="8" cy="8" r="2.5" fill="#333" />
-        <circle cx="16" cy="16" r="2.5" fill="#333" />
-        <circle cx="12" cy="12" r="2.5" fill="#333" />
-      </g>
-      <g transform="translate(730, 525) rotate(-10)">
-        <rect width="24" height="24" rx="4" fill="#ffe4e1" stroke="#ccc" strokeWidth="1" />
-        <circle cx="6" cy="6" r="2.5" fill="#c0392b" />
-        <circle cx="18" cy="6" r="2.5" fill="#c0392b" />
-        <circle cx="6" cy="18" r="2.5" fill="#c0392b" />
-        <circle cx="18" cy="18" r="2.5" fill="#c0392b" />
-      </g>
+        {/* dice */}
+        <g transform="translate(700,522) rotate(18)" filter="url(#grs-soft)">
+          <rect width="28" height="28" rx="6" fill="var(--scene-card-face)" />
+          <circle cx="9" cy="9" r="2.6" fill="var(--scene-die-pip)" />
+          <circle cx="19" cy="19" r="2.6" fill="var(--scene-die-pip)" />
+          <circle cx="14" cy="14" r="2.6" fill="var(--scene-die-pip)" />
+        </g>
+        <g transform="translate(735,528) rotate(-12)" filter="url(#grs-soft)">
+          <rect width="28" height="28" rx="6" fill="var(--scene-die-accent-bg)" />
+          <circle cx="7" cy="7" r="2.6" fill="var(--scene-die-accent-pip)" />
+          <circle cx="21" cy="7" r="2.6" fill="var(--scene-die-accent-pip)" />
+          <circle cx="7" cy="21" r="2.6" fill="var(--scene-die-accent-pip)" />
+          <circle cx="21" cy="21" r="2.6" fill="var(--scene-die-accent-pip)" />
+        </g>
 
-      {/* Meeples */}
-      {/* Red meeple */}
-      <g transform="translate(420, 490)">
-        <path d="M0,28 L8,8 Q12,0 16,8 L24,28 Z" fill="#e74c3c" />
-        <circle cx="12" cy="6" r="6" fill="#e74c3c" />
+        {/* meeples */}
+        {MEEPLES.map((m, i) => (
+          <use
+            key={i}
+            href="#grs-meeple"
+            x={m.x}
+            y={m.y}
+            width="30"
+            height="56"
+            fill={`url(#${m.gradient})`}
+            filter="url(#grs-soft)"
+          />
+        ))}
       </g>
-      {/* Blue meeple */}
-      <g transform="translate(550, 500)">
-        <path d="M0,28 L8,8 Q12,0 16,8 L24,28 Z" fill="#3498db" />
-        <circle cx="12" cy="6" r="6" fill="#3498db" />
-      </g>
-      {/* Green meeple */}
-      <g transform="translate(650, 495)">
-        <path d="M0,28 L8,8 Q12,0 16,8 L24,28 Z" fill="#2ecc71" />
-        <circle cx="12" cy="6" r="6" fill="#2ecc71" />
-      </g>
-      {/* Yellow meeple — bright yellow, no outline */}
-      <g transform="translate(760, 505)">
-        <path d="M0,28 L8,8 Q12,0 16,8 L24,28 Z" fill="#fde047" />
-        <circle cx="12" cy="6" r="6" fill="#fde047" />
-      </g>
-      {/* Purple meeple (standing on table) */}
-      <g transform="translate(600, 500)">
-        <path d="M0,28 L8,8 Q12,0 16,8 L24,28 Z" fill="#9b59b6" />
-        <circle cx="12" cy="6" r="6" fill="#9b59b6" />
-      </g>
-
-      {/* Plant in corner — tall floor plant, grounded on floor */}
-      <g transform="translate(40, 350)">
-        {/* Pot sits on floor (floor is at y=550, pot bottom at y=350+200=550) */}
-        <path d="M10,200 L25,140 L75,140 L90,200 Z" fill="#c0392b" />
-        <rect x="18" y="132" width="64" height="14" rx="4" fill="#d35400" />
-        {/* Trunk */}
-        <rect x="42" y="60" width="16" height="80" rx="4" fill="#5d4037" />
-        {/* Leaves */}
-        <ellipse cx="50" cy="40" rx="35" ry="40" fill="#27ae60" />
-        <ellipse cx="28" cy="20" rx="24" ry="30" fill="#2ecc71" />
-        <ellipse cx="72" cy="22" rx="24" ry="30" fill="#2ecc71" />
-        <ellipse cx="50" cy="-5" rx="18" ry="26" fill="#27ae60" />
-        <ellipse cx="35" cy="55" rx="18" ry="20" fill="#229954" />
-        <ellipse cx="65" cy="55" rx="18" ry="20" fill="#229954" />
-      </g>
-
-      {/* Warm overlay for cozy feel */}
-      <rect width="1200" height="800" fill="#f4a460" opacity="0.05" />
     </svg>
   );
 }

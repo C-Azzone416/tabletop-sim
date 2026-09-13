@@ -60,7 +60,7 @@ export default function Home() {
                 Tabletop Simulator
               </h1>
               <p className="mt-1 text-sm text-ink-muted">
-                Gather your friends. Roll the dice.
+                Pick your meeple. Let&apos;s play!
               </p>
             </div>
 
