@@ -82,6 +82,9 @@ function handHasImpossibleDuplicateNumber(hand: readonly FlipCardInstance[]): bo
  * startRound/hit/freeze/chooseFreezeTarget/chooseFlip3Target instead.
  */
 export function buildFlipGameState(spec: FlipStateSpec): FlipGameState {
+  // #436 — see the identical note on startFlipGame in game.ts: deliberately
+  // left at 2, since this is a rules bound, not the product's registry
+  // policy (which floors at 3 and is the actual, reachable gate).
   if (spec.players.length < 2 || spec.players.length > 5) {
     throw new RangeError('Flip requires between two and five players');
   }
