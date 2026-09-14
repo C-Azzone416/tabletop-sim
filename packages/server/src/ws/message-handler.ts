@@ -285,8 +285,7 @@ async function handleFlipAction(socket: WebSocket, action: FlipActionKind): Prom
 
   await withTimeout(executeFlipAction(info.gameId, info.playerId, action), 'flipAction');
 
-  const players = await withTimeout(playersDb.getPlayersByGameId(info.gameId), 'getPlayers');
-  await broadcastGameState(info.gameId, game, players);
+  await broadcastGameState(info.gameId, game);
 }
 
 async function handleJoinGame(socket: WebSocket, joinCode: string, _playerName: string): Promise<void> {
@@ -301,8 +300,10 @@ async function handleJoinGame(socket: WebSocket, joinCode: string, _playerName: 
   const notification: ServerMessage = { type: 'player_joined', player };
   connManager.broadcastToGame(game.id, notification, player.id);
 
-  // Broadcast full game state so all connected players receive current tokens
-  await broadcastGameState(game.id, game, players);
+  // #445 — broadcastGameState queries the roster fresh itself now, rather
+  // than trusting this `players` snapshot (which is only ever correct for
+  // the ack above, not for a broadcast racing another join/leave).
+  await broadcastGameState(game.id, game);
 }
 
 async function handleStartGame(socket: WebSocket, mission: number): Promise<void> {
@@ -315,14 +316,14 @@ async function handleStartGame(socket: WebSocket, mission: number): Promise<void
   // to send and the client sat on the lobby forever.
   const existing = await withTimeout(gamesDb.getGameById(info.gameId), 'getGameById');
   if (existing?.gameType === 'flip') {
-    const { game, players } = await withTimeout(
+    const { game } = await withTimeout(
       engine.startFlipRoom(info.gameId, info.playerId),
       'startFlipRoom',
     );
     // Flip has no per-player view, so the ordinary broadcast is the whole
     // story — no `game_started` snowflake needed. The table arrives at
     // awaiting-round-start with the dealer's Start Round button live.
-    await broadcastGameState(info.gameId, game, players);
+    await broadcastGameState(info.gameId, game);
     return;
   }
 
@@ -341,7 +342,7 @@ async function handleNextMission(socket: WebSocket, mission: number): Promise<vo
   const info = connManager.getConnectionInfo(socket);
   if (!info) throw new Error('Not connected to a game');
 
-  const { game, players } = await withTimeout(
+  const { game } = await withTimeout(
     engine.executeNextMission(info.gameId, info.playerId, mission),
     'executeNextMission',
   );
@@ -352,7 +353,7 @@ async function handleNextMission(socket: WebSocket, mission: number): Promise<vo
   // (executeNextMission cleared the prior mission's), and it includes
   // localPlayerId, which the overlay-to-board transition needs same as any
   // other live state push.
-  await broadcastGameState(info.gameId, game, players);
+  await broadcastGameState(info.gameId, game);
 }
 
 async function handlePlaceInfoToken(socket: WebSocket, wireId: string): Promise<void> {
@@ -364,8 +365,7 @@ async function handlePlaceInfoToken(socket: WebSocket, wireId: string): Promise<
   // Broadcast full game state so all players see the new info token
   const game = await gamesDb.getGameById(info.gameId);
   if (!game) throw new Error('Game not found');
-  const players = await playersDb.getPlayersByGameId(info.gameId);
-  await broadcastGameState(info.gameId, game, players);
+  await broadcastGameState(info.gameId, game);
 }
 
 async function handleProposeDualCut(socket: WebSocket, targetWireId: string, guessedValue: string): Promise<void> {
@@ -410,7 +410,7 @@ async function handleRespondDualCut(socket: WebSocket, accepted: boolean): Promi
       const stateMsg: ServerMessage = { type: 'game_state', game, players, wires: playerWireView, infoTokens: [], validationTokens: [], localPlayerId: playerId, candidates: [] };
       playerSocket.send(JSON.stringify(stateMsg));
     }
-    await broadcastGameState(info.gameId, game, players);
+    await broadcastGameState(info.gameId, game);
 
     // Notify the proposer to complete their half of the dual cut
     const pendingWire = updatedWires[0];
@@ -435,7 +435,7 @@ async function handleRespondDualCut(socket: WebSocket, accepted: boolean): Promi
 
   const updatedGame = await gamesDb.getGameById(info.gameId);
   if (updatedGame) {
-    await broadcastGameState(info.gameId, updatedGame, players);
+    await broadcastGameState(info.gameId, updatedGame);
   }
 
   if (game.status === 'won' || game.status === 'lost') {
@@ -457,8 +457,6 @@ async function handleCompleteDualCut(socket: WebSocket, ownWireId: string): Prom
     'executeCompleteDualCut',
   );
 
-  const players = await playersDb.getPlayersByGameId(info.gameId);
-
   const gameSockets = connManager.getGameSockets(info.gameId);
   for (const [playerId, playerSocket] of gameSockets) {
     const playerWireView = buildPlayerView(updatedWires, playerId);
@@ -468,7 +466,7 @@ async function handleCompleteDualCut(socket: WebSocket, ownWireId: string): Prom
 
   const updatedGame = await gamesDb.getGameById(info.gameId);
   if (updatedGame) {
-    await broadcastGameState(info.gameId, updatedGame, players);
+    await broadcastGameState(info.gameId, updatedGame);
   }
 
   if (game.status === 'won' || game.status === 'lost') {
@@ -577,7 +575,7 @@ async function performLeave(gameId: string, playerId: string): Promise<void> {
   connManager.broadcastToGame(gameId, notice);
 
   const game = await gamesDb.getGameById(gameId);
-  if (game) await broadcastGameState(gameId, game, result.players);
+  if (game) await broadcastGameState(gameId, game);
 }
 
 async function handleLeaveGame(socket: WebSocket): Promise<void> {

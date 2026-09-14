@@ -1,9 +1,10 @@
-import type { Game, Player, Wire, ServerMessage } from '@tabletop/shared';
+import type { Game, Wire, ServerMessage } from '@tabletop/shared';
 import type { FlipGameState } from '@tabletop/game-flip';
 import * as wiresDb from '../db/wires.js';
 import * as tokensDb from '../db/tokens.js';
 import * as candidatesDb from '../db/candidates.js';
 import * as flipGamesDb from '../db/flip-games.js';
+import * as playersDb from '../db/players.js';
 import { groupRoundsByPlayer, toFlipTableView } from './flip-view.js';
 import { getGameSockets, sendToPlayer } from './connection-manager.js';
 
@@ -20,8 +21,18 @@ import { getGameSockets, sendToPlayer } from './connection-manager.js';
 async function broadcastFlipGameState(
   gameId: string,
   game: Game,
-  players: Player[],
 ): Promise<void> {
+  // #445 — queried fresh here, not passed in by the caller. Every caller
+  // used to hand this function whatever `players` snapshot it happened to
+  // have computed earlier in its own flow; when two joins (or a join and a
+  // leave) overlapped, the caller whose full async chain finished LAST won
+  // the broadcast to every client, even if its snapshot was the older one —
+  // the classic "reconcile, don't broadcast-and-hope" bug (#445). Querying
+  // at send time means the broadcast that goes out last is also the one
+  // guaranteed to be current, so a client that missed or was overwritten by
+  // a stale message self-corrects on the very next broadcast instead of
+  // staying wrong indefinitely.
+  const players = await playersDb.getPlayersByGameId(gameId);
   const stored = await flipGamesDb.getFlipGameState(gameId);
 
   // #406 — a Flip room in the lobby has no table yet, and that is NORMAL under
@@ -79,11 +90,21 @@ export function buildPlayerView(wires: Wire[], requestingPlayerId: string): Wire
 
 /**
  * Send full game state to all players in a game, with per-player redaction.
+ *
+ * #445 — `players` is deliberately NOT a parameter. Every call site used to
+ * pass in whatever roster it had already fetched earlier in its own flow;
+ * under two overlapping mutations (most reproducibly two joins, but the
+ * same race applies to a join racing a leave) the call whose full async
+ * chain finished last won the broadcast to every socket, even carrying the
+ * OLDER snapshot — a client could end up stuck on a stale roster
+ * indefinitely, with nothing to force a correction. Querying fresh here
+ * means whichever broadcast actually goes out last is also guaranteed
+ * current, so the race can desync a client for at most one message, never
+ * permanently. See #445 and the doc comment on broadcastFlipGameState.
  */
 export async function broadcastGameState(
   gameId: string,
   game: Game,
-  players: Player[],
 ): Promise<void> {
   // #382 — branch BEFORE any wire-game DB call. This used to run
   // getWiresByGameId unconditionally, so a Flip game received a state message
@@ -91,10 +112,11 @@ export async function broadcastGameState(
   // forever. Returning early is also what guarantees no wiresDb/tokensDb/
   // candidatesDb query is issued on a Flip path at all.
   if (game.gameType === 'flip') {
-    await broadcastFlipGameState(gameId, game, players);
+    await broadcastFlipGameState(gameId, game);
     return;
   }
 
+  const players = await playersDb.getPlayersByGameId(gameId);
   const wires = await wiresDb.getWiresByGameId(gameId);
   const infoTokens = await tokensDb.getInfoTokensByGameId(gameId);
   const validationTokens = await tokensDb.getValidationTokensByGameId(gameId);
