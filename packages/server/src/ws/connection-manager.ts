@@ -60,14 +60,46 @@ export function registerConnection(socket: WebSocket, playerId: string, gameId: 
   if (!gameConnections.has(gameId)) {
     gameConnections.set(gameId, new Map());
   }
-  gameConnections.get(gameId)!.set(playerId, socket);
+  const gameMap = gameConnections.get(gameId)!;
+
+  // #454 — a player id can already have a DIFFERENT live socket registered
+  // here: a stale connection the client never explicitly tore down (a
+  // leaked WS from an earlier screen, a slow reconnect racing a fresh one)
+  // reconnecting after the real, currently-visible connection already took
+  // over. Registration is last-write-wins, so without evicting the old
+  // socket here it stays a live, authenticated connection that can later
+  // reconnect AGAIN and silently steal broadcast routing back from the
+  // socket the player is actually looking at — including room_closed,
+  // which is exactly how a mid-game player got stranded on stale content
+  // while an invisible orphaned socket quietly received everything instead.
+  // Closing it here (rather than just overwriting the map entry) makes that
+  // whole class of misrouting impossible regardless of what leaked it.
+  const stale = gameMap.get(playerId);
+  if (stale && stale !== socket && stale.readyState <= 1 /* CONNECTING or OPEN */) {
+    // Deregister BEFORE closing: the close we trigger below still fires the
+    // server's own 'close' handler asynchronously (handleDisconnect), which
+    // would otherwise arm a fresh #446 grace-window leave for this exact
+    // player — wrong, since they're still connected, just on the socket
+    // we're registering right now. With no entry left for this stale
+    // socket, that handler's `getConnectionInfo` finds nothing and no-ops.
+    connections.delete(stale);
+    authenticatedUsers.delete(stale);
+    stale.close(1000, 'Superseded by a newer connection for this player');
+  }
+
+  gameMap.set(playerId, socket);
 }
 
 export function removeConnection(socket: WebSocket): void {
   const info = connections.get(socket);
   if (info) {
     const gameMap = gameConnections.get(info.gameId);
-    if (gameMap) {
+    // Only remove the game-level registration if IT still points at this
+    // exact socket. A stale/superseded connection's own close can fire
+    // after a newer one has already re-registered for the same player id;
+    // deleting unconditionally here would erase that newer, valid entry
+    // out from under it.
+    if (gameMap && gameMap.get(info.playerId) === socket) {
       gameMap.delete(info.playerId);
       if (gameMap.size === 0) {
         gameConnections.delete(info.gameId);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import type { ClientMessage, GameId } from "@tabletop/shared";
@@ -41,11 +41,33 @@ export function usePlayAction() {
     setActionError(ACTION_TIMEOUT_MESSAGE);
   });
 
-  const { status, connect, send } = useWebSocket(
+  // #454 — this connection's only job is create_game/join_game — GameClient
+  // opens its own on /game/:joinCode. Without an explicit disconnect on
+  // success, Next.js's router cache can keep this page's component (and
+  // this socket) alive well past the navigation below instead of unmounting
+  // it promptly, so the unmount-cleanup in useWebSocket that would
+  // otherwise close it never runs in time. A leaked socket that later
+  // reconnects re-registers for this player id and — since
+  // connection-manager's registration is last-write-wins — can silently
+  // steal broadcast routing away from GameClient's real connection,
+  // including room_closed (#454's mid-game repro: the visible client goes
+  // stale while an invisible, orphaned socket keeps receiving everything).
+  // Disconnecting the instant this socket's job is done closes that window
+  // regardless of when React gets around to unmounting the component.
+  //
+  // Held in a ref, not read directly: the onMessage callback below is the
+  // first argument to the same useWebSocket call that returns `disconnect`,
+  // so referencing the destructured value there would be a use-before-
+  // declaration. The ref is stable across renders and always current by the
+  // time a message actually arrives.
+  const disconnectRef = useRef<() => void>(() => {});
+
+  const { status, connect, disconnect, send } = useWebSocket(
     (message) => {
       handleMessage(message);
       if (message.type === "game_created" || message.type === "joined_game") {
         actionTimeout.clear();
+        disconnectRef.current();
         router.push(`/game/${message.game.joinCode}`);
       } else if (message.type === "error") {
         actionTimeout.clear();
@@ -55,6 +77,10 @@ export function usePlayAction() {
     profileId,
     playerName,
   );
+
+  useEffect(() => {
+    disconnectRef.current = disconnect;
+  }, [disconnect]);
 
   /**
    * Generic entry point: put the screen into `nextMode`, arm the timeout and

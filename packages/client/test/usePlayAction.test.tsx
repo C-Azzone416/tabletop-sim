@@ -18,11 +18,12 @@ vi.mock("next-auth/react", () => ({
 // the socket actually would (same approach as test/page.test.tsx).
 let capturedOnMessage: ((message: unknown) => void) | null = null;
 const mockConnect = vi.fn();
+const mockDisconnect = vi.fn();
 const mockSend = vi.fn();
 vi.mock("../app/hooks/useWebSocket", () => ({
   useWebSocket: (onMessage: (message: unknown) => void) => {
     capturedOnMessage = onMessage;
-    return { status: "disconnected", connect: mockConnect, send: mockSend };
+    return { status: "disconnected", connect: mockConnect, disconnect: mockDisconnect, send: mockSend };
   },
 }));
 
@@ -124,6 +125,13 @@ describe("usePlayAction", () => {
       });
 
       expect(mockPush).toHaveBeenCalledWith("/game/ABC123");
+      // #454 — this connection's only job was create_game; GameClient opens
+      // its own on /game/:joinCode. Left connected, a leaked socket that
+      // outlives Next.js's router-cache-deferred unmount can later
+      // reconnect and steal broadcast routing away from GameClient's real
+      // one (including room_closed) via connection-manager's last-write-wins
+      // registration.
+      expect(mockDisconnect).toHaveBeenCalled();
     });
   });
 
@@ -165,6 +173,7 @@ describe("usePlayAction", () => {
       });
 
       expect(mockPush).toHaveBeenCalledWith("/game/ABC123");
+      expect(mockDisconnect).toHaveBeenCalled();
     });
   });
 
