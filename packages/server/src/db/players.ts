@@ -107,6 +107,16 @@ export async function resetDoubleDetectorForGame(gameId: string): Promise<void> 
   await sql`UPDATE players SET double_detector_used = FALSE WHERE game_id = ${gameId}`;
 }
 
+// #432 — a non-host mid-game leave in Wire Game returns the room to a
+// genuine 'waiting' state (game-engine.ts's endWireGameToLobby), which
+// means every remaining player needs to press Ready again before the host
+// can restart — carrying over a stale `ready`/`setup_done` from the
+// abandoned mission would let Start fire before anyone actually confirmed
+// they're at the fresh lobby.
+export async function resetReadyAndSetupForGame(gameId: string): Promise<void> {
+  await sql`UPDATE players SET ready = FALSE, setup_done = FALSE WHERE game_id = ${gameId}`;
+}
+
 function mapPlayer(row: Record<string, unknown>): Player {
   return {
     id: row.id as string,

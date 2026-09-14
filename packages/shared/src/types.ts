@@ -202,7 +202,14 @@ export type ServerMessage =
   // (leave or disconnect, lobby or mid-game). Carries enough for a client to
   // say who left; what happens next (stay in the lobby, end the game,
   // continue play) is decided per game type by #432/#433/#434, not here.
-  | { type: 'player_left'; playerId: string; playerName: string }
+  //
+  // #432 — `gameEnded` is only ever true for a MID-GAME departure that the
+  // per-game dispatch point (game-engine.ts) decided ends the mission (Wire
+  // Game today). It is never set for a lobby departure (#454's silent
+  // roster-filter case) or for a non-ending mid-game departure (Flip,
+  // #434). Optional/omittable rather than a plain boolean so existing
+  // lobby-only `player_left` handling (#454) never has to construct it.
+  | { type: 'player_left'; playerId: string; playerName: string; gameEnded?: boolean }
   // #431 — the host leaving or disconnecting closes the room in every phase
   // and every game (Caroline's ruling — captaincy does not reassign). Every
   // remaining client routes to /play; the join code no longer resolves.

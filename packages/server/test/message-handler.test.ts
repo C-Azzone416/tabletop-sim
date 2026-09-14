@@ -923,6 +923,7 @@ describe("message-handler", () => {
         outcome: "left",
         leftPlayer,
         players: remainingPlayers,
+        gameEnded: false,
       });
       mockGamesDb.getGameById.mockResolvedValue(game);
 
@@ -932,8 +933,42 @@ describe("message-handler", () => {
         type: "player_left",
         playerId: "p2",
         playerName: "Bob",
+        gameEnded: false,
       });
       expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game);
+    });
+
+    // #432 — a non-host mid-game leave that a per-game dispatch point (Wire
+    // Game today) decides ends the mission. gameEnded rides the same
+    // player_left notice, not a separate message type — see its doc
+    // comment in shared/src/types.ts for why.
+    it("#432 — a non-host mid-game leave that ends the mission sets gameEnded on the player_left notice", async () => {
+      const ws = mockSocket();
+      const leftPlayer = makePlayer({ id: "p2", name: "Bob" });
+      const remainingPlayers = [makePlayer({ id: "p1", name: "Alice" })];
+      const resetGame = makeGame({ id: "g1", status: "waiting" });
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
+      mockEngine.leaveGame.mockResolvedValue({
+        outcome: "left",
+        leftPlayer,
+        players: remainingPlayers,
+        gameEnded: true,
+      });
+      mockGamesDb.getGameById.mockResolvedValue(resetGame);
+
+      await handleMessage(ws, JSON.stringify({ type: "leave_game" }));
+
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith("g1", {
+        type: "player_left",
+        playerId: "p2",
+        playerName: "Bob",
+        gameEnded: true,
+      });
+      // The reset-to-waiting game_state still follows — remaining clients'
+      // Lobby view (once #454 lands) comes from this broadcast, same path
+      // as any other game_state push, not a separate mechanism.
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", resetGame, remainingPlayers);
     });
   });
 
@@ -994,7 +1029,7 @@ describe("message-handler", () => {
       const leftPlayer = makePlayer({ id: "p2", name: "Bob" });
       const remainingPlayers = [makePlayer({ id: "p1" })];
       mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
-      mockEngine.leaveGame.mockResolvedValue({ outcome: "left", leftPlayer, players: remainingPlayers });
+      mockEngine.leaveGame.mockResolvedValue({ outcome: "left", leftPlayer, players: remainingPlayers, gameEnded: false });
       mockGamesDb.getGameById.mockResolvedValue(makeGame({ id: "g1" }));
 
       handleDisconnect(ws);
@@ -1004,6 +1039,40 @@ describe("message-handler", () => {
         "g1",
         expect.objectContaining({ type: "player_left", playerId: "p2" }),
       );
+    });
+
+    // #432 — the engine dispatch point that ends a mid-game Wire mission
+    // doesn't distinguish an explicit leave_game from a disconnect that
+    // outlasts the grace window; both funnel through the same
+    // performLeave/engine.leaveGame path (see handleDisconnect's doc
+    // comment). This is the "minus the warning" half of #432's AC — the
+    // client can't show a warning to a socket that's already gone, but
+    // everyone still connected must get the identical gameEnded notice a
+    // deliberate leave produces.
+    it("#432 — a non-host disconnect mid-game that ends the mission produces the identical gameEnded notice as a deliberate leave", async () => {
+      const ws = mockSocket();
+      const leftPlayer = makePlayer({ id: "p2", name: "Bob" });
+      const remainingPlayers = [makePlayer({ id: "p1" })];
+      const resetGame = makeGame({ id: "g1", status: "waiting" });
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
+      mockEngine.leaveGame.mockResolvedValue({
+        outcome: "left",
+        leftPlayer,
+        players: remainingPlayers,
+        gameEnded: true,
+      });
+      mockGamesDb.getGameById.mockResolvedValue(resetGame);
+
+      handleDisconnect(ws);
+      await firedCallback()();
+
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith("g1", {
+        type: "player_left",
+        playerId: "p2",
+        playerName: "Bob",
+        gameEnded: true,
+      });
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", resetGame, remainingPlayers);
     });
 
     it("never throws even if the engine call fails once the window elapses — the socket is already closing", async () => {
