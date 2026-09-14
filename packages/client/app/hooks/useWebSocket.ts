@@ -21,23 +21,33 @@ export function useWebSocket(
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY);
   const messageQueueRef = useRef<ClientMessage[]>([]);
-  // #467 — set true immediately before disconnect() closes a socket it
-  // still holds, so that socket's own onclose (which fires later,
-  // asynchronously, once the close handshake completes) knows this close
-  // was deliberate and must not schedule a reconnect. Without this, only
-  // code 4001 (auth failure) skipped the reconnect — an intentional
-  // disconnect() for any other reason (e.g. DevPanel's seat-switch
-  // teardown) still scheduled one, against a `connect` closure that, by
-  // the time the timer fires, is bound to whatever profileId is CURRENT
-  // rather than the seat being abandoned. That stray reconnection then
-  // collides with the real new connection for the current seat via
+  // #467 — populated immediately before disconnect()/unmount closes a
+  // socket they still hold, so that SPECIFIC socket's own onclose (which
+  // fires later, asynchronously, once the close handshake completes) knows
+  // this close was deliberate and must not schedule a reconnect. Without
+  // this, only code 4001 (auth failure) skipped the reconnect — an
+  // intentional disconnect() for any other reason (e.g. DevPanel's
+  // seat-switch teardown) still scheduled one, against a `connect` closure
+  // that, by the time the timer fires, is bound to whatever profileId is
+  // CURRENT rather than the seat being abandoned. That stray reconnection
+  // then collides with the real new connection for the current seat via
   // connection-manager's #469 eviction, whose own close (also not 4001)
   // schedules another stray reconnect in turn — a self-sustaining
   // ping-pong that left the client's WS connection never settling on the
   // right identity, which is what actually produced #467's flaky
   // post-switch timeouts (the symptom was downstream of this, not a
   // literal click timeout).
-  const suppressReconnectRef = useRef(false);
+  //
+  // #483 QA — this was originally a single shared boolean, which reopened
+  // a narrower version of #482's own bug: it isn't tied to which socket
+  // the suppression was armed for, so a genuine close on a NEWER socket
+  // arriving before an OLDER, deliberately-closed socket's own (also
+  // async) close handshake finishes would consume the flag that was
+  // actually meant for the old one — silently swallowing the new socket's
+  // real reconnect. A WeakSet keyed by socket instance closes that gap the
+  // same way `isCurrentSocket` closed #482's: never let one socket's state
+  // answer a question about a different socket.
+  const suppressReconnectSockets = useRef(new WeakSet<WebSocket>());
   const [status, setStatus] = useState("disconnected" as ConnectionStatus);
 
   useEffect(() => {
@@ -108,11 +118,14 @@ export function useWebSocket(
         setStatus("disconnected");
         wsRef.current = null;
       }
-      // #467 — a close WE asked for via disconnect() must never schedule a
-      // reconnect, regardless of code: see suppressReconnectRef's doc
-      // comment above for the ping-pong this otherwise causes.
-      if (suppressReconnectRef.current) {
-        suppressReconnectRef.current = false;
+      // #467/#483 — a close WE asked for via disconnect() must never
+      // schedule a reconnect, regardless of code: see
+      // suppressReconnectSockets' doc comment above for the ping-pong (and
+      // the narrower per-socket race) this otherwise causes. Keyed on `ws`
+      // specifically — not a hook-wide flag — so this can only ever answer
+      // for the exact socket disconnect() closed.
+      if (suppressReconnectSockets.current.has(ws)) {
+        suppressReconnectSockets.current.delete(ws);
         return;
       }
       // A superseded socket reconnecting would just race the one that
@@ -145,12 +158,12 @@ export function useWebSocket(
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     reconnectDelayRef.current = INITIAL_RECONNECT_DELAY;
     messageQueueRef.current = [];
-    // #467 — only arm the suppression if there's actually a socket whose
-    // onclose will consume it; otherwise a disconnect() call with nothing
-    // to close would leave it set and wrongly suppress the NEXT, unrelated
-    // close.
+    // #467/#483 — only arm the suppression if there's actually a socket
+    // whose onclose will consume it, and key it to THAT specific socket
+    // (not a hook-wide flag) so a different socket's own close can never
+    // read it.
     if (wsRef.current) {
-      suppressReconnectRef.current = true;
+      suppressReconnectSockets.current.add(wsRef.current);
       wsRef.current.close(code, reason);
     }
     wsRef.current = null;
@@ -170,11 +183,12 @@ export function useWebSocket(
   useEffect(() => {
     return () => {
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      // #467 — same suppression as disconnect(): an unmount is definitely
-      // not a moment to reconnect, and without this a stray timer could
-      // fire after unmount and open a zombie socket nothing is using.
+      // #467/#483 — same suppression as disconnect(): an unmount is
+      // definitely not a moment to reconnect, and without this a stray
+      // timer could fire after unmount and open a zombie socket nothing is
+      // using.
       if (wsRef.current) {
-        suppressReconnectRef.current = true;
+        suppressReconnectSockets.current.add(wsRef.current);
         wsRef.current.close();
       }
     };

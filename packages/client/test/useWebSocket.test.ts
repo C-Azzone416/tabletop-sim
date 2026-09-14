@@ -302,6 +302,50 @@ describe("useWebSocket", () => {
       expect(MockWebSocket.instances).toHaveLength(2);
     });
 
+    // #483 QA (toucan) — a narrower race the single shared boolean reopened:
+    // disconnect() arms suppression for socket A (old, deliberately closed,
+    // close handshake still pending), then connect() makes socket B current.
+    // If B then suffers a GENUINE, unexpected close before A's deferred
+    // close finally arrives, B's onclose reads the flag armed for A —
+    // wrongly swallowing B's real reconnect. Keying suppression to the
+    // specific socket (WeakSet) rather than a hook-wide flag closes this
+    // the same way `isCurrentSocket` closes #482's version of the same
+    // mistake: never let one socket's state answer for a different socket.
+    it("a genuine close on the new socket still reconnects, even while an old socket's deliberate close is still pending", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() => useWebSocket(onMessage));
+
+      act(() => result.current.connect());
+      const ws1 = MockWebSocket.instances[0];
+      act(() => ws1.simulateOpen());
+
+      // Defer ws1's onclose — its close handshake is still in flight.
+      ws1.close = vi.fn();
+      act(() => result.current.disconnect(4700, "dev seat switch"));
+
+      act(() => result.current.connect());
+      const ws2 = MockWebSocket.instances[1];
+      act(() => ws2.simulateOpen());
+      expect(result.current.status).toBe("connected");
+
+      // ws2 (the current, live socket) suffers a real, unexpected close —
+      // BEFORE ws1's deferred close handshake has completed.
+      act(() => ws2.simulateClose());
+
+      // A reconnect must still be scheduled for ws2's own close: it's the
+      // current socket having a genuine problem, unrelated to ws1's
+      // deliberate teardown.
+      act(() => vi.advanceTimersByTime(1000));
+      expect(MockWebSocket.instances).toHaveLength(3);
+
+      // ws1's deferred close finally arrives — must have no further effect
+      // (already consumed correctly by ws1's own suppression, and ws1 is
+      // long since superseded).
+      act(() => { ws1.onclose?.({ code: 4700, reason: "dev seat switch" }); });
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(MockWebSocket.instances).toHaveLength(3);
+    });
+
     // #467 review — the same invariant (only the current socket may touch
     // shared state) applies to onmessage, not just onclose: a superseded
     // socket that still has a message in flight (the server hasn't evicted
