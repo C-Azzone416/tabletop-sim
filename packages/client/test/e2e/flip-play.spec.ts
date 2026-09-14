@@ -259,20 +259,34 @@ test.describe("Flip — deck exhaustion", () => {
     const turnOrder = [alice, dev, alice, dev];
 
     await page.goto(flipGameUrl(seed));
-    for (const [i, player] of turnOrder.entries()) {
+    // #455 — the first 3 hits (draining the shoe) are driven and confirmed
+    // BEFORE the 4th (post-reshuffle) hit is ever sent, not just before this
+    // point in the script: firing all 4 clicks in one loop with no pause
+    // raced the 4th hit's response against the "shoe genuinely reached 0"
+    // check below, since both could land in the same or adjacent renders —
+    // an intermittent failure under any real latency, not the flake this
+    // fix addresses. waitForTurnToPass after every one of the first 3 hits
+    // (not skipping the 3rd) is what pins the boundary in place.
+    const [first, second, third, fourth] = turnOrder;
+    for (const player of [first!, second!, third!]) {
       await switchToSeat(page, player.name);
       await expect(page.getByRole("button", { name: "Hit" })).toBeVisible();
       await page.getByRole("button", { name: "Hit" }).click();
-      // Not after the last (4th) hit: if the reshuffle-on-empty-shoe path
-      // broke, the action is rejected and this player's turn never passes
-      // — waiting for it here would hang on a timeout instead of failing
-      // on the explicit, immediate check below.
-      if (i < turnOrder.length - 1) await waitForTurnToPass(page, player.name);
+      await waitForTurnToPass(page, player.name);
     }
 
     // The first 3 hits must have genuinely drained the shoe — the whole
-    // scenario is meaningless if it didn't actually reach 0 here.
+    // scenario is meaningless if it didn't actually reach 0 here. Checked
+    // BEFORE the 4th hit is sent, not racing against it.
     await expect(async () => expect(await shoeCount(page)).toBe(0)).toPass();
+
+    await switchToSeat(page, fourth!.name);
+    await expect(page.getByRole("button", { name: "Hit" })).toBeVisible();
+    await page.getByRole("button", { name: "Hit" }).click();
+    // Not waiting for the turn to pass here: if the reshuffle-on-empty-shoe
+    // path broke, the action is rejected and this player's turn never
+    // passes — waiting for it would hang on a timeout instead of failing on
+    // the explicit, immediate check below.
 
     // #455 — this assertion block used to also pin down WHICH card the 4th
     // (post-reshuffle) draw produced: a grown hand or a bust, nothing else.
