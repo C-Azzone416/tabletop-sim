@@ -93,6 +93,8 @@ function validateMessage(parsed: unknown): ClientMessage | null {
     case 'flip_choose_flip3_target':
       if (!isNonEmptyString(msg.targetPlayerId)) return null;
       return { type: 'flip_choose_flip3_target', targetPlayerId: msg.targetPlayerId };
+    case 'leave_game':
+      return { type: 'leave_game' };
     default:
       return null;
   }
@@ -179,6 +181,9 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
         break;
       case 'flip_choose_flip3_target':
         await handleFlipAction(socket, { kind: 'choose-flip3-target', targetPlayerId: msg.targetPlayerId });
+        break;
+      case 'leave_game':
+        await handleLeaveGame(socket);
         break;
       default:
         sendError(socket, 'Unknown message type');
@@ -538,6 +543,101 @@ async function handlePlayerReady(socket: WebSocket): Promise<void> {
   connManager.broadcastToGame(info.gameId, response);
 }
 
+// #431 — shared by handleLeaveGame and handleDisconnect below. Deregistering
+// the departing socket happens in both callers BEFORE this runs, so the
+// broadcasts here never reach the player who just left.
+async function performLeave(gameId: string, playerId: string): Promise<void> {
+  const result = await withTimeout(engine.leaveGame(gameId, playerId), 'leaveGame');
+
+  if (result.outcome === 'noop') return;
+
+  if (result.outcome === 'room_closed') {
+    const notice: ServerMessage = {
+      type: 'room_closed',
+      reason: 'The host left. The room has been closed.',
+    };
+    connManager.broadcastToGame(gameId, notice);
+
+    // deleteGame cascades every player row in the DB, but the in-memory
+    // socket bindings survive it — deregister every remaining connection so
+    // a stray message against the torn-down room fails safely ("Game not
+    // found" / "Player not found", both already safe) instead of quietly
+    // operating on ghost state.
+    for (const playerSocket of [...connManager.getGameSockets(gameId).values()]) {
+      connManager.removeConnection(playerSocket);
+    }
+    return;
+  }
+
+  const notice: ServerMessage = {
+    type: 'player_left',
+    playerId: result.leftPlayer.id,
+    playerName: result.leftPlayer.name,
+  };
+  connManager.broadcastToGame(gameId, notice);
+
+  const game = await gamesDb.getGameById(gameId);
+  if (game) await broadcastGameState(gameId, game, result.players);
+}
+
+async function handleLeaveGame(socket: WebSocket): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  connManager.removeConnection(socket);
+  // #446 — a deliberate leave always supersedes a still-armed grace timer
+  // from an earlier disconnect on this same player (a reconnect normally
+  // cancels it already; defensive here against ordering it doesn't cover).
+  connManager.cancelPendingLeave(info.playerId);
+  await performLeave(info.gameId, info.playerId);
+}
+
+// #446 — how long a disconnected player's seat is held before a WS close is
+// treated as a leave. Long enough to ride out the reconnects this server
+// itself produces routinely (a page reload, a seat switch's own
+// disconnect/connect pair — both verified live) and a brief real network
+// drop; short enough that a genuine departure doesn't strand the room for
+// everyone else for long. 20s covers every reconnect this codebase drives
+// today (typically sub-second) with wide margin, without approaching a
+// length a still-present human would find the room hanging for.
+export const DISCONNECT_GRACE_MS = 20_000;
+
+/**
+ * #431/#446 — disconnect is treated as a deliberate leave, host and
+ * non-host alike (Caroline's ruling: "for now", no reconnect window
+ * originally) — but #431 shipping that literally, with zero delay, made
+ * this session's OWN reconnects (a reload, a seat switch) indistinguishable
+ * from actually leaving: closing a socket to immediately reopen one for the
+ * same player hit the identical leaveGame path an explicit leave_game does,
+ * host-closes-room included. reconnect.spec.ts, flip-play.spec.ts's
+ * reconnect test, and room-entry-flow.spec.ts's host path all failed on
+ * exactly this.
+ *
+ * So a disconnect now ARMS a leave rather than performing one immediately.
+ * connection-manager.schedulePendingLeave holds it for DISCONNECT_GRACE_MS;
+ * the WS upgrade handler in app.ts cancels it as the first thing it does
+ * once it identifies a reconnecting player (before registerConnection —
+ * see app.ts). No branch here (or in cancelPendingLeave's caller) treats
+ * the host differently: the ambiguity a WS close creates is identical for
+ * host and non-host, so the window is symmetric. Explicit leave_game
+ * (handleLeaveGame above) is untouched — a deliberate leave stays
+ * immediate, which is exactly where Caroline's original ruling was aimed.
+ *
+ * Called from the WS `close`/`error` handlers in app.ts. Never throws: the
+ * socket is already closing, there is nowhere to send an error — and
+ * scheduling can't itself fail the way the awaited leave used to.
+ */
+export function handleDisconnect(socket: WebSocket, log?: ActionLogger): void {
+  const info = connManager.getConnectionInfo(socket);
+  connManager.removeConnection(socket);
+  if (!info) return;
+
+  connManager.schedulePendingLeave(info.playerId, DISCONNECT_GRACE_MS, async () => {
+    await performLeave(info.gameId, info.playerId).catch((err) => {
+      log?.info({ gameId: info.gameId, playerId: info.playerId, err }, '[ws] leave-on-disconnect failed');
+    });
+  });
+}
 
 function sendError(socket: WebSocket, message: string): void {
   const response: ServerMessage = { type: 'error', message };

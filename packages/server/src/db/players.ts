@@ -59,6 +59,27 @@ export async function getPlayerById(id: string): Promise<Player | null> {
   return rows[0] ? mapPlayer(rows[0]) : null;
 }
 
+// #431 — a non-host leaving (or disconnecting). The host case never reaches
+// this: leaveGame deletes the whole room instead, see game-engine.ts.
+export async function deletePlayer(id: string): Promise<void> {
+  await sql`DELETE FROM players WHERE id = ${id}`;
+}
+
+// #431 — joinGame assigns a new seat as existingPlayers.length, so a gap
+// left by a departed player would hand the next joiner a seat_order that
+// collides with whoever already holds it. Re-densify to 0..n-1 in existing
+// order after every departure. The captain is always seat 0 and is never
+// removed by this path (host leaving closes the room), so this never moves
+// captaincy — only backfills the gap left by whoever left.
+export async function renumberSeats(gameId: string): Promise<void> {
+  const rows = await sql`
+    SELECT id FROM players WHERE game_id = ${gameId} ORDER BY seat_order ASC
+  `;
+  for (let i = 0; i < rows.length; i++) {
+    await sql`UPDATE players SET seat_order = ${i} WHERE id = ${rows[i].id}`;
+  }
+}
+
 export async function markDoubleDetectorUsed(id: string): Promise<Player> {
   const rows = await sql`
     UPDATE players SET double_detector_used = TRUE WHERE id = ${id} RETURNING *

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   registerConnection,
   removeConnection,
@@ -8,6 +8,9 @@ import {
   getAuthenticatedUser,
   broadcastToGame,
   sendToPlayer,
+  schedulePendingLeave,
+  cancelPendingLeave,
+  hasPendingLeave,
 } from "../src/ws/connection-manager.js";
 import type { WebSocket } from "ws";
 
@@ -134,5 +137,82 @@ describe("connection-manager", () => {
 
     expect(ws1.send).toHaveBeenCalledWith(JSON.stringify({ type: "direct" }));
     expect(ws2.send).not.toHaveBeenCalled();
+  });
+
+  // #446 — the disconnect grace window's timer bookkeeping.
+  describe("schedulePendingLeave / cancelPendingLeave", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("does not fire before the delay elapses", () => {
+      vi.useFakeTimers();
+      const onFire = vi.fn();
+      schedulePendingLeave("cm-pl1", 20_000, onFire);
+
+      vi.advanceTimersByTime(19_999);
+
+      expect(onFire).not.toHaveBeenCalled();
+    });
+
+    it("fires once the delay elapses with no cancellation", () => {
+      vi.useFakeTimers();
+      const onFire = vi.fn();
+      schedulePendingLeave("cm-pl2", 20_000, onFire);
+
+      vi.advanceTimersByTime(20_000);
+
+      expect(onFire).toHaveBeenCalledTimes(1);
+    });
+
+    it("cancelPendingLeave prevents onFire from ever running", () => {
+      vi.useFakeTimers();
+      const onFire = vi.fn();
+      schedulePendingLeave("cm-pl3", 20_000, onFire);
+
+      const cancelled = cancelPendingLeave("cm-pl3");
+      vi.advanceTimersByTime(60_000);
+
+      expect(cancelled).toBe(true);
+      expect(onFire).not.toHaveBeenCalled();
+    });
+
+    it("cancelPendingLeave returns false when nothing was pending", () => {
+      expect(cancelPendingLeave("cm-pl-never-scheduled")).toBe(false);
+    });
+
+    it("hasPendingLeave reflects the armed/cancelled/fired state", () => {
+      vi.useFakeTimers();
+      const onFire = vi.fn();
+      expect(hasPendingLeave("cm-pl4")).toBe(false);
+
+      schedulePendingLeave("cm-pl4", 20_000, onFire);
+      expect(hasPendingLeave("cm-pl4")).toBe(true);
+
+      cancelPendingLeave("cm-pl4");
+      expect(hasPendingLeave("cm-pl4")).toBe(false);
+    });
+
+    it("hasPendingLeave clears itself once the timer fires, without an explicit cancel", () => {
+      vi.useFakeTimers();
+      schedulePendingLeave("cm-pl5", 20_000, vi.fn());
+
+      vi.advanceTimersByTime(20_000);
+
+      expect(hasPendingLeave("cm-pl5")).toBe(false);
+    });
+
+    it("scheduling again for the same player replaces (not stacks on top of) an existing timer", () => {
+      vi.useFakeTimers();
+      const firstOnFire = vi.fn();
+      const secondOnFire = vi.fn();
+      schedulePendingLeave("cm-pl6", 20_000, firstOnFire);
+      schedulePendingLeave("cm-pl6", 20_000, secondOnFire);
+
+      vi.advanceTimersByTime(20_000);
+
+      expect(firstOnFire).not.toHaveBeenCalled();
+      expect(secondOnFire).toHaveBeenCalledTimes(1);
+    });
   });
 });

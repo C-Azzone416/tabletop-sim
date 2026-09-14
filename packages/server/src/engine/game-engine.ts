@@ -168,6 +168,66 @@ export async function startFlipRoom(
   return { game: updatedGame, players };
 }
 
+export type LeaveGameResult =
+  | { outcome: 'noop' }
+  | { outcome: 'room_closed' }
+  | { outcome: 'left'; leftPlayer: Player; players: Player[] };
+
+// #431 — the per-game dispatch point for a *non-host* mid-game leave.
+// Wire Game and Spades end the round and return everyone to the lobby
+// (#432/#433); Flip drops the seat and continues if 3+ players remain
+// (#434). None of that branch logic exists yet — the player's row is
+// already removed by the time this runs (see leaveGame below), so every
+// case falls through to that documented default (a plain seat departure,
+// game otherwise untouched) until its sibling issue lands.
+async function dispatchNonHostMidGameLeave(game: Game, _leftPlayer: Player): Promise<void> {
+  switch (game.gameType) {
+    case 'wire-game':
+    case 'spades':
+    case 'flip':
+    default:
+      return;
+  }
+}
+
+// #431 — leave_game and "disconnect treated as a leave" both funnel through
+// here. Two Caroline rulings shape it:
+//
+//   1. The host leaving closes the room, in every phase and every game.
+//      Captaincy never reassigns — deleting the room (not the player row)
+//      is what keeps that true: there is no longer a live room for a null
+//      captainId to exist on, so the invariant holds by construction rather
+//      than by any reassignment logic.
+//   2. A non-host leaving frees their seat (re-joinable — see
+//      players.renumberSeats) and, past the lobby, hits the per-game
+//      dispatch point above.
+//
+// Tolerates a game or player that's already gone (double leave_game, or a
+// leave racing a concurrent room close) by returning 'noop' rather than
+// throwing — the caller has nothing left to broadcast either way.
+export async function leaveGame(gameId: string, playerId: string): Promise<LeaveGameResult> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) return { outcome: 'noop' };
+
+  const player = await playersDb.getPlayerById(playerId);
+  if (!player || player.gameId !== gameId) return { outcome: 'noop' };
+
+  if (game.captainId === playerId) {
+    await gamesDb.deleteGame(gameId);
+    return { outcome: 'room_closed' };
+  }
+
+  await playersDb.deletePlayer(playerId);
+  await playersDb.renumberSeats(gameId);
+  const players = await playersDb.getPlayersByGameId(gameId);
+
+  if (game.status !== 'waiting') {
+    await dispatchNonHostMidGameLeave(game, player);
+  }
+
+  return { outcome: 'left', leftPlayer: player, players };
+}
+
 export async function startGame(gameId: string, requestingPlayerId: string, mission: number = 1): Promise<{ game: Game; players: Player[]; wires: Wire[]; candidates: WireCandidate[] }> {
   const game = await gamesDb.getGameById(gameId);
   if (!game) throw new Error('Game not found');
