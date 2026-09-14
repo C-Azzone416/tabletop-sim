@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { getGameById, type Player } from "@tabletop/shared";
+import type { Player } from "@tabletop/shared";
 import { resolveLobbyConfigSlot } from "./lobbyConfig/registry";
 import type { LobbyStartArg } from "./lobbyConfig/types";
 
@@ -19,6 +19,15 @@ interface LobbyProps {
    * #313/#325 puts `gameType` in room state — see `resolveLobbyConfigSlot`.
    */
   gameType?: string | null;
+  /**
+   * #437 — the host's chosen room capacity (`Game.maxPlayers`), NOT the
+   * game's registry ceiling. #407 read the ceiling via `gameType` because
+   * nothing else existed yet; that was always a stand-in for the host's
+   * actual choice, which #437 now persists on the room itself. Null for the
+   * same reason `gameType` is: `state.game` hasn't arrived on the very
+   * first render.
+   */
+  maxPlayers?: number | null;
 }
 
 export function Lobby({
@@ -30,17 +39,18 @@ export function Lobby({
   onStartGame,
   highestUnlocked,
   gameType = null,
+  maxPlayers: roomMaxPlayers = null,
 }: LobbyProps) {
   const isCaptain = localPlayerId === captainId;
   const localPlayer = players.find((p) => p.id === localPlayerId);
   const isLocalPlayerReady = localPlayer?.ready ?? false;
   const allPlayersReady = players.every((p) => p.ready);
   const notReadyPlayerNames = players.filter((p) => !p.ready).map((p) => p.name);
-  // #407: the cap must come from the room's own game, not Wire Game's. A null
-  // gameType falls back to Wire Game's bounds for the same reason
-  // resolveLobbyConfigSlot does (see registry.tsx) — until #313/#325 carries
-  // gameType, Wire Game is the only game a room can be.
-  const maxPlayers = (gameType !== null ? getGameById(gameType) : undefined)?.maxPlayers ?? 4;
+  // #437 — falls back to Wire Game's historical default only for the brief
+  // window before state.game arrives (same window gameType's null covers);
+  // once it has, this is always the room's own persisted count, never a
+  // registry lookup.
+  const maxPlayers = roomMaxPlayers ?? 4;
   const canStart = players.length >= 1 && players.length <= maxPlayers && allPlayersReady;
   const [isStarting, setIsStarting] = useState(false);
 

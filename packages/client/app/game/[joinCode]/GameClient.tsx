@@ -248,6 +248,7 @@ export function GameClient({
           }
           highestUnlocked={highestUnlocked}
           gameType={readRoomGameType(state.game)}
+          maxPlayers={state.game?.maxPlayers ?? null}
         />
         {devPanel()}
         <ErrorToast message={state.error} onDismiss={clearError} />
