@@ -18,11 +18,11 @@ describe("PlaySurface (contract C2)", () => {
     return { ...utils, onToggleFlatten };
   };
 
-  it("tilts 7° by default", () => {
+  it("tilts 16° by default", () => {
     setup();
     const surface = screen.getByTestId("play-surface");
     expect(surface).toHaveAttribute("data-tilted", "true");
-    expect(surface.style.transform).toBe("rotateX(7deg)");
+    expect(surface.style.transform).toBe("rotateX(16deg)");
   });
 
   it("flattens to 0° when flattened is true", () => {
