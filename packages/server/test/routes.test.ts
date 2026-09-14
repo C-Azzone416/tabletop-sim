@@ -901,6 +901,40 @@ describe("routes", () => {
           expect(state.shoe.length + held + state.discard.length).toBe(94);
         });
 
+        // #416 — the seed reports who is dealing. It used to be inferable
+        // (seat 0, because the seed built state directly); #400 routed the
+        // plain seed through the real path, where the engine picks the first
+        // dealer at random. Callers must be told rather than assume — an E2E
+        // that assumed seat 0 went 50% flaky at two players.
+        it("reports the dealer by id and name", async () => {
+          mockFlipSeed();
+
+          const res = await seedApp.inject({
+            method: "POST", url: "/dev/seed", payload: { gameType: "flip", playerCount: 4 } });
+
+          expect(res.statusCode).toBe(200);
+          const body = res.json();
+          const state = savedState();
+          const dealerSeat = state.players[state.dealerIndex]!;
+
+          expect(body.dealerId).toBe(dealerSeat.id);
+          expect(body.dealerName).toBeTruthy();
+          // It must name a seat that actually exists in the response roster.
+          expect(body.players.map((p: { name: string }) => p.name)).toContain(body.dealerName);
+        });
+
+        it("reports a dealer for a scenario seed too", async () => {
+          mockFlipSeed();
+
+          const res = await seedApp.inject({
+            method: "POST", url: "/dev/seed",
+            payload: { gameType: "flip", playerCount: 3, scenario: "flip7-ready" },
+          });
+
+          expect(res.json().dealerId).toBeTruthy();
+          expect(res.json().dealerName).toBeTruthy();
+        });
+
         it("starts the round at round 1 with the turn on a real seat", async () => {
           mockFlipSeed();
 

@@ -65,11 +65,17 @@ const handOf = (page: Page, name: string) => handAfterLabel(page, name);
 
 test.describe("Flip — full game, dealer rotation", () => {
   test("a full round passes the deal to the dealer's left", async ({ page }) => {
-    // No scenario: buildFlipGameState defaults dealerIndex to 0 (the first
-    // seeded player) and deals the opening card queue before returning.
+    // No scenario: the plain seed runs the REAL opening path (#400 —
+    // startFlipGame then startRound), so the first dealer is chosen AT RANDOM
+    // exactly as in a real game. This used to assume seat 0, which was true
+    // only while the seed built state directly; #400 changed that and made
+    // this test a coin flip at two players (#416).
+    //
+    // So read the dealer the seed reports, and derive the other seat from it.
     const seed = await seedFlipGame(2);
-    const dealer = seed.players[0]!;
-    const other = seed.players[1]!;
+    const dealer = seed.players.find((p) => p.name === seed.dealerName)!;
+    const other = seed.players.find((p) => p.name !== seed.dealerName)!;
+    expect(dealer, "seed must report which seat is dealing").toBeTruthy();
 
     await page.goto(flipGameUrl(seed));
     await expect(page.getByTestId("play-surface")).toBeVisible();
