@@ -96,9 +96,31 @@ describe('describeLastEvent', () => {
     expect(describeLastEvent(events, players)).toMatch(/continues/i);
   });
 
-  it('explains a nested Flip 3 resolving before the outer one continues', () => {
-    const events: FlipResolutionEventView[] = [{ targetId: 'a', effect: 'flip3-drawn', context: 'flip3' }];
-    expect(describeLastEvent(events, players)).toMatch(/nested Flip 3/i);
+  // #401 — the engine emits the same 'flip3-drawn' effect for both a
+  // genuinely nested draw (context 'flip3') and the outer, turn-opening
+  // draw (context 'deal'/'hit', drawn as a player's own dealt/hit card).
+  // Before the fix these were indistinguishable in the assertions — a
+  // single test using context: 'flip3' passed whether or not context was
+  // actually read, since the (buggy) hardcoded copy happened to be right
+  // for that one case. Confirmed live before fixing: forcing context:
+  // 'hit' through the pre-fix code returned the SAME "nested... outer flip
+  // continues" text. These three cover every context the type allows, so
+  // the wrong-case regression can't silently pass again.
+  describe('flip3-drawn — context determines nested vs. outer (#401)', () => {
+    it('describes a genuinely nested draw (context: flip3)', () => {
+      const events: FlipResolutionEventView[] = [{ targetId: 'a', effect: 'flip3-drawn', context: 'flip3' }];
+      expect(describeLastEvent(events, players)).toMatch(/nested Flip 3/i);
+    });
+
+    it('does not call it nested when drawn as the turn-opening deal', () => {
+      const events: FlipResolutionEventView[] = [{ targetId: 'a', effect: 'flip3-drawn', context: 'deal' }];
+      expect(describeLastEvent(events, players)).not.toMatch(/nested/i);
+    });
+
+    it('does not call it nested when drawn on an ordinary Hit', () => {
+      const events: FlipResolutionEventView[] = [{ targetId: 'a', effect: 'flip3-drawn', context: 'hit' }];
+      expect(describeLastEvent(events, players)).not.toMatch(/nested/i);
+    });
   });
 
   it('only narrates the most recent event, not the whole history', () => {
