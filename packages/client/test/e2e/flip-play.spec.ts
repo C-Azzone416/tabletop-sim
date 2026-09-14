@@ -270,29 +270,53 @@ test.describe("Flip — deck exhaustion", () => {
       if (i < turnOrder.length - 1) await waitForTurnToPass(page, player.name);
     }
 
-    // The 4th Hit (Dev's second) only succeeds if the discard reshuffled in
-    // behind the now-empty shoe. If that path breaks, drawFromShoe throws
-    // "cannot draw: shoe and discard are both empty" — not on the safe-error
-    // allowlist, so it collapses to a generic "Internal error" toast, NOT
-    // "Not your turn". Checking for the toast itself (regardless of
-    // message) is what actually catches that regression.
+    // The first 3 hits must have genuinely drained the shoe — the whole
+    // scenario is meaningless if it didn't actually reach 0 here.
+    await expect(async () => expect(await shoeCount(page)).toBe(0)).toPass();
+
+    // #455 — this assertion block used to also pin down WHICH card the 4th
+    // (post-reshuffle) draw produced: a grown hand or a bust, nothing else.
+    // But the deck-exhaustion scenario's discard is deliberately the
+    // unshuffled REST OF THE CANONICAL DECK, action cards included, and the
+    // engine's reshuffle-on-empty genuinely shuffles it — so the card drawn
+    // right after a reshuffle is authentically random by design. Roughly one
+    // run in five it was a Freeze or Flip 3, which neither grows the hand
+    // nor busts (it opens a pending target choice instead), making the old
+    // assertion flake on a legitimate outcome it just didn't enumerate.
     //
-    // A positive outcome check too, not just absence-of-error: Dev's hand
-    // (1 card after his first hit) either grew to 2 (the reshuffle-drawn
-    // card was safe) or he busted (it was a duplicate — legitimate, the
-    // reshuffle is genuinely shuffled). Either proves the draw completed;
-    // neither happening (hand still 1, not busted) would mean the action
-    // silently failed to apply, which absence-of-error alone wouldn't catch.
+    // This test's own name is about the discard reshuffling back in mid-
+    // round, not about what card comes next — so it now asserts exactly
+    // that (the shoe count jumping from 0 back up, which is only possible
+    // via a genuine reshuffle) plus that the Hit action actually completed,
+    // accepting every legitimate completion instead of just two of the
+    // three (grew, busted, or paused on a drawn Freeze/Flip 3 awaiting its
+    // target). Still exercises the real reshuffle-on-empty path — nothing
+    // here fakes or bypasses it, only the claim about the specific next
+    // draw is narrowed to what the test is actually named for.
+    //
+    // If the reshuffle path is broken instead, drawFromShoe throws "cannot
+    // draw: shoe and discard are both empty" — not on the safe-error
+    // allowlist, so it collapses to a generic "Internal error" toast rather
+    // than "Not your turn". The explicit toast check below still catches
+    // that regression regardless of which of the three outcomes fired.
     await expect(async () => {
       const busted = await seatByName(page, dev.name).getByText("Busted").isVisible();
       // Currently viewing as Dev (the last switchToSeat in the loop above),
       // so his own label reads "You" — handOf(dev.name) would look for the
       // literal name, which no longer renders while it's his own view.
       const handCount = await myHand(page).locator('[data-testid^="card-"]').count();
-      expect(busted || handCount === 2).toBe(true);
+      const awaitingTarget = await page.getByTestId("flip-pending-action-picker").isVisible();
+      expect(busted || handCount === 2 || awaitingTarget).toBe(true);
     }).toPass();
     await expect(errorToast(page)).toHaveCount(0);
     await expect(page.getByTestId("flip-awaiting-round-start")).toHaveCount(0);
+
+    // The direct, deterministic proof the discard reshuffled back in: the
+    // shoe went from genuinely empty to holding the rest of the deck minus
+    // whatever the 4th draw just took. This is true regardless of which of
+    // the three outcomes above fired — a reshuffle is the only way any of
+    // them could have happened at all from an empty shoe.
+    await expect(async () => expect(await shoeCount(page)).toBeGreaterThan(0)).toPass();
   });
 });
 
