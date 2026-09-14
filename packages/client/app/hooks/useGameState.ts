@@ -191,8 +191,15 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
       // `in` check narrows to both variants at the type level even though at
       // runtime a wire-game broadcast has no `flip` key at all and never
       // reaches here.
+      // #329 (#505 QA finding) — a browser's second WebSocket connection
+      // (#454's disconnect-then-reopen architecture) is what actually
+      // renders GameClient, and the server treats it as a reconnect: it
+      // gets game_state, never joined_game. Syncing lobbyConfig here too
+      // (both branches below) is what makes a non-captain's real client
+      // receive the captain's already-live pick — sending only from
+      // joined_game left the connection that actually renders with nothing.
       if ("flip" in msg) {
-        return { ...state, game: msg.game, localPlayer, players: msg.players, flip: msg.flip ?? null };
+        return { ...state, game: msg.game, localPlayer, players: msg.players, flip: msg.flip ?? null, lobbyConfig: msg.lobbyConfig };
       }
 
       return {
@@ -203,6 +210,7 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
         wires: msg.wires,
         infoTokens: msg.infoTokens,
         validationTokens: msg.validationTokens,
+        lobbyConfig: msg.lobbyConfig,
       };
     }
 

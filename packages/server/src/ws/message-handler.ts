@@ -462,7 +462,11 @@ async function handleRespondDualCut(socket: WebSocket, accepted: boolean): Promi
     const gameSockets = connManager.getGameSockets(info.gameId);
     for (const [playerId, playerSocket] of gameSockets) {
       const playerWireView = buildPlayerView(updatedWires, playerId);
-      const stateMsg: ServerMessage = { type: 'game_state', game, players, wires: playerWireView, infoTokens: [], validationTokens: [], localPlayerId: playerId, candidates: [] };
+      // #329 — always null in practice here (the game is already active,
+      // so connection-manager's lobbyConfigs entry was cleared on start),
+      // but read via the same accessor as every other game_state
+      // construction rather than hardcoding null.
+      const stateMsg: ServerMessage = { type: 'game_state', game, players, wires: playerWireView, infoTokens: [], validationTokens: [], localPlayerId: playerId, candidates: [], lobbyConfig: connManager.getLobbyConfig(info.gameId) };
       playerSocket.send(JSON.stringify(stateMsg));
     }
     await broadcastGameState(info.gameId, game);

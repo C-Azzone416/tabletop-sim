@@ -233,7 +233,20 @@ export type ServerMessage =
   | { type: 'game_started'; game: Game; players: Player[]; wires: Wire[]; candidates: WireCandidate[] }
   | { type: 'setup_complete'; game: Game }
   // #382 — the wire game's shape, unchanged. `flip` is absent on this path.
-  | { type: 'game_state'; game: Game; players: Player[]; wires: Wire[]; infoTokens: InfoToken[]; validationTokens: ValidationToken[]; localPlayerId: string; candidates: WireCandidate[]; flip?: undefined }
+  //
+  // #329 QA finding (#505) — `lobbyConfig` belongs on `game_state`, not
+  // just `game_created`/`joined_game`. A browser client's #454 architecture
+  // opens a SECOND WebSocket connection for the page that actually renders
+  // (the first, whose `joined_game` correctly carried this, is deliberately
+  // disconnected before navigating); the server treats that second
+  // connection as a RECONNECT and sends `game_state`, never `joined_game`.
+  // Omitting it here meant a non-captain's real rendered client never
+  // received the captain's already-live pick at all — verified missing via
+  // raw WS frame inspection, not assumed. Null once the game leaves the
+  // lobby (connection-manager's lobbyConfigs entry is cleared on start),
+  // which is correct — nothing reads it once `Lobby.tsx` is no longer
+  // mounted.
+  | { type: 'game_state'; game: Game; players: Player[]; wires: Wire[]; infoTokens: InfoToken[]; validationTokens: ValidationToken[]; localPlayerId: string; candidates: WireCandidate[]; lobbyConfig: LobbyConfigValue | null; flip?: undefined }
   // #382 — Flip carries no wires/tokens/candidates at all, and no wiresDb call
   // is made to produce it. Identical for every player: `localPlayerId` says
   // which seat is yours, never what you may see (#358 — no hidden state).
@@ -245,7 +258,10 @@ export type ServerMessage =
   // the lobby at all. The KEY is always present on this variant, so narrow on
   // its presence (`'flip' in msg`) rather than its truthiness — a null would
   // otherwise fall through to the wire-game branch and read `wires`.
-  | { type: 'game_state'; game: Game; players: Player[]; localPlayerId: string; flip: FlipTableView | null }
+  //
+  // #329 (#505) — same `lobbyConfig` fix as the wire-game variant above,
+  // same reason.
+  | { type: 'game_state'; game: Game; players: Player[]; localPlayerId: string; flip: FlipTableView | null; lobbyConfig: LobbyConfigValue | null }
   | { type: 'player_joined'; player: Player }
   | { type: 'dual_cut_proposed'; proposingPlayerId: string; targetPlayerId: string; targetWireId: string; targetWireRackPosition: number; guessedValue: string }
   | { type: 'dual_cut_correct'; targetWireId: string; targetWireRackPosition: number; targetWireColor: WireColor }

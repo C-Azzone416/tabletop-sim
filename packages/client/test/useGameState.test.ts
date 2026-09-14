@@ -379,7 +379,7 @@ describe("useGameState", () => {
     const validationTokens = [{ id: "v1", gameId: "g1", wireValue: "3", wireColor: "blue" as const, validatedAt: "2026-01-01T00:00:00Z" }];
 
     act(() => {
-      result.current.handleMessage({ type: "game_state", game, players, wires, infoTokens, validationTokens, localPlayerId: "p1", candidates: [] });
+      result.current.handleMessage({ type: "game_state", lobbyConfig: null, game, players, wires, infoTokens, validationTokens, localPlayerId: "p1", candidates: [] });
     });
 
     expect(result.current.state.game).toEqual(game);
@@ -423,6 +423,53 @@ describe("useGameState", () => {
       });
 
       expect(result.current.state.lobbyConfig).toEqual({ mission: 3 });
+    });
+
+    // #505 QA finding — a browser's SECOND WebSocket connection (#454's
+    // architecture) is what actually renders GameClient, and the server
+    // treats it as a reconnect: it receives game_state, never joined_game.
+    // Syncing lobbyConfig from game_state too (both the wire-game and Flip
+    // variants) is what makes a non-captain's real client ever see the
+    // captain's already-live pick — this hook instance's `lobbyConfig`
+    // otherwise stays at its initial `null` forever, with nothing to
+    // correct it.
+    it("takes game_state's lobbyConfig too (the wire-game variant) — this is what a browser's real reconnect actually receives", () => {
+      const { result } = renderHook(() => useGameState());
+      const game = makeGame({ id: "g1", status: "waiting" });
+
+      act(() => {
+        result.current.handleMessage({
+          type: "game_state",
+          game,
+          players: [makePlayer({ id: "p2" })],
+          wires: [],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p2",
+          candidates: [],
+          lobbyConfig: { mission: 4 },
+        });
+      });
+
+      expect(result.current.state.lobbyConfig).toEqual({ mission: 4 });
+    });
+
+    it("takes game_state's lobbyConfig too (the Flip variant)", () => {
+      const { result } = renderHook(() => useGameState());
+      const game = makeGame({ id: "g1", status: "waiting", gameType: "flip" });
+
+      act(() => {
+        result.current.handleMessage({
+          type: "game_state",
+          game,
+          players: [makePlayer({ id: "p2" })],
+          localPlayerId: "p2",
+          flip: null,
+          lobbyConfig: { difficulty: "hard" },
+        });
+      });
+
+      expect(result.current.state.lobbyConfig).toEqual({ difficulty: "hard" });
     });
 
     it("updates on lobby_config_updated", () => {

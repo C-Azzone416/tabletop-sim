@@ -137,7 +137,7 @@ describe("GameClient — full game flow integration", () => {
 
     act(() => {
       ws.simulateMessage({
-        type: "game_state",
+        type: "game_state", lobbyConfig: null,
         candidates: [],
         game: activeGame,
         players,
@@ -243,7 +243,7 @@ describe("GameClient — full game flow integration", () => {
       });
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({
             id: "g1",
@@ -346,7 +346,7 @@ describe("GameClient — full game flow integration", () => {
       });
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({
             id: "g1",
@@ -426,7 +426,7 @@ describe("GameClient — full game flow integration", () => {
       const ws = getWs();
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
@@ -451,7 +451,7 @@ describe("GameClient — full game flow integration", () => {
       const ws = getWs();
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
@@ -465,7 +465,7 @@ describe("GameClient — full game flow integration", () => {
 
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
@@ -494,7 +494,7 @@ describe("GameClient — full game flow integration", () => {
       const ws = getWs();
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
@@ -554,7 +554,7 @@ describe("GameClient — full game flow integration", () => {
 
     act(() => {
       ws.simulateMessage({
-        type: "game_state",
+        type: "game_state", lobbyConfig: null,
         candidates: [],
         game,
         players: [makePlayer({ id: "p1", name: "Alice" })],
@@ -594,7 +594,7 @@ describe("GameClient — full game flow integration", () => {
       });
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game,
           players: [makePlayer({ id: "p1", name: "Alice" })],
@@ -632,7 +632,7 @@ describe("GameClient — full game flow integration", () => {
       });
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game,
           players: [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })],
@@ -714,7 +714,7 @@ describe("GameClient — full game flow integration", () => {
       });
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({
             id: "g1",
@@ -784,7 +784,7 @@ describe("GameClient — full game flow integration", () => {
       });
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({
             id: "g1",
@@ -936,7 +936,7 @@ describe("GameClient — full game flow integration", () => {
       const carolWs = getWs();
       act(() => {
         carolWs.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({
             id: "g1",
@@ -1012,7 +1012,7 @@ describe("GameClient — full game flow integration", () => {
 
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({ id: "g1", status: "active", captainId: "p1", currentTurnPlayerId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Dev" }), makePlayer({ id: "p2", name: "Alice" })],
@@ -1127,7 +1127,7 @@ describe("GameClient — full game flow integration", () => {
 
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: activeGame,
           players,
@@ -1249,7 +1249,7 @@ describe("GameClient — full game flow integration", () => {
 
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: activeGame,
           players,
@@ -1326,7 +1326,7 @@ describe("GameClient — full game flow integration", () => {
       const activeGame = makeGame({ id: "g1", status: "active", captainId: "p1", currentTurnPlayerId: "p1" });
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: activeGame,
           players: [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })],
@@ -1346,7 +1346,7 @@ describe("GameClient — full game flow integration", () => {
       // room has already reset underneath it.
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],
@@ -1369,7 +1369,7 @@ describe("GameClient — full game flow integration", () => {
 
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({ id: "g1", status: "active", captainId: "p1", currentTurnPlayerId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })],
@@ -1384,7 +1384,7 @@ describe("GameClient — full game flow integration", () => {
       });
       act(() => {
         ws.simulateMessage({
-          type: "game_state",
+          type: "game_state", lobbyConfig: null,
           candidates: [],
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           players: [makePlayer({ id: "p1", name: "Alice" })],

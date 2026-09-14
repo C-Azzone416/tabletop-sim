@@ -20,6 +20,7 @@ vi.mock("../src/db/flip-games.js", () => ({
 vi.mock("../src/ws/connection-manager.js", () => ({
   getGameSockets: vi.fn(() => new Map()),
   sendToPlayer: vi.fn(),
+  getLobbyConfig: vi.fn(() => null),
 }));
 // #445 — players is queried fresh inside broadcastGameState now, not passed
 // in by the caller (see state-broadcaster.ts's doc comment on why).
@@ -200,6 +201,25 @@ describe("state-broadcaster", () => {
       const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
       expect(message).toMatchObject({ type: "game_state", localPlayerId: "p0" });
       expect((message as { flip: unknown }).flip).toBeDefined();
+    });
+
+    // #329 (#505 QA finding) — a browser's second WebSocket connection
+    // (#454's architecture) is treated as a reconnect and receives
+    // game_state, never joined_game. Without lobbyConfig here, a
+    // non-captain's actually-rendered client never received the captain's
+    // live pick at all.
+    it("carries the room's current lobby config, read from connection-manager", async () => {
+      mockFlipGamesDb.getFlipGameState.mockResolvedValue(
+        buildFlipGameState({ players: twoSeats, hands: { p0: flipCards(["7", "+4"]) } }),
+      );
+      connect("p0", "p1");
+      mockConnManager.getLobbyConfig.mockReturnValue({ difficulty: "hard" });
+
+      await broadcastGameState("g1", flipGame());
+
+      expect(mockConnManager.getLobbyConfig).toHaveBeenCalledWith("g1");
+      const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+      expect((message as { lobbyConfig: unknown }).lobbyConfig).toEqual({ difficulty: "hard" });
     });
 
     // The acceptance criterion, and the actual bug: no wire-game query may be
@@ -571,6 +591,24 @@ describe("state-broadcaster", () => {
       expect(mockFlipGamesDb.getFlipGameState).not.toHaveBeenCalled();
       const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
       expect(message).not.toHaveProperty("flip");
+    });
+
+    // #329 (#505 QA finding) — same fix as the flip branch above, same
+    // reason: this is what a browser's reconnect connection actually gets.
+    it("carries the room's current lobby config, read from connection-manager", async () => {
+      mockWiresDb.getWiresByGameId.mockResolvedValue([]);
+      mockTokensDb.getInfoTokensByGameId.mockResolvedValue([]);
+      mockTokensDb.getValidationTokensByGameId.mockResolvedValue([]);
+      mockCandidatesDb.getWireCandidatesByGameId.mockResolvedValue([]);
+      mockConnManager.getGameSockets.mockReturnValue(new Map([["p1", {}]]) as Map<string, WebSocket>);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([makePlayer({ id: "p1" })]);
+      mockConnManager.getLobbyConfig.mockReturnValue({ mission: 3 });
+
+      await broadcastGameState("g1", makeGame({ id: "g1", gameType: "wire-game" }));
+
+      expect(mockConnManager.getLobbyConfig).toHaveBeenCalledWith("g1");
+      const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+      expect((message as { lobbyConfig: unknown }).lobbyConfig).toEqual({ mission: 3 });
     });
 
     it("sends a per-player redacted game_state message to every connected socket", async () => {

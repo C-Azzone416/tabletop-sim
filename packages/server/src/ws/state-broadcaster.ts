@@ -7,7 +7,7 @@ import * as flipGamesDb from '../db/flip-games.js';
 import * as playersDb from '../db/players.js';
 import * as gamesDb from '../db/games.js';
 import { groupRoundsByPlayer, toFlipTableView } from './flip-view.js';
-import { getGameSockets, sendToPlayer } from './connection-manager.js';
+import { getGameSockets, getLobbyConfig, sendToPlayer } from './connection-manager.js';
 import { flipTimeoutAction, executeFlipAction } from './flip-actions.js';
 import { scheduleFlipTurnTimeout, cancelFlipTurnTimeout, turnDeadlineFor, clearTurnDeadline } from './flip-turn-timer.js';
 import { FLIP_TURN_TIMEOUT_MS, FLIP_DEV_TURN_TIMEOUT_MS } from './message-handler.js';
@@ -174,6 +174,11 @@ async function broadcastFlipGameState(
   const flip = state
     ? toFlipTableView(state, groupRoundsByPlayer(await flipGamesDb.getFlipRoundScores(gameId)), turnDeadline)
     : null;
+  // #329 (#505 QA finding) — a browser's SECOND connection (#454's
+  // architecture) is treated as a reconnect and gets game_state, never
+  // joined_game; omitting this here left a non-captain's actually-rendered
+  // client with no way to ever receive the captain's live pick.
+  const lobbyConfig = getLobbyConfig(gameId);
   const gameSockets = getGameSockets(gameId);
 
   for (const [playerId] of gameSockets) {
@@ -183,6 +188,7 @@ async function broadcastFlipGameState(
       players,
       localPlayerId: playerId,
       flip,
+      lobbyConfig,
     };
     sendToPlayer(gameId, playerId, message);
   }
@@ -241,6 +247,10 @@ export async function broadcastGameState(
   // (a candidate has no owner to redact against). Empty for every mission
   // today; no config uses N-of-M yet.
   const candidates = await candidatesDb.getWireCandidatesByGameId(gameId);
+  // #329 (#505 QA finding) — same fix as broadcastFlipGameState above, same
+  // reason: this is what a browser's second (reconnect) connection actually
+  // receives.
+  const lobbyConfig = getLobbyConfig(gameId);
 
   const gameSockets = getGameSockets(gameId);
 
@@ -255,6 +265,7 @@ export async function broadcastGameState(
       validationTokens,
       localPlayerId: playerId,
       candidates,
+      lobbyConfig,
     };
     sendToPlayer(gameId, playerId, message);
   }
