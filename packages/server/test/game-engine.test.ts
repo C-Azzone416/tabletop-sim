@@ -17,6 +17,7 @@ vi.mock("../src/db/games.js", () => ({
   clearPendingInterrogation: vi.fn(),
   setPendingDualCut: vi.fn(),
   clearPendingDualCut: vi.fn(),
+  deleteGame: vi.fn(),
 }));
 
 vi.mock("../src/db/players.js", () => ({
@@ -28,6 +29,8 @@ vi.mock("../src/db/players.js", () => ({
   markDoubleDetectorUsed: vi.fn(),
   markSetupDone: vi.fn(),
   resetDoubleDetectorForGame: vi.fn(),
+  deletePlayer: vi.fn(),
+  renumberSeats: vi.fn(),
 }));
 
 vi.mock("../src/db/wires.js", () => ({
@@ -2075,6 +2078,108 @@ describe("game-engine", () => {
       expect(mockGamesDb.updateGameStatus).toHaveBeenCalledWith("g1", "won");
       expect(mockGamesDb.updateCurrentTurn).not.toHaveBeenCalled();
       expect(result.game.status).toBe("won");
+    });
+  });
+
+  // #431 — leave_game path: host-closes-room, non-host seat departure, and
+  // the per-game dispatch point for a non-host mid-game leave.
+  describe("leaveGame", () => {
+    beforeEach(() => {
+      // A prior describe block's `mockResolvedValueOnce` queue can leak an
+      // unconsumed entry past `vi.clearAllMocks()` (it clears call history,
+      // not a still-queued implementation). Full reset here so every test
+      // below sees exactly the mock it sets up, nothing carried over.
+      mockGamesDb.getGameById.mockReset();
+      mockPlayersDb.getPlayerById.mockReset();
+      mockPlayersDb.getPlayersByGameId.mockReset();
+    });
+
+    it("closes the room when the host (captain) leaves, in every phase", async () => {
+      for (const status of ["waiting", "setup", "active", "won", "lost"] as const) {
+        vi.clearAllMocks();
+        const game = makeGame({ id: "g1", status, captainId: "p1" });
+        mockGamesDb.getGameById.mockResolvedValue(game);
+        mockPlayersDb.getPlayerById.mockResolvedValue(makePlayer({ id: "p1", gameId: "g1" }));
+
+        const result = await engine.leaveGame("g1", "p1");
+
+        expect(result.outcome).toBe("room_closed");
+        expect(mockGamesDb.deleteGame).toHaveBeenCalledWith("g1");
+        // Captaincy never reassigns — deleting the room, not the player row,
+        // is what keeps "no live room with a null captainId" true. Nothing
+        // here ever writes captain_id.
+        expect(mockGamesDb.updateGameCaptain).not.toHaveBeenCalled();
+        // The non-host departure path (delete-player / renumber) must not
+        // also run for a host departure.
+        expect(mockPlayersDb.deletePlayer).not.toHaveBeenCalled();
+      }
+    });
+
+    it("removes a non-host player and frees their seat in the lobby", async () => {
+      const game = makeGame({ id: "g1", status: "waiting", captainId: "p1" });
+      const leaver = makePlayer({ id: "p2", gameId: "g1", name: "Bob", seatOrder: 1 });
+      const remaining = [makePlayer({ id: "p1", gameId: "g1", name: "Alice", seatOrder: 0 })];
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayerById.mockResolvedValue(leaver);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(remaining);
+
+      const result = await engine.leaveGame("g1", "p2");
+
+      expect(mockPlayersDb.deletePlayer).toHaveBeenCalledWith("p2");
+      expect(mockPlayersDb.renumberSeats).toHaveBeenCalledWith("g1");
+      expect(mockGamesDb.deleteGame).not.toHaveBeenCalled();
+      expect(result).toEqual({ outcome: "left", leftPlayer: leaver, players: remaining });
+    });
+
+    it("removes a non-host player mid-game without ending the game (documented dispatch default)", async () => {
+      const game = makeGame({ id: "g1", status: "active", captainId: "p1", gameType: "wire-game" });
+      const leaver = makePlayer({ id: "p2", gameId: "g1", seatOrder: 1 });
+      const remaining = [makePlayer({ id: "p1", gameId: "g1", seatOrder: 0 })];
+
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayerById.mockResolvedValue(leaver);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(remaining);
+
+      const result = await engine.leaveGame("g1", "p2");
+
+      // #431's dispatch point exists (branches on game_type) but every
+      // branch is undecided until #432/#433/#434 land — the game itself is
+      // untouched here (no status/turn change), only the seat is freed.
+      expect(mockGamesDb.updateGameStatus).not.toHaveBeenCalled();
+      expect(result).toEqual({ outcome: "left", leftPlayer: leaver, players: remaining });
+    });
+
+    it("is a no-op when the game no longer exists (double leave / raced room close)", async () => {
+      mockGamesDb.getGameById.mockResolvedValue(null);
+
+      const result = await engine.leaveGame("gone", "p1");
+
+      expect(result).toEqual({ outcome: "noop" });
+      expect(mockPlayersDb.deletePlayer).not.toHaveBeenCalled();
+      expect(mockGamesDb.deleteGame).not.toHaveBeenCalled();
+    });
+
+    it("is a no-op when the player is already gone (double leave)", async () => {
+      const game = makeGame({ id: "g1", status: "waiting", captainId: "p1" });
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayerById.mockResolvedValue(null);
+
+      const result = await engine.leaveGame("g1", "p2");
+
+      expect(result).toEqual({ outcome: "noop" });
+      expect(mockPlayersDb.deletePlayer).not.toHaveBeenCalled();
+    });
+
+    it("is a no-op when the player belongs to a different game (stale connection info)", async () => {
+      const game = makeGame({ id: "g1", status: "waiting", captainId: "p1" });
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayerById.mockResolvedValue(makePlayer({ id: "p2", gameId: "g-other" }));
+
+      const result = await engine.leaveGame("g1", "p2");
+
+      expect(result).toEqual({ outcome: "noop" });
+      expect(mockPlayersDb.deletePlayer).not.toHaveBeenCalled();
     });
   });
 });

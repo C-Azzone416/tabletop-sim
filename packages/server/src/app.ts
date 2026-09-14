@@ -15,8 +15,8 @@ import * as tokensDb from './db/tokens.js';
 import * as wiresDb from './db/wires.js';
 import { getMigrationsStatus } from './db/migrations.js';
 import * as engine from './engine/game-engine.js';
-import { handleMessage } from './ws/message-handler.js';
-import { removeConnection, setAuthenticatedUser, registerConnection } from './ws/connection-manager.js';
+import { handleMessage, handleDisconnect } from './ws/message-handler.js';
+import { setAuthenticatedUser, registerConnection } from './ws/connection-manager.js';
 import { authenticateUpgrade, authenticateProfile } from './ws/auth.js';
 import { broadcastGameState } from './ws/state-broadcaster.js';
 
@@ -325,13 +325,16 @@ export async function buildApp() {
       await handleMessage(socket, raw.toString(), app.log);
     });
 
+    // #431 — disconnect is treated as a deliberate leave (host and
+    // non-host alike): handleDisconnect runs the same leaveGame path
+    // handleLeaveGame does, then deregisters the socket. It never throws.
     socket.on('close', () => {
-      removeConnection(socket);
+      void handleDisconnect(socket, app.log);
     });
 
     socket.on('error', (err: Error) => {
       app.log.error(err, 'WebSocket error');
-      removeConnection(socket);
+      void handleDisconnect(socket, app.log);
     });
 
     try {

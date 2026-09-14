@@ -91,6 +91,8 @@ function validateMessage(parsed: unknown): ClientMessage | null {
     case 'flip_choose_flip3_target':
       if (!isNonEmptyString(msg.targetPlayerId)) return null;
       return { type: 'flip_choose_flip3_target', targetPlayerId: msg.targetPlayerId };
+    case 'leave_game':
+      return { type: 'leave_game' };
     default:
       return null;
   }
@@ -177,6 +179,9 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
         break;
       case 'flip_choose_flip3_target':
         await handleFlipAction(socket, { kind: 'choose-flip3-target', targetPlayerId: msg.targetPlayerId });
+        break;
+      case 'leave_game':
+        await handleLeaveGame(socket);
         break;
       default:
         sendError(socket, 'Unknown message type');
@@ -533,6 +538,69 @@ async function handlePlayerReady(socket: WebSocket): Promise<void> {
   connManager.broadcastToGame(info.gameId, response);
 }
 
+// #431 — shared by handleLeaveGame and handleDisconnect below. Deregistering
+// the departing socket happens in both callers BEFORE this runs, so the
+// broadcasts here never reach the player who just left.
+async function performLeave(gameId: string, playerId: string): Promise<void> {
+  const result = await withTimeout(engine.leaveGame(gameId, playerId), 'leaveGame');
+
+  if (result.outcome === 'noop') return;
+
+  if (result.outcome === 'room_closed') {
+    const notice: ServerMessage = {
+      type: 'room_closed',
+      reason: 'The host left. The room has been closed.',
+    };
+    connManager.broadcastToGame(gameId, notice);
+
+    // deleteGame cascades every player row in the DB, but the in-memory
+    // socket bindings survive it — deregister every remaining connection so
+    // a stray message against the torn-down room fails safely ("Game not
+    // found" / "Player not found", both already safe) instead of quietly
+    // operating on ghost state.
+    for (const playerSocket of [...connManager.getGameSockets(gameId).values()]) {
+      connManager.removeConnection(playerSocket);
+    }
+    return;
+  }
+
+  const notice: ServerMessage = {
+    type: 'player_left',
+    playerId: result.leftPlayer.id,
+    playerName: result.leftPlayer.name,
+  };
+  connManager.broadcastToGame(gameId, notice);
+
+  const game = await gamesDb.getGameById(gameId);
+  if (game) await broadcastGameState(gameId, game, result.players);
+}
+
+async function handleLeaveGame(socket: WebSocket): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  connManager.removeConnection(socket);
+  await performLeave(info.gameId, info.playerId);
+}
+
+/**
+ * #431 — disconnect is treated as a deliberate leave, host and non-host
+ * alike (Caroline's ruling: no grace period, no reconnect window — that is
+ * #440's problem, not this one). Called from the WS `close`/`error`
+ * handlers in app.ts. Symmetric to handleLeaveGame but never throws: the
+ * socket is already closing, there is nowhere to send an error.
+ */
+export async function handleDisconnect(socket: WebSocket, log?: ActionLogger): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  connManager.removeConnection(socket);
+  if (!info) return;
+
+  try {
+    await performLeave(info.gameId, info.playerId);
+  } catch (err) {
+    log?.info({ gameId: info.gameId, playerId: info.playerId, err }, '[ws] leave-on-disconnect failed');
+  }
+}
 
 function sendError(socket: WebSocket, message: string): void {
   const response: ServerMessage = { type: 'error', message };

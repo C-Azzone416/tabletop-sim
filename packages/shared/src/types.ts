@@ -155,7 +155,10 @@ export type ClientMessage =
   | { type: 'flip_hit' }
   | { type: 'flip_freeze' }
   | { type: 'flip_choose_freeze_target'; targetPlayerId: string }
-  | { type: 'flip_choose_flip3_target'; targetPlayerId: string };
+  | { type: 'flip_choose_flip3_target'; targetPlayerId: string }
+  // #431 — no payload: the actor comes from the socket's authenticated
+  // binding, same reasoning as the Flip actions above.
+  | { type: 'leave_game' };
 
 export type ServerMessage =
   | { type: 'game_created'; game: Game; player: Player }
@@ -184,4 +187,13 @@ export type ServerMessage =
   | { type: 'wire_updated'; wire: Wire }
   | { type: 'players_updated'; players: Player[] }
   | { type: 'game_over'; result: 'won' | 'lost'; reason: string }
+  // #431 — the "someone left" notice channel for a non-host departure
+  // (leave or disconnect, lobby or mid-game). Carries enough for a client to
+  // say who left; what happens next (stay in the lobby, end the game,
+  // continue play) is decided per game type by #432/#433/#434, not here.
+  | { type: 'player_left'; playerId: string; playerName: string }
+  // #431 — the host leaving or disconnecting closes the room in every phase
+  // and every game (Caroline's ruling — captaincy does not reassign). Every
+  // remaining client routes to /play; the join code no longer resolves.
+  | { type: 'room_closed'; reason: string }
   | { type: 'error'; message: string };

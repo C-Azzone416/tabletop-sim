@@ -23,6 +23,7 @@ vi.mock("../src/engine/game-engine.js", () => ({
   executeAnswerWireQuestion: vi.fn(),
   executeNextTurn: vi.fn(),
   executeNextMission: vi.fn(),
+  leaveGame: vi.fn(),
 }));
 
 vi.mock("../src/db/games.js", () => ({
@@ -67,7 +68,7 @@ import * as playersDb from "../src/db/players.js";
 import * as connManager from "../src/ws/connection-manager.js";
 import * as stateBroadcaster from "../src/ws/state-broadcaster.js";
 import * as flipActions from "../src/ws/flip-actions.js";
-import { handleMessage } from "../src/ws/message-handler.js";
+import { handleMessage, handleDisconnect } from "../src/ws/message-handler.js";
 
 const mockFlipActions = vi.mocked(flipActions);
 
@@ -787,6 +788,141 @@ describe("message-handler", () => {
         "g1",
         expect.objectContaining({ type: "players_updated", players }),
       );
+    });
+  });
+
+  describe("leave_game (#431)", () => {
+    it("rejects when there is no connection info, without a 500 (not-in-a-room / double leave)", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue(undefined);
+
+      await handleMessage(ws, JSON.stringify({ type: "leave_game" }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Not connected to a game" });
+      expect(mockEngine.leaveGame).not.toHaveBeenCalled();
+    });
+
+    it("deregisters the leaving socket before calling the engine", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.leaveGame.mockResolvedValue({ outcome: "noop" });
+
+      await handleMessage(ws, JSON.stringify({ type: "leave_game" }));
+
+      expect(mockConnManager.removeConnection).toHaveBeenCalledWith(ws);
+      expect(mockEngine.leaveGame).toHaveBeenCalledWith("g1", "p1");
+    });
+
+    it("does nothing further when the engine reports noop", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.leaveGame.mockResolvedValue({ outcome: "noop" });
+
+      await handleMessage(ws, JSON.stringify({ type: "leave_game" }));
+
+      expect(mockConnManager.broadcastToGame).not.toHaveBeenCalled();
+      expect(mockStateBroadcaster.broadcastGameState).not.toHaveBeenCalled();
+    });
+
+    it("host leaving broadcasts room_closed and deregisters every remaining socket", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "host", gameId: "g1", socket: ws });
+      mockEngine.leaveGame.mockResolvedValue({ outcome: "room_closed" });
+
+      const remaining1 = mockSocket();
+      const remaining2 = mockSocket();
+      const remainingSockets = new Map<string, WebSocket>();
+      remainingSockets.set("p2", remaining1);
+      remainingSockets.set("p3", remaining2);
+      mockConnManager.getGameSockets.mockReturnValue(remainingSockets);
+
+      await handleMessage(ws, JSON.stringify({ type: "leave_game" }));
+
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
+        "g1",
+        expect.objectContaining({ type: "room_closed" }),
+      );
+      expect(mockConnManager.removeConnection).toHaveBeenCalledWith(remaining1);
+      expect(mockConnManager.removeConnection).toHaveBeenCalledWith(remaining2);
+      // No game_state push for a torn-down room.
+      expect(mockStateBroadcaster.broadcastGameState).not.toHaveBeenCalled();
+    });
+
+    it("non-host leaving broadcasts a player_left notice naming who left, then game_state", async () => {
+      const ws = mockSocket();
+      const leftPlayer = makePlayer({ id: "p2", name: "Bob" });
+      const remainingPlayers = [makePlayer({ id: "p1", name: "Alice" })];
+      const game = makeGame({ id: "g1" });
+
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
+      mockEngine.leaveGame.mockResolvedValue({
+        outcome: "left",
+        leftPlayer,
+        players: remainingPlayers,
+      });
+      mockGamesDb.getGameById.mockResolvedValue(game);
+
+      await handleMessage(ws, JSON.stringify({ type: "leave_game" }));
+
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith("g1", {
+        type: "player_left",
+        playerId: "p2",
+        playerName: "Bob",
+      });
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game, remainingPlayers);
+    });
+  });
+
+  describe("disconnect handling (#431 — treated as a deliberate leave)", () => {
+    it("removes the connection and does nothing else when there was no connection info", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue(undefined);
+
+      await handleDisconnect(ws);
+
+      expect(mockConnManager.removeConnection).toHaveBeenCalledWith(ws);
+      expect(mockEngine.leaveGame).not.toHaveBeenCalled();
+    });
+
+    it("a host disconnecting produces the identical room_closed outcome as leave_game", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "host", gameId: "g1", socket: ws });
+      mockEngine.leaveGame.mockResolvedValue({ outcome: "room_closed" });
+      mockConnManager.getGameSockets.mockReturnValue(new Map());
+
+      await handleDisconnect(ws);
+
+      expect(mockConnManager.removeConnection).toHaveBeenCalledWith(ws);
+      expect(mockEngine.leaveGame).toHaveBeenCalledWith("g1", "host");
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
+        "g1",
+        expect.objectContaining({ type: "room_closed" }),
+      );
+    });
+
+    it("a non-host disconnecting produces the identical player_left outcome as leave_game", async () => {
+      const ws = mockSocket();
+      const leftPlayer = makePlayer({ id: "p2", name: "Bob" });
+      const remainingPlayers = [makePlayer({ id: "p1" })];
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
+      mockEngine.leaveGame.mockResolvedValue({ outcome: "left", leftPlayer, players: remainingPlayers });
+      mockGamesDb.getGameById.mockResolvedValue(makeGame({ id: "g1" }));
+
+      await handleDisconnect(ws);
+
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
+        "g1",
+        expect.objectContaining({ type: "player_left", playerId: "p2" }),
+      );
+    });
+
+    it("never throws even if the engine call fails — the socket is already closing", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+      mockEngine.leaveGame.mockRejectedValue(new Error("DB timeout: leaveGame"));
+
+      await expect(handleDisconnect(ws)).resolves.toBeUndefined();
+      expect(mockConnManager.removeConnection).toHaveBeenCalledWith(ws);
     });
   });
 
