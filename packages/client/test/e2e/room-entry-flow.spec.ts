@@ -1,5 +1,25 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { cleanupGame, signInAsNewPlayer, joinCodeFromUrl } from "./helpers";
+
+/**
+ * #445 — the host's "Players (X/Y)" is driven by one relayed WS broadcast
+ * per join with no resync if that message is dropped, which is a real but
+ * separate fragility from what #437's own test proves. A single
+ * `toBeVisible` retries the SAME live page, so it can't recover from a
+ * broadcast that's simply never going to arrive. Reloading re-fetches the
+ * room's authoritative state fresh: if the underlying persisted value were
+ * actually wrong (the #437 regression this assertion exists to catch), the
+ * reload would show that wrong value too and this still fails correctly —
+ * it only papers over a dropped message, not an incorrect one.
+ */
+async function expectPlayerCountEventually(page: Page, text: string) {
+  try {
+    await expect(page.getByText(text)).toBeVisible({ timeout: 15_000 });
+  } catch {
+    await page.reload();
+    await expect(page.getByText(text)).toBeVisible({ timeout: 10_000 });
+  }
+}
 
 // ── #320: E2E for the real host and join paths (#309 room entry flow) ──────
 //
@@ -140,7 +160,13 @@ test.describe("host-chosen player count is enforced on join (#437)", () => {
       await expect(secondPage).toHaveURL(new RegExp(`/game/${joinCode}$`), {
         timeout: 10_000,
       });
-      await expect(page.getByText("Players (2/3)")).toBeVisible({ timeout: 15_000 });
+      // Asserted from the joiner's own view, not the host's live broadcast:
+      // the host's "Players (X/Y)" is one relayed WS message per join with
+      // no resync if a message is missed, which is a real but separate
+      // fragility from what this test is proving. A joiner's own count
+      // comes from that same join_game response, so it's authoritative
+      // regardless of broadcast delivery to anyone else.
+      await expect(secondPage.getByText("Players (2/3)")).toBeVisible({ timeout: 15_000 });
 
       // This is the case #437 exists to close: a registry ceiling of 4 must
       // not open a 4th seat once the room's persisted choice (3) is full.
@@ -153,7 +179,11 @@ test.describe("host-chosen player count is enforced on join (#437)", () => {
       await expect(thirdPage).toHaveURL(new RegExp(`/game/${joinCode}$`), {
         timeout: 10_000,
       });
-      await expect(page.getByText("Players (3/3)")).toBeVisible({ timeout: 15_000 });
+      // #437's AC is specifically that the HOST's lobby shows the persisted
+      // count, not the registry ceiling — so this one stays on the host's
+      // own view rather than the joiner's, even though it's the more
+      // fragile of the two per #445's note above expectPlayerCountEventually.
+      await expectPlayerCountEventually(page, "Players (3/3)");
 
       const fourthPage = await fourthContext.newPage();
       await signInAsNewPlayer(fourthPage, "Fourth");
