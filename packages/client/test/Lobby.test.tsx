@@ -186,9 +186,9 @@ describe("Lobby", () => {
     it("renders for the captain, defaulting to gameType-less (Wire Game) bounds", () => {
       render(<Lobby {...defaultProps()} />);
       expect(screen.getByText("Player Count")).toBeInTheDocument();
-      // Wire Game: 2-4.
+      // #435 — Wire Game: 3-5 (was 2-4).
       expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(
-        expect.arrayContaining(["2", "3", "4"]),
+        expect.arrayContaining(["3", "4", "5"]),
       );
     });
 
@@ -221,25 +221,33 @@ describe("Lobby", () => {
       expect(threeButton).not.toBeDisabled();
     });
 
+    // #435 — Wire Game's registry floor moved to 3, so 4 seated (rather
+    // than 3) is what's needed to have a below-occupancy option (3) that's
+    // still within the registry's own range — "2" no longer renders as a
+    // button at all now that it's below the floor.
     it("disables options below current occupancy and explains why, without locking the whole control", async () => {
       const user = userEvent.setup();
-      const players = Array.from({ length: 3 }, (_, i) =>
+      const players = Array.from({ length: 4 }, (_, i) =>
         makePlayer({ id: `p${i + 1}`, name: `Player${i + 1}`, ready: false }),
       );
       const props = { ...defaultProps(), players, localPlayerId: "p1", captainId: "p1" };
       render(<Lobby {...props} />);
 
-      expect(screen.getByRole("button", { name: "2" })).toBeDisabled();
-      expect(screen.getByText(/Can't go below 3/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "3" })).toBeDisabled();
+      expect(screen.getByText(/Can't go below 4/)).toBeInTheDocument();
 
-      const fourButton = screen.getByRole("button", { name: "4" });
-      expect(fourButton).not.toBeDisabled();
-      await user.click(fourButton);
-      expect(props.onChangePlayerCount).toHaveBeenCalledWith(4);
+      const fiveButton = screen.getByRole("button", { name: "5" });
+      expect(fiveButton).not.toBeDisabled();
+      await user.click(fiveButton);
+      expect(props.onChangePlayerCount).toHaveBeenCalledWith(5);
     });
 
     it("shows no occupancy caption when occupancy is already at the registry floor", () => {
-      render(<Lobby {...defaultProps()} />); // 2 players, Wire Game floor is 2
+      const players = Array.from({ length: 3 }, (_, i) =>
+        makePlayer({ id: `p${i + 1}`, name: `Player${i + 1}` }),
+      );
+      const props = { ...defaultProps(), players, localPlayerId: "p1", captainId: "p1" };
+      render(<Lobby {...props} />); // 3 players, Wire Game floor is 3 (#435)
       expect(screen.queryByText(/Can't go below/)).not.toBeInTheDocument();
     });
 
