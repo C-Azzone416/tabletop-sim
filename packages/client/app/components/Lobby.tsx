@@ -31,8 +31,10 @@ interface LobbyProps {
   // #179: {1..highestUnlocked} are pickable for the captain.
   highestUnlocked: number;
   /**
-   * The room's `game_type`, which picks the config panel (#319). Null until
-   * #313/#325 puts `gameType` in room state — see `resolveLobbyConfigSlot`.
+   * The room's `game_type`, which picks the config panel (#319). `gameType`
+   * is required on a loaded room (#313/#314/#312) — this is `null` only
+   * during the brief window before room state has loaded at all (see
+   * `resolveLobbyConfigSlot`, which returns `null` for exactly that case).
    */
   gameType?: string | null;
   /**
@@ -72,10 +74,14 @@ export function Lobby({
   const canStart = players.length >= 1 && players.length <= maxPlayers && allPlayersReady;
   const [isStarting, setIsStarting] = useState(false);
 
-  // #438 — same "degrade to Wire Game" default as resolveLobbyConfigSlot
-  // above, for the same brief pre-load window. A fixed-size game (Spades)
-  // has minPlayers === maxPlayers, which PlayerCountPicker already renders
-  // as a statement rather than a control — no separate "offers no control"
+  // #438 — a Wire Game default for the same brief pre-load window
+  // `resolveLobbyConfigSlot` covers below, kept ONLY for the player-count
+  // picker's bounds (not out of scope for #333 — #333 is specifically about
+  // the config-panel fallback, which silently picked a specific game's
+  // interactive controls; this only sizes a bound during a window so brief
+  // it's never actually visible). A fixed-size game (Spades) has
+  // minPlayers === maxPlayers, which PlayerCountPicker already renders as a
+  // statement rather than a control — no separate "offers no control"
   // branch needed here.
   const registryEntry = getGameById(gameType ?? "wire-game");
   const playerCountLocked = allPlayersReady;
@@ -83,27 +89,47 @@ export function Lobby({
   // #319: the lobby holds the config value but never interprets it — the slot
   // for the room's game type owns its shape, its panel, its start label and
   // how it maps onto onStartGame. Adding a game must not touch this file.
+  //
+  // #333 — `slot` is `null` while the room has not loaded yet
+  // (`resolveLobbyConfigSlot` no longer guesses a game for that window; see
+  // its own doc comment). `configGameId` starts at `null` too, distinct from
+  // every real slot's `gameId` (including the neutral fallback's
+  // "__unconfigured__"), so the render-phase reset below still fires
+  // correctly the first time a real slot resolves.
   const configContext = { highestUnlocked };
   const slot = resolveLobbyConfigSlot(gameType);
   const [config, setConfig] = useState<unknown>(() =>
-    slot.createDefaultConfig(configContext),
+    slot?.createDefaultConfig(configContext),
   );
-  const [configGameId, setConfigGameId] = useState(slot.gameId);
+  const [configGameId, setConfigGameId] = useState<string | null>(slot?.gameId ?? null);
 
   // Reset the config when the slot changes rather than keeping one game's
-  // value under another game's panel. This fires in practice when gameType
-  // arrives after the first render (the room state has not loaded yet).
-  if (configGameId !== slot.gameId) {
+  // value under another game's panel. Fires both when gameType arrives after
+  // the first render (room state had not loaded yet) and when it changes
+  // from one registered game to another mid-session.
+  //
+  // #333 — `setConfig` here schedules the update for the NEXT render;
+  // `config` (the hook's own binding) still holds the OLD value for the
+  // REST OF THIS render, while `slot` above is already the NEW slot
+  // (recomputed fresh every render, not stateful). Every other read of
+  // `config` in this render must go through `effectiveConfig`, or it passes
+  // the new slot's `startLabel`/`toStartArg` a config shaped for the slot
+  // being replaced — this crashes today's newly-added transition test
+  // otherwise (`config.mission` on a config that's `undefined` mid-load, or
+  // a leftover Wire Game config reaching a different game's `toStartArg`).
+  const effectiveConfig =
+    slot && configGameId !== slot.gameId ? slot.createDefaultConfig(configContext) : config;
+  if (slot && configGameId !== slot.gameId) {
     setConfigGameId(slot.gameId);
-    setConfig(slot.createDefaultConfig(configContext));
+    setConfig(effectiveConfig);
   }
 
-  const ConfigPanel = slot.Panel;
+  const ConfigPanel = slot?.Panel;
 
   const handleStartGame = () => {
-    if (isStarting) return;
+    if (isStarting || !slot) return;
     setIsStarting(true);
-    onStartGame(slot.toStartArg(config));
+    onStartGame(slot.toStartArg(effectiveConfig));
   };
 
   return (
@@ -210,13 +236,15 @@ export function Lobby({
         room state this becomes `<div>` unconditionally with
         `canEdit={isCaptain}`.
       */}
-      {isCaptain && (
+      {/* #333 — slot is null only while the room has not loaded yet; render
+          nothing for that window rather than guessing a game's panel. */}
+      {isCaptain && slot && ConfigPanel && (
         <div className="w-full max-w-sm">
           <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-muted">
             {slot.title}
           </h3>
           <ConfigPanel
-            config={config}
+            config={effectiveConfig}
             onChange={setConfig}
             canEdit={isCaptain}
             context={configContext}
@@ -237,10 +265,10 @@ export function Lobby({
         {isCaptain && isLocalPlayerReady && (
           <button
             onClick={handleStartGame}
-            disabled={!canStart || isStarting}
+            disabled={!canStart || isStarting || !slot}
             className="press min-h-11 rounded-cab border-2 border-outline bg-accent px-8 py-3 font-bold text-accent-ink shadow-print-sm disabled:opacity-50"
           >
-            {isStarting ? "Starting..." : slot.startLabel(config)}
+            {isStarting ? "Starting..." : slot ? slot.startLabel(effectiveConfig) : "Start Game"}
           </button>
         )}
 
