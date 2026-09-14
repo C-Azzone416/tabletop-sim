@@ -150,7 +150,16 @@ jobs:
           GH_REPO: ${{ github.event.repository.name }}
           PROD_FLAG: ${{ github.ref_name == 'main' && '--prod' || '' }}
         run: |
-          url=$(vercel deploy --prebuilt $PROD_FLAG \
+          # --archive=tgz — unrelated to #469's fix above (this whole
+          # Deploy step already used the safe env:/$VAR pattern). Added
+          # separately: uploads ONE tarball instead of one API call per
+          # file in the build output, which is what exhausted Vercel's
+          # free-tier 5000-upload/24h quota tonight ("Too many requests
+          # ... code: api-upload-free" — the quota is on file uploads, not
+          # deploys). This is the actual fix for that, not a 24h
+          # workaround; the failing deploy check on this very PR is the
+          # live test of whether it works.
+          url=$(vercel deploy --prebuilt --archive=tgz $PROD_FLAG \
             --meta githubCommitRef="$DEPLOY_BRANCH" \
             --meta githubCommitSha="$DEPLOY_SHA" \
             --meta githubCommitMessage="$DEPLOY_MESSAGE" \
