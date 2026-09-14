@@ -4,6 +4,7 @@ import {
   chooseFreezeTarget,
   freeze,
   hit,
+  leaveGame,
   startFlipGame,
   startRound,
   type FlipCardInstance,
@@ -451,6 +452,191 @@ describe('winning', () => {
     expect(afterB.players.find((p) => p.id === 'b')!.totalScore).toBe(200);
     // the persistent shoe/discard carry over — this round's hands moved to discard
     expect(afterB.discard).toHaveLength(2);
+  });
+});
+
+describe('leaveGame (#434 — non-host mid-game leave)', () => {
+  it('is idempotent — leaving twice is a no-op', () => {
+    const players = [makePlayer('a'), makePlayer('b'), makePlayer('c')];
+    const state = baseState(players, [], { phase: 'awaiting-round-start', turnPlayerId: null, dealerIndex: 0 });
+
+    const once = leaveGame(state, 'b', noRandom);
+    const twice = leaveGame(once, 'b', noRandom);
+
+    expect(twice).toEqual(once);
+  });
+
+  it('leaving between rounds marks them left and skips them for dealer if they were dealer-designate', () => {
+    const players = [makePlayer('a'), makePlayer('b'), makePlayer('c')];
+    const state = baseState(players, [], { phase: 'awaiting-round-start', turnPlayerId: null, dealerIndex: 1 });
+
+    const next = leaveGame(state, 'b', noRandom);
+
+    const b = next.players.find((p) => p.id === 'b')!;
+    expect(b.status).toBe('left');
+    expect(b.hand).toEqual([]);
+    expect(next.dealerIndex).toBe(2);
+    expect(next.phase).toBe('awaiting-round-start');
+  });
+
+  it('leaving between rounds when not dealer leaves dealerIndex untouched', () => {
+    const players = [makePlayer('a'), makePlayer('b'), makePlayer('c')];
+    const state = baseState(players, [], { phase: 'awaiting-round-start', turnPlayerId: null, dealerIndex: 0 });
+
+    const next = leaveGame(state, 'b', noRandom);
+
+    expect(next.dealerIndex).toBe(0);
+  });
+
+  it('leaving during game-over just marks them left, everything else untouched', () => {
+    const players = [makePlayer('a'), makePlayer('b')];
+    const state = baseState(players, [], { phase: 'game-over', turnPlayerId: null, dealerIndex: 0, winnerId: 'a' });
+
+    const next = leaveGame(state, 'b', noRandom);
+
+    expect(next.players.find((p) => p.id === 'b')!.status).toBe('left');
+    expect(next.phase).toBe('game-over');
+    expect(next.winnerId).toBe('a');
+  });
+
+  it('leaving on your own live turn passes the turn without drawing a card', () => {
+    const players = [makePlayer('a'), makePlayer('b'), makePlayer('c')];
+    const state = baseState(players, [numberCard(5)], { turnPlayerId: 'a', dealerIndex: 0 });
+
+    const next = leaveGame(state, 'a', noRandom);
+
+    expect(next.players.find((p) => p.id === 'a')!.status).toBe('left');
+    expect(next.turnPlayerId).toBe('b');
+    expect(next.shoe).toHaveLength(1); // untouched — nothing drawn on their way out
+  });
+
+  it('leaving on your own turn ends the round if no one else is active, excluding them from scoring', () => {
+    const players = [makePlayer('a'), makePlayer('b', { status: 'busted' }), makePlayer('c', { status: 'frozen' })];
+    const state = baseState(players, [], { turnPlayerId: 'a', dealerIndex: 0 });
+
+    const next = leaveGame(state, 'a', noRandom);
+
+    expect(next.phase).toBe('awaiting-round-start');
+    expect(next.lastRoundResult).not.toBeNull();
+    expect(next.lastRoundResult!.scores).not.toHaveProperty('a');
+    expect(next.lastRoundResult!.breakdowns).not.toHaveProperty('a');
+  });
+
+  it('leaving with your own pending action cancels it and passes the turn on, not auto-resolved as a self-target', () => {
+    const players = [makePlayer('a'), makePlayer('b'), makePlayer('c')];
+    const state = baseState(players, [], { turnPlayerId: 'a', pendingAction: { kind: 'freeze' } });
+
+    const next = leaveGame(state, 'a', noRandom);
+
+    expect(next.pendingAction).toBeNull();
+    expect(next.turnPlayerId).toBe('b');
+  });
+
+  it('leaving as the flipper abandons the entire Flip 3 cascade, not just the current level', () => {
+    const players = [makePlayer('a'), makePlayer('b'), makePlayer('c')];
+    const state = baseState(players, [], {
+      turnPlayerId: 'a',
+      pendingAction: { kind: 'flip3' },
+      flip3Stack: [{ targetId: 'b', remaining: 2 }],
+    });
+
+    const next = leaveGame(state, 'a', noRandom);
+
+    expect(next.flip3Stack).toEqual([]);
+    expect(next.pendingAction).toBeNull();
+    expect(next.turnPlayerId).toBe('b');
+  });
+
+  it('leaving while targeted by an in-progress Flip 3 level closes only that level; the rest of the chain and the flipper turn continue untouched', () => {
+    const players = [makePlayer('a'), makePlayer('b'), makePlayer('c')];
+    const state = baseState(players, [numberCard(9), numberCard(9)], {
+      turnPlayerId: 'a',
+      flip3Stack: [
+        { targetId: 'b', remaining: 2 },
+        { targetId: 'c', remaining: 1 },
+      ],
+    });
+
+    const next = leaveGame(state, 'c', noRandom);
+
+    expect(next.flip3Stack).toEqual([{ targetId: 'b', remaining: 2 }]);
+    expect(next.turnPlayerId).toBe('a');
+    expect(next.players.find((p) => p.id === 'c')!.status).toBe('left');
+    // not the turn player, so nothing is drawn/advanced automatically
+    expect(next.shoe).toHaveLength(2);
+  });
+
+  it('leaving while merely an eligible target of a pending, not-yet-chosen action just shrinks the target pool', () => {
+    const players = [makePlayer('a'), makePlayer('b'), makePlayer('c')];
+    const state = baseState(players, [], { turnPlayerId: 'a', pendingAction: { kind: 'freeze' } });
+
+    const next = leaveGame(state, 'c', noRandom);
+
+    expect(next.pendingAction).toEqual({ kind: 'freeze' });
+    expect(next.turnPlayerId).toBe('a');
+    expect(next.players.find((p) => p.id === 'c')!.status).toBe('left');
+    // the flipper remains a legal self-target
+    expect(next.players.find((p) => p.id === 'a')!.status).toBe('active');
+  });
+
+  it('leaving during the opening deal removes them from the queue; the deal resumes and finishes correctly without them', () => {
+    const players = [makePlayer('a'), makePlayer('b'), makePlayer('c')];
+    const cardB = numberCard(5);
+    const cardC = numberCard(6);
+    const state = baseState(players, [cardB, cardC], {
+      turnPlayerId: 'a',
+      pendingAction: { kind: 'freeze' },
+      dealQueue: ['b', 'c'],
+    });
+
+    const next = leaveGame(state, 'a', noRandom);
+
+    expect(next.players.find((p) => p.id === 'a')!.status).toBe('left');
+    expect(next.pendingAction).toBeNull();
+    expect(next.dealQueue).toBeNull();
+    // deal finished: b and c each got their opening card, live play begins
+    expect(next.players.find((p) => p.id === 'b')!.hand.map((c) => c.id)).toEqual([cardB.id]);
+    expect(next.players.find((p) => p.id === 'c')!.hand.map((c) => c.id)).toEqual([cardC.id]);
+    expect(next.turnPlayerId).toBe('b');
+  });
+
+  it('a round that loses a player mid-way still scores everyone else correctly; the leaver is absent from the record and their total is frozen', () => {
+    const players = [
+      makePlayer('a', { hand: [numberCard(5)], totalScore: 10 }),
+      makePlayer('b', { hand: [numberCard(3)], totalScore: 20 }),
+      makePlayer('c', { hand: [numberCard(9)], totalScore: 30 }),
+    ];
+    const state = baseState(players, [], { turnPlayerId: 'a', dealerIndex: 0 });
+
+    const afterLeave = leaveGame(state, 'c', noRandom);
+    expect(afterLeave.players.find((p) => p.id === 'c')!.status).toBe('left');
+    expect(afterLeave.turnPlayerId).toBe('a'); // unaffected — c wasn't the turn player
+
+    const afterA = freeze(afterLeave, 'a', noRandom);
+    const afterB = freeze(afterA, 'b', noRandom);
+
+    expect(afterB.phase).toBe('awaiting-round-start');
+    expect(afterB.lastRoundResult!.scores).not.toHaveProperty('c');
+    expect(afterB.lastRoundResult!.breakdowns).not.toHaveProperty('c');
+    const c = afterB.players.find((p) => p.id === 'c')!;
+    expect(c.totalScore).toBe(30); // untouched by the round it left
+    expect(c.hand).toEqual([]);
+    const a = afterB.players.find((p) => p.id === 'a')!;
+    const b = afterB.players.find((p) => p.id === 'b')!;
+    expect(a.totalScore).toBe(15);
+    expect(b.totalScore).toBe(23);
+  });
+
+  it('dealer rotation skips every left seat, even across multiple departures', () => {
+    const players = [makePlayer('a'), makePlayer('b'), makePlayer('c'), makePlayer('d')];
+    let state = baseState(players, [], { phase: 'awaiting-round-start', turnPlayerId: null, dealerIndex: 0 });
+
+    state = leaveGame(state, 'b', noRandom);
+    state = leaveGame(state, 'c', noRandom);
+    expect(state.dealerIndex).toBe(0); // dealer ('a') untouched by non-dealer departures
+
+    state = leaveGame(state, 'a', noRandom); // the dealer itself leaves
+    expect(state.dealerIndex).toBe(3); // skips both left seats straight to 'd'
   });
 });
 

@@ -157,16 +157,22 @@ async function recordRoundIfJustScored(
     await flipGamesDb.recordFlipRoundScores(
       gameId,
       result.roundNumber,
-      after.players.map((player: FlipPlayerState) => {
-        const breakdown = result.breakdowns?.[player.id] ?? null;
-        return {
-          playerId: player.id,
-          score: result.scores[player.id] ?? 0,
-          busted: breakdown?.busted ?? false,
-          flip7: result.flip7PlayerId === player.id,
-          breakdown,
-        };
-      }),
+      // #434 — a 'left' player has no entry in result.scores/breakdowns (the
+      // engine skips them entirely when finalizing a round after they leave);
+      // without this filter the `?? 0`/`?? null` fallbacks below would write
+      // a spurious 0-score row for them anyway.
+      after.players
+        .filter((player: FlipPlayerState) => player.status !== 'left')
+        .map((player: FlipPlayerState) => {
+          const breakdown = result.breakdowns?.[player.id] ?? null;
+          return {
+            playerId: player.id,
+            score: result.scores[player.id] ?? 0,
+            busted: breakdown?.busted ?? false,
+            flip7: result.flip7PlayerId === player.id,
+            breakdown,
+          };
+        }),
     );
   } catch (err) {
     console.error('[flip] failed to record round scores', { gameId, roundNumber: result.roundNumber, err });

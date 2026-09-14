@@ -8,7 +8,7 @@ import * as tokensDb from '../db/tokens.js';
 import * as turnsDb from '../db/turns.js';
 import * as outcomesDb from '../db/outcomes.js';
 import * as candidatesDb from '../db/candidates.js';
-import { startFlipGame } from '@tabletop/game-flip';
+import { startFlipGame, leaveGame as applyFlipLeave, type FlipGameState } from '@tabletop/game-flip';
 import * as flipGamesDb from '../db/flip-games.js';
 import { dealWires } from './wire-dealer.js';
 
@@ -173,7 +173,7 @@ export async function startFlipRoom(
 
 export type LeaveGameResult =
   | { outcome: 'noop' }
-  | { outcome: 'room_closed' }
+  | { outcome: 'room_closed'; reason: string }
   | { outcome: 'left'; leftPlayer: Player; players: Player[]; gameEnded: boolean };
 
 // #432 — a non-host mid-game leave in Wire Game ends the mission, but
@@ -200,18 +200,60 @@ async function endWireGameToLobby(gameId: string): Promise<void> {
   await gamesDb.updateGameStatus(gameId, 'waiting');
 }
 
+// #434 — a non-host leaving Flip drops their seat but the game continues,
+// UNLESS the departure takes the room below Flip's registry floor: Caroline's
+// ruling said "confirm, remove, continue," but a below-floor table cannot
+// keep playing under that rule, so this is the one case where a Flip
+// non-host leave behaves like a host leave (room_closed) rather than like
+// #432's Wire Game (gameEnded, room survives) — see leaveGame() below for
+// how the two outcomes actually differ (room deletion vs. a continued game).
+//
+// `remainingPlayerCount` is the SQL players row count AFTER this departure
+// (leaveGame already deleted the row and renumbered seats by the time this
+// runs) — that is the room's actual live seat count, distinct from the Flip
+// engine's own `players` array in the JSONB blob, which never shrinks
+// (departed seats stay present, marked 'left', for turn-order/dealer math).
+async function dispatchFlipMidGameLeave(
+  gameId: string,
+  playerId: string,
+  remainingPlayerCount: number,
+): Promise<{ gameEnded: boolean } | { roomClosed: true; reason: string }> {
+  const entry = getGameById('flip');
+  const minPlayers = entry?.minPlayers ?? 3;
+  if (remainingPlayerCount < minPlayers) {
+    return { roomClosed: true, reason: 'Not enough players remain. The game has ended.' };
+  }
+
+  const stored = await flipGamesDb.getFlipGameState(gameId);
+  if (stored) {
+    const next = applyFlipLeave(stored as FlipGameState, playerId);
+    await flipGamesDb.saveFlipGameState(gameId, next);
+  }
+  // #434 — the leaver's score is removed entirely, completed rounds
+  // included, regardless of whether Flip state was found above (a missing
+  // blob shouldn't leave stale score rows behind either).
+  await flipGamesDb.deleteFlipRoundScoresByPlayer(gameId, playerId);
+
+  return { gameEnded: false };
+}
+
 // #431 — the per-game dispatch point for a *non-host* mid-game leave.
 // Wire Game ends the mission and returns everyone to the lobby (#432);
 // Spades will do the same once it exists (#433, parked); Flip drops the
-// seat and continues if 3+ players remain (#434, not built yet — falls
-// through to the documented no-op default below until it lands).
-async function dispatchNonHostMidGameLeave(game: Game, _leftPlayer: Player): Promise<{ gameEnded: boolean }> {
+// seat and continues if 3+ players remain, or ends the game if the
+// departure takes it below that floor (#434).
+async function dispatchNonHostMidGameLeave(
+  game: Game,
+  _leftPlayer: Player,
+  remainingPlayerCount: number,
+): Promise<{ gameEnded: boolean } | { roomClosed: true; reason: string }> {
   switch (game.gameType) {
     case 'wire-game':
       await endWireGameToLobby(game.id);
       return { gameEnded: true };
-    case 'spades':
     case 'flip':
+      return dispatchFlipMidGameLeave(game.id, _leftPlayer.id, remainingPlayerCount);
+    case 'spades':
     default:
       return { gameEnded: false };
   }
@@ -241,7 +283,7 @@ export async function leaveGame(gameId: string, playerId: string): Promise<Leave
 
   if (game.captainId === playerId) {
     await gamesDb.deleteGame(gameId);
-    return { outcome: 'room_closed' };
+    return { outcome: 'room_closed', reason: 'The host left. The room has been closed.' };
   }
 
   await playersDb.deletePlayer(playerId);
@@ -250,7 +292,16 @@ export async function leaveGame(gameId: string, playerId: string): Promise<Leave
 
   let gameEnded = false;
   if (game.status !== 'waiting') {
-    ({ gameEnded } = await dispatchNonHostMidGameLeave(game, player));
+    const dispatched = await dispatchNonHostMidGameLeave(game, player, players.length);
+    // #434 — a below-floor Flip departure ends the room exactly like a host
+    // leave: delete the row (captaincy-free, same as the host case) rather
+    // than returning 'left' with gameEnded — there is no lobby left for
+    // anyone to land back in, unlike #432's Wire Game gameEnded case.
+    if ('roomClosed' in dispatched) {
+      await gamesDb.deleteGame(gameId);
+      return { outcome: 'room_closed', reason: dispatched.reason };
+    }
+    gameEnded = dispatched.gameEnded;
   }
 
   return { outcome: 'left', leftPlayer: player, players, gameEnded };

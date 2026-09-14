@@ -27,7 +27,11 @@ export type FlipCardDefinition =
 /** Unique within one game's persistent shoe/discard pile. */
 export type FlipCardInstance = FlipCardDefinition & { readonly id: string };
 
-export type FlipPlayerStatus = 'active' | 'frozen' | 'busted';
+// #434 — 'left' is terminal and distinct from 'busted'/'frozen': those two
+// reset to 'active' at the next startRound (a fresh round for everyone
+// still seated); 'left' must never be reset back to 'active' by anything,
+// since the player is gone for the rest of the game, not just this round.
+export type FlipPlayerStatus = 'active' | 'frozen' | 'busted' | 'left';
 
 export interface FlipPlayer {
   readonly id: string;

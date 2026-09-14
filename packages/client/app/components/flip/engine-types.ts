@@ -11,7 +11,11 @@
  * it exists to track bobcat's shape, not to define a competing one.
  */
 
-export type FlipPlayerStatus = "active" | "frozen" | "busted";
+// #434 — 'left' added to mirror game-flip's FlipPlayerStatus (a departed
+// non-host seat). Type-only sync so the client build doesn't break against
+// the now-widened wire shape; the actual leave UI/rendering treatment is
+// still held pending #454, same split as #432.
+export type FlipPlayerStatus = "active" | "frozen" | "busted" | "left";
 
 export type FlipPhase =
   | "awaiting-round-start"

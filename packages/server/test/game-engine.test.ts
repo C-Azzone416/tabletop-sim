@@ -79,6 +79,7 @@ vi.mock("../src/db/flip-games.js", () => ({
   saveFlipGameState: vi.fn(),
   recordFlipRoundScores: vi.fn(),
   getFlipRoundScores: vi.fn(),
+  deleteFlipRoundScoresByPlayer: vi.fn(),
 }));
 
 import * as gamesDb from "../src/db/games.js";
@@ -2181,12 +2182,12 @@ describe("game-engine", () => {
     });
 
     it("removes a non-host player mid-game without ending the game, for a game type with no decided branch yet (documented dispatch default)", async () => {
-      // #434 (Flip's non-host mid-game leave) isn't built yet — this is the
-      // dispatch point's documented no-op default, still exercised here now
-      // that wire-game has its own real branch (see the #432 describe block
-      // below). Using 'flip' rather than 'wire-game' keeps this test
-      // honestly testing the undecided-branch default.
-      const game = makeGame({ id: "g1", status: "active", captainId: "p1", gameType: "flip" });
+      // Spades (#433) isn't built yet — this is the dispatch point's
+      // documented no-op default, still exercised here now that wire-game
+      // (#432) and Flip (#434) both have their own real branches (see their
+      // describe blocks below). Using 'spades' keeps this test honestly
+      // testing the undecided-branch default.
+      const game = makeGame({ id: "g1", status: "active", captainId: "p1", gameType: "spades" });
       const leaver = makePlayer({ id: "p2", gameId: "g1", seatOrder: 1 });
       const remaining = [makePlayer({ id: "p1", gameId: "g1", seatOrder: 0 })];
 
@@ -2320,6 +2321,116 @@ describe("game-engine", () => {
         // resuming/reusing anything from the abandoned mission.
         expect(startResult.wires.length).toBeGreaterThan(0);
         expect(startResult.wires.every((w) => w.id.startsWith("fresh-"))).toBe(true);
+      });
+    });
+
+    // #434 — Flip's non-host mid-game leave: the game continues (contrast
+    // with #432's Wire Game, which always ends the mission) UNLESS the
+    // departure takes the room below Flip's registry floor of 3, in which
+    // case it behaves like a host leave instead (room deleted, no lobby left
+    // to continue in).
+    describe("#434 — Flip non-host mid-game leave continues the game, or ends it below the 3-player floor", () => {
+      it("continues the game with 3+ players remaining: engine state updated, score history scrubbed, room not deleted", async () => {
+        const game = makeGame({ id: "g1", status: "active", captainId: "p1", gameType: "flip" });
+        const leaver = makePlayer({ id: "p2", gameId: "g1", name: "Bob", seatOrder: 1 });
+        // 3 remain after p2's row is deleted — at the floor, not below it.
+        const remaining = [
+          makePlayer({ id: "p1", gameId: "g1", seatOrder: 0 }),
+          makePlayer({ id: "p3", gameId: "g1", seatOrder: 1 }),
+          makePlayer({ id: "p4", gameId: "g1", seatOrder: 2 }),
+        ];
+        const storedState = { players: [{ id: "p2", status: "active" }], phase: "awaiting-round-start", dealerIndex: 0 };
+
+        mockGamesDb.getGameById.mockResolvedValue(game);
+        mockPlayersDb.getPlayerById.mockResolvedValue(leaver);
+        mockPlayersDb.getPlayersByGameId.mockResolvedValue(remaining);
+        mockFlipGamesDb.getFlipGameState.mockResolvedValue(storedState);
+
+        const result = await engine.leaveGame("g1", "p2");
+
+        expect(result).toEqual({ outcome: "left", leftPlayer: leaver, players: remaining, gameEnded: false });
+        expect(mockGamesDb.deleteGame).not.toHaveBeenCalled();
+
+        // The engine's own leaveGame ran against the loaded state and the
+        // result was persisted.
+        expect(mockFlipGamesDb.getFlipGameState).toHaveBeenCalledWith("g1");
+        expect(mockFlipGamesDb.saveFlipGameState).toHaveBeenCalledTimes(1);
+        const [savedGameId, savedState] = mockFlipGamesDb.saveFlipGameState.mock.calls[0]!;
+        expect(savedGameId).toBe("g1");
+        expect((savedState as { players: { id: string; status: string }[] }).players[0]).toMatchObject({
+          id: "p2",
+          status: "left",
+        });
+
+        // The leaver's score history is scrubbed, completed rounds included.
+        expect(mockFlipGamesDb.deleteFlipRoundScoresByPlayer).toHaveBeenCalledWith("g1", "p2");
+      });
+
+      it("ends the game (room_closed) when the departure takes the room below the 3-player floor", async () => {
+        const game = makeGame({ id: "g1", status: "active", captainId: "p1", gameType: "flip" });
+        const leaver = makePlayer({ id: "p2", gameId: "g1", seatOrder: 1 });
+        // Only 2 remain — below Flip's floor of 3.
+        const remaining = [makePlayer({ id: "p1", gameId: "g1", seatOrder: 0 })];
+
+        mockGamesDb.getGameById.mockResolvedValue(game);
+        mockPlayersDb.getPlayerById.mockResolvedValue(leaver);
+        mockPlayersDb.getPlayersByGameId.mockResolvedValue(remaining);
+
+        const result = await engine.leaveGame("g1", "p2");
+
+        expect(result).toEqual({ outcome: "room_closed", reason: "Not enough players remain. The game has ended." });
+        // Below-floor behaves exactly like a host leave: the room itself is
+        // deleted, not just marked ended — no lobby survives to continue in.
+        expect(mockGamesDb.deleteGame).toHaveBeenCalledWith("g1");
+        // The below-floor short-circuit never touches Flip state at all —
+        // there is no continuing game left to update.
+        expect(mockFlipGamesDb.getFlipGameState).not.toHaveBeenCalled();
+        expect(mockFlipGamesDb.saveFlipGameState).not.toHaveBeenCalled();
+      });
+
+      it("scrubs score history even when no Flip state row is found (defensive — never leaves stale rows behind)", async () => {
+        const game = makeGame({ id: "g1", status: "active", captainId: "p1", gameType: "flip" });
+        const leaver = makePlayer({ id: "p2", gameId: "g1", seatOrder: 1 });
+        const remaining = [
+          makePlayer({ id: "p1", gameId: "g1", seatOrder: 0 }),
+          makePlayer({ id: "p3", gameId: "g1", seatOrder: 1 }),
+          makePlayer({ id: "p4", gameId: "g1", seatOrder: 2 }),
+        ];
+
+        mockGamesDb.getGameById.mockResolvedValue(game);
+        mockPlayersDb.getPlayerById.mockResolvedValue(leaver);
+        mockPlayersDb.getPlayersByGameId.mockResolvedValue(remaining);
+        mockFlipGamesDb.getFlipGameState.mockResolvedValue(null);
+
+        const result = await engine.leaveGame("g1", "p2");
+
+        expect(result).toEqual({ outcome: "left", leftPlayer: leaver, players: remaining, gameEnded: false });
+        expect(mockFlipGamesDb.saveFlipGameState).not.toHaveBeenCalled();
+        expect(mockFlipGamesDb.deleteFlipRoundScoresByPlayer).toHaveBeenCalledWith("g1", "p2");
+      });
+
+      it("does not end the game — Flip's non-host leave is a continue, unlike Wire Game's #432 end-the-mission", async () => {
+        // Same setup as the 3-remaining continue case above, phrased as an
+        // explicit contrast so a future refactor can't quietly blur the two.
+        const game = makeGame({ id: "g1", status: "active", captainId: "p1", gameType: "flip" });
+        const leaver = makePlayer({ id: "p2", gameId: "g1", seatOrder: 1 });
+        const remaining = [
+          makePlayer({ id: "p1", gameId: "g1", seatOrder: 0 }),
+          makePlayer({ id: "p3", gameId: "g1", seatOrder: 1 }),
+          makePlayer({ id: "p4", gameId: "g1", seatOrder: 2 }),
+        ];
+
+        mockGamesDb.getGameById.mockResolvedValue(game);
+        mockPlayersDb.getPlayerById.mockResolvedValue(leaver);
+        mockPlayersDb.getPlayersByGameId.mockResolvedValue(remaining);
+        mockFlipGamesDb.getFlipGameState.mockResolvedValue({ players: [{ id: "p2", status: "active" }], phase: "awaiting-round-start", dealerIndex: 0 });
+
+        const result = await engine.leaveGame("g1", "p2");
+
+        expect(result).toMatchObject({ outcome: "left", gameEnded: false });
+        // No wire-game-style room reset ever runs for Flip.
+        expect(mockGamesDb.updateGameStatus).not.toHaveBeenCalled();
+        expect(mockGamesDb.updateCurrentTurn).not.toHaveBeenCalled();
       });
     });
   });

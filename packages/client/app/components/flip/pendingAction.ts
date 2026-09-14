@@ -12,7 +12,11 @@
  * local FlipSeat used ahead of #360/#361 landing.
  */
 
-export type FlipPlayerStatusView = 'active' | 'frozen' | 'busted';
+// #434 — 'left' added to mirror the engine's FlipPlayerStatus/wire
+// FlipPlayerStatusView (a departed non-host seat). Type-only sync, same as
+// engine-types.ts's identical addition — the leave UI itself is still held
+// pending #454.
+export type FlipPlayerStatusView = 'active' | 'frozen' | 'busted' | 'left';
 
 export interface FlipPendingTargetPlayer {
   readonly id: string;

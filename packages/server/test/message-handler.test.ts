@@ -891,7 +891,7 @@ describe("message-handler", () => {
     it("host leaving broadcasts room_closed and deregisters every remaining socket", async () => {
       const ws = mockSocket();
       mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "host", gameId: "g1", socket: ws });
-      mockEngine.leaveGame.mockResolvedValue({ outcome: "room_closed" });
+      mockEngine.leaveGame.mockResolvedValue({ outcome: "room_closed", reason: "The host left. The room has been closed." });
 
       const remaining1 = mockSocket();
       const remaining2 = mockSocket();
@@ -1011,7 +1011,7 @@ describe("message-handler", () => {
     it("a host's grace window elapsing (no reconnect) produces the identical room_closed outcome as leave_game", async () => {
       const ws = mockSocket();
       mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "host", gameId: "g1", socket: ws });
-      mockEngine.leaveGame.mockResolvedValue({ outcome: "room_closed" });
+      mockEngine.leaveGame.mockResolvedValue({ outcome: "room_closed", reason: "The host left. The room has been closed." });
       mockConnManager.getGameSockets.mockReturnValue(new Map());
 
       handleDisconnect(ws);
