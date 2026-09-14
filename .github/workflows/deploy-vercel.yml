@@ -116,8 +116,22 @@ jobs:
         with:
           node-version: 20
 
+      # Pinned, not @latest — same class of problem #302 fixed for `npm
+      # audit`, one step over. `vercel@latest` on 2026-09-14 resolved to
+      # 59.17.0 (published minutes before the incident) and failed with
+      # `npm error 404 ... @vercel/cervel@0.1.65 is not in this registry`,
+      # a broken transitive dependency somewhere under this version's own
+      # @vercel/* bumps (build-utils/node/next/etc. all moved x.x.0 ->
+      # x.x.1 in that release; cervel isn't a direct dependency of either
+      # version, so it's nested under one of those). Zero commits in this
+      # repo caused it, and it took develop's deploy down with no warning —
+      # #284's CVE-publication pattern again, in a different step. 59.16.0
+      # (2026-09-11) is the last version before that bump batch, confirmed
+      # by `npm view vercel@59.16.0 dependencies` having no path to cervel.
+      # Bump this deliberately when there's a reason to, never silently via
+      # @latest — that's the whole fix.
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@59.16.0
 
       # #469 — these two ${{ }} uses ARE safe inline, despite the pattern
       # this issue otherwise moves away from: the substituted text is
