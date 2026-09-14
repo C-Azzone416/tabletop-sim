@@ -120,19 +120,17 @@ test("dual cut: target ACCEPTS a red wire — instant loss, no completion step r
     return;
   }
 
-  const targetProfile = seed.players.find((p) => p.name === redWire!.ownerName);
-  if (!targetProfile) {
-    await cleanupGame(seed.joinCode);
-    throw new Error(`No seeded profile found for ${redWire.ownerName}`);
-  }
-
-  const targetContext = await browser.newContext();
-  const targetPage = await targetContext.newPage();
+  // #431 — findOpponentHiddenWireByColor's own peek connection IS the
+  // target's live identity now (see its doc comment): reconnecting a
+  // second context as the same profile would just find them evicted, since
+  // closing the peek connection is what deletes a non-host player under
+  // #431's disconnect-as-leave behavior. Reuse it rather than opening a
+  // fresh targetContext/targetPage. cleanup() closes every context the
+  // helper opened (including non-matching candidates it had to keep alive
+  // — see its doc comment), not just this one.
+  const targetPage = redWire.ownPage;
 
   try {
-    await targetPage.goto(
-      gameUrl({ ...seed, profileId: targetProfile.profileId, playerName: targetProfile.name }),
-    );
     await expect(targetPage.locator('[data-testid="player-rack"]')).toHaveCount(4, {
       timeout: 10_000,
     });
@@ -155,7 +153,7 @@ test("dual cut: target ACCEPTS a red wire — instant loss, no completion step r
     await expect(targetPage.getByText("Mission Failed")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Correct Guess!")).not.toBeVisible();
   } finally {
-    await targetContext.close();
+    await redWire.cleanup();
     await cleanupGame(seed.joinCode);
   }
 });

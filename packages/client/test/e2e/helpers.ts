@@ -1,4 +1,4 @@
-import { request, expect, type Browser, type Page, type Locator } from "@playwright/test";
+import { request, expect, type Browser, type BrowserContext, type Page, type Locator } from "@playwright/test";
 
 export const API_URL = process.env.E2E_API_URL ?? "http://localhost:3001";
 export const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
@@ -376,6 +376,24 @@ export async function findDualCutWrongGuessOpportunity(
  * where their colors are legitimately visible to themselves — in a
  * throwaway browser context, notes the wire's public rack position, and
  * targets that position back on the acting player's page.
+ *
+ * #431 — a WS disconnect is now a deliberate leave: it deletes the
+ * disconnecting (non-host) player's row and frees their seat, no grace
+ * period. This used to close each candidate's peek context once checked,
+ * on the theory that a closed connection was side-effect-free; it no
+ * longer is — closing ANY of them evicts that player, whether or not they
+ * turned out to hold the target color. A candidate who doesn't have it is
+ * NOT "done with": they're still meant to be seated for the rest of the
+ * scenario (the caller's later `toHaveCount(4)`-style assertions expect
+ * every seeded player still present).
+ *
+ * So nothing gets closed here at all. Every opened context is closed
+ * together, only once the caller is finished with the whole scenario, via
+ * the returned `cleanup()` (found) or internally (not found). The found
+ * candidate's own context/page are handed back live so the caller drives
+ * the rest of the scenario as that same identity on the same connection —
+ * reconnecting a second one as the same profile would just find them
+ * evicted the moment this function's contexts are cleaned up.
  */
 export async function findOpponentHiddenWireByColor(
   page: Page,
@@ -383,13 +401,14 @@ export async function findOpponentHiddenWireByColor(
   seed: SeedResult,
   opponentNames: string[],
   color: "blue" | "yellow" | "red",
-): Promise<{ wire: Locator; ownerName: string } | null> {
-  for (const name of opponentNames) {
-    const profile = seed.players.find((p) => p.name === name);
-    if (!profile) continue;
-    const ctx = await browser.newContext();
-    let position: string | null = null;
-    try {
+): Promise<{ wire: Locator; ownerName: string; context: BrowserContext; ownPage: Page; cleanup: () => Promise<void> } | null> {
+  const opened: BrowserContext[] = [];
+  try {
+    for (const name of opponentNames) {
+      const profile = seed.players.find((p) => p.name === name);
+      if (!profile) continue;
+      const ctx = await browser.newContext();
+      opened.push(ctx);
       const ownPage = await ctx.newPage();
       await ownPage.goto(gameUrl({ ...seed, profileId: profile.profileId, playerName: name }));
       // NOT [data-testid="player-rack"].first() — that grabs the first
@@ -405,20 +424,27 @@ export async function findOpponentHiddenWireByColor(
         `button[data-wire-color="${color}"][data-wire-status="hidden"]`,
       );
       if ((await candidates.count()) > 0) {
-        position = await candidates.first().getAttribute("data-wire-position");
+        const position = await candidates.first().getAttribute("data-wire-position");
+        if (position) {
+          const wire = playerContainer(page, name)
+            .locator('[data-testid="player-rack"]')
+            .locator(`button[data-wire-position="${position}"]`);
+          return {
+            wire,
+            ownerName: name,
+            context: ctx,
+            ownPage,
+            cleanup: async () => {
+              await Promise.all(opened.map((c) => c.close()));
+            },
+          };
+        }
       }
-    } finally {
-      // Close before the caller opens its own context as this player — two
-      // sockets for the same playerId overwrite each other in
-      // connection-manager.ts's gameConnections map.
-      await ctx.close();
     }
-    if (position) {
-      const wire = playerContainer(page, name)
-        .locator('[data-testid="player-rack"]')
-        .locator(`button[data-wire-position="${position}"]`);
-      return { wire, ownerName: name };
-    }
+  } catch (err) {
+    await Promise.all(opened.map((c) => c.close()));
+    throw err;
   }
+  await Promise.all(opened.map((c) => c.close()));
   return null;
 }
