@@ -7,10 +7,10 @@ import type { Game, GameId, GameStatus } from '@tabletop/shared';
 // needs it today.
 export type GameCreatedVia = 'lobby' | 'dev_seed';
 
-export async function createGame(joinCode: string, gameType: GameId, mission: number = 1, createdVia: GameCreatedVia = 'lobby'): Promise<Game> {
+export async function createGame(joinCode: string, gameType: GameId, maxPlayers: number, mission: number = 1, createdVia: GameCreatedVia = 'lobby'): Promise<Game> {
   const rows = await sql`
-    INSERT INTO games (join_code, game_type, mission, created_via)
-    VALUES (${joinCode}, ${gameType}, ${mission}, ${createdVia})
+    INSERT INTO games (join_code, game_type, max_players, mission, created_via)
+    VALUES (${joinCode}, ${gameType}, ${maxPlayers}, ${mission}, ${createdVia})
     RETURNING *
   `;
   return mapGame(rows[0]);
@@ -140,6 +140,7 @@ function mapGame(row: Record<string, unknown>): Game {
     gameType: row.game_type as GameId,
     mission: row.mission as number,
     status: row.status as GameStatus,
+    maxPlayers: row.max_players as number,
     captainId: row.captain_id as string | null,
     currentTurnPlayerId: row.current_turn_player_id as string | null,
     joinCode: row.join_code as string,

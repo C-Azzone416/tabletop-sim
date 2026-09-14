@@ -14,6 +14,13 @@ export interface Game {
   gameType: GameId;
   mission: number;
   status: GameStatus;
+  /**
+   * #437 — the host's chosen room capacity, not the game's registry
+   * ceiling. Persisted at create_game so join_game (and the lobby's
+   * "n/<count>" display) can enforce/show what the host actually asked for
+   * rather than the game's maximum, which may be higher.
+   */
+  maxPlayers: number;
   captainId: string | null;
   currentTurnPlayerId: string | null;
   joinCode: string;
@@ -128,7 +135,11 @@ export interface Turn {
 // WebSocket message types
 
 export type ClientMessage =
-  | { type: 'create_game'; playerName: string; gameType: GameId }
+  // #437 — maxPlayers is the host's chosen room capacity, required of the
+  // caller for the same reason gameType is (#313): no client-side default,
+  // so a missing/invalid value is a rejectable error server-side rather than
+  // a silently-assumed one.
+  | { type: 'create_game'; playerName: string; gameType: GameId; maxPlayers: number }
   | { type: 'join_game'; joinCode: string; playerName: string }
   | { type: 'start_game'; mission?: number }
   | { type: 'place_info_token'; wireId: string }
