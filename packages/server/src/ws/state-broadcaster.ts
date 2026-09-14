@@ -115,11 +115,35 @@ async function broadcastFlipGameState(
     // broadcast, same tradeoff #396 already made for round history.
     const createdVia = await gamesDb.getGameCreatedVia(gameId);
     const durationMs = createdVia === 'dev_seed' ? FLIP_DEV_TURN_TIMEOUT_MS : FLIP_TURN_TIMEOUT_MS;
-    // Identifies WHICH turn/pending-action is being timed — a new
-    // turnPlayerId (a new turn) or a new pendingAction.kind (a Freeze/
-    // Flip3 card just drawn mid-turn) is a genuinely new thing to time;
-    // anything else broadcasting again is the same one.
-    const signature = `${state.turnPlayerId}:${state.pendingAction?.kind ?? 'none'}`;
+    // #394 review round 2 (QA) — turnPlayerId + pendingAction.kind alone is
+    // too coarse: a NESTED Flip 3 drawn while dealing through an outer
+    // one's stack re-sets pendingAction back to the SAME {kind:'flip3'} for
+    // the SAME turnPlayerId, synchronously inside chooseFlip3Target's own
+    // advance() call, with no intervening broadcast in between. That made
+    // the nested target choice inherit whatever time was left on the outer
+    // one instead of getting its own window — a quieter version of the
+    // exact silent-forfeit problem C4 exists to prevent.
+    //
+    // Fix: fold in the id of the card that produced the CURRENT pause. Every
+    // one of the four public mutators (hit/freeze/chooseFreezeTarget/
+    // chooseFlip3Target) resets resolutionLog to [] before calling advance,
+    // and advance() never returns — to a genuine pause OR to "nothing
+    // pending, waiting on the next hit/freeze decision" — without first
+    // drawing and appending at least one card (see the dealQueue and
+    // flip3Stack loops in game.ts's advance()); the very first call at round
+    // start is no exception, since it deals the opening hands before ever
+    // returning. So the LAST resolutionLog entry at the moment this state is
+    // read is always the draw that produced whatever is being timed right
+    // now, and drawFromShoe/buildFlipDeck give every card instance a
+    // globally unique id (flip-cards.ts's `${idPrefix}:${counter}`) — two
+    // states with the same turnPlayerId, same pendingAction.kind AND the
+    // same trailing card id are, by construction, re-broadcasts of the
+    // SAME pause, never two different ones. (The 'start' fallback below is
+    // unreachable for a state that has ever been visible to a client, for
+    // exactly that reason, and only exists so this can't throw on an
+    // unresolved-yet-somehow-empty log.)
+    const lastEvent = state.resolutionLog[state.resolutionLog.length - 1] ?? null;
+    const signature = `${state.turnPlayerId}:${state.pendingAction?.kind ?? 'none'}:${lastEvent?.card.id ?? 'start'}`;
     turnDeadline = turnDeadlineFor(gameId, signature, durationMs);
     const remainingMs = Math.max(0, turnDeadline - Date.now());
     scheduleFlipTurnTimeout(gameId, remainingMs, () => fireFlipTurnTimeout(gameId));

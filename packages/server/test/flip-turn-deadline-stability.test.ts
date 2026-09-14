@@ -151,6 +151,65 @@ describe("Flip turn deadline stability — reconnect-cycling stall vector (#394 
     expect(mockFlipGamesDb.saveFlipGameState).toHaveBeenCalledTimes(1);
   });
 
+  it("a nested Flip 3 target choice gets its OWN fresh deadline, not the outer one's leftover time (#394 review round 2)", async () => {
+    // QA's finding: chooseFlip3Target's own advance() can hit a SECOND
+    // flip3-drawn card while dealing through the just-pushed level, setting
+    // pendingAction back to {kind:'flip3'} for the SAME turnPlayerId,
+    // synchronously, with no intervening broadcast between the outer choice
+    // resolving and the nested one appearing. turnPlayerId and
+    // pendingAction.kind alone are byte-identical for both — this
+    // reproduces exactly that pair of states, distinguished only by the
+    // trailing resolutionLog entry (a different card, per drawCardTo's
+    // uniquely-id'd draws) the way the real engine would leave them.
+    const outerFlip3Card = { id: "shoe:11", kind: "action" as const, action: "flip3" as const };
+    const nestedFlip3Card = { id: "shoe:12", kind: "action" as const, action: "flip3" as const };
+
+    const outer = buildFlipGameState({
+      players: twoSeats,
+      turnPlayerId: "p0",
+      pendingAction: { kind: "flip3" },
+    });
+    const outerState: FlipGameState = {
+      ...outer,
+      resolutionLog: [{ targetId: "p1", card: outerFlip3Card, effect: "flip3-drawn", context: "flip3" }],
+    };
+    mockFlipGamesDb.getFlipGameState.mockResolvedValue(outerState);
+    await broadcastGameState("g1", makeGame({ id: "g1", gameType: "flip" }));
+    const outerDeadline = lastSentTurnDeadline();
+
+    // 40 of the outer choice's 45s window elapse before the target actually
+    // resolves — same as QA's scratch reproduction.
+    await vi.advanceTimersByTimeAsync(40_000);
+
+    // The nested draw: same turnPlayerId, same pendingAction.kind, but the
+    // trailing resolutionLog entry is now a DIFFERENT card — what
+    // chooseFlip3Target's advance() actually leaves behind when the level it
+    // just pushed itself draws a flip3 card before its own target is chosen.
+    const nestedState: FlipGameState = {
+      ...outerState,
+      resolutionLog: [
+        ...outerState.resolutionLog,
+        { targetId: "p1", card: nestedFlip3Card, effect: "flip3-drawn", context: "flip3" },
+      ],
+    };
+    mockFlipGamesDb.getFlipGameState.mockResolvedValue(nestedState);
+    await broadcastGameState("g1", makeGame({ id: "g1", gameType: "flip" }));
+    const nestedDeadline = lastSentTurnDeadline();
+
+    // The whole point: the nested prompt is a genuinely new decision nobody
+    // has seen before, so it must get its own full window — not inherit the
+    // ~5s left on the outer one.
+    expect(nestedDeadline).not.toBe(outerDeadline);
+    expect(nestedDeadline!).toBeGreaterThan(outerDeadline!);
+
+    // And the stability guarantee still holds for repeats of the NESTED
+    // choice itself — a reconnect during the nested prompt must not extend
+    // it either.
+    await vi.advanceTimersByTimeAsync(5_000);
+    await broadcastGameState("g1", makeGame({ id: "g1", gameType: "flip" }));
+    expect(lastSentTurnDeadline()).toBe(nestedDeadline);
+  });
+
   it("a genuinely NEW turn (different turnPlayerId) correctly gets a fresh deadline, not the previous turn's", async () => {
     const firstTurn = buildFlipGameState({ players: twoSeats, turnPlayerId: "p0" });
     mockFlipGamesDb.getFlipGameState.mockResolvedValue(firstTurn);
