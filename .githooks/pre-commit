@@ -19,6 +19,14 @@
 #
 # Every refusal names --no-verify: this is a guardrail against slips, not
 # a lock. Someone who genuinely means it should not be stuck.
+#
+# Wired via `core.hooksPath = .githooks`, set by this repo's npm `prepare`
+# script on every `npm install`. That unconditionally OVERWRITES any
+# existing core.hooksPath — if you had your own (husky, lefthook, a
+# personal dotfiles hook), it stopped firing the moment you last ran
+# `npm install` here, silently. It's local-only and one `git config
+# core.hooksPath <your path>` away from getting your own hooks back;
+# this repo's hook just wins the slot by going last.
 
 # Resolves worktree-specific paths correctly (rebase-merge/rebase-apply
 # and the *_HEAD markers below all live per-worktree, not in the shared
