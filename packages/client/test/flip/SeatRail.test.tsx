@@ -86,4 +86,33 @@ describe("SeatRail", () => {
     render(<SeatRail seats={[makeSeat({ isLeft: false })]} />);
     expect(screen.queryByText("Left")).not.toBeInTheDocument();
   });
+
+  // #448 — a separate prop rather than a FlipSeat field (see SeatRailProps'
+  // own doc comment on why).
+  describe("reconnecting indicator (#448)", () => {
+    it("shows the badge for a seat id in reconnectingIds", () => {
+      render(<SeatRail seats={[makeSeat({ id: "s1" })]} reconnectingIds={["s1"]} />);
+      expect(screen.getByText("Reconnecting…")).toBeInTheDocument();
+    });
+
+    it("does not show the badge when reconnectingIds is empty or omitted", () => {
+      render(<SeatRail seats={[makeSeat({ id: "s1" })]} />);
+      expect(screen.queryByText("Reconnecting…")).not.toBeInTheDocument();
+    });
+
+    it("does not show the badge for a departed ('left') seat even if its id is in reconnectingIds", () => {
+      render(<SeatRail seats={[makeSeat({ id: "s1", isLeft: true })]} reconnectingIds={["s1"]} />);
+      expect(screen.queryByText("Reconnecting…")).not.toBeInTheDocument();
+    });
+
+    it("only shows the badge for the matching seat, not every seat", () => {
+      render(
+        <SeatRail
+          seats={[makeSeat({ id: "s1" }), makeSeat({ id: "s2", order: 1 })]}
+          reconnectingIds={["s1"]}
+        />,
+      );
+      expect(screen.getAllByText("Reconnecting…")).toHaveLength(1);
+    });
+  });
 });

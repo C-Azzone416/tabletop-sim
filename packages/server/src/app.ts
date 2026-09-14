@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify from 'fastify';
-import { GAME_REGISTRY, getGameById, type GameId } from '@tabletop/shared';
+import { GAME_REGISTRY, getGameById, type GameId, type ServerMessage } from '@tabletop/shared';
 import { startFlipGame, startRound } from '@tabletop/game-flip';
 import { FLIP_SCENARIOS, isFlipScenarioName } from './dev/flip-scenarios.js';
 import { buildFlipScenarioState } from './dev/flip-scenario-states.js';
@@ -16,7 +16,7 @@ import * as wiresDb from './db/wires.js';
 import { getMigrationsStatus } from './db/migrations.js';
 import * as engine from './engine/game-engine.js';
 import { handleMessage, handleDisconnect } from './ws/message-handler.js';
-import { setAuthenticatedUser, registerConnection, cancelPendingLeave } from './ws/connection-manager.js';
+import { setAuthenticatedUser, registerConnection, cancelPendingLeave, broadcastToGame } from './ws/connection-manager.js';
 import { authenticateUpgrade, authenticateProfile } from './ws/auth.js';
 import { broadcastGameState } from './ws/state-broadcaster.js';
 
@@ -359,11 +359,22 @@ export async function buildApp() {
           // after registerConnection/broadcast) closes the gap where a
           // slow-to-cancel timer could still fire mid-reconnect and delete
           // the room out from under it.
-          cancelPendingLeave(player.id);
+          //
+          // #448 — the return value says whether a timer WAS actually
+          // pending: only then did remaining clients ever see a
+          // player_reconnecting notice to clear, so only then is a
+          // player_reconnected worth sending. A brand-new connection (no
+          // prior disconnect, e.g. this player's very first join) has
+          // nothing to clear and would just be broadcast noise.
+          const wasPending = cancelPendingLeave(player.id);
           const game = await gamesDb.getGameById(player.gameId);
           if (game) {
             registerConnection(socket, player.id, game.id);
             app.log.info({ gameId: game.id, playerId: player.id }, '[WS /ws] player reconnected');
+            if (wasPending) {
+              const reconnectedNotice: ServerMessage = { type: 'player_reconnected', playerId: player.id };
+              broadcastToGame(game.id, reconnectedNotice);
+            }
             await broadcastGameState(game.id, game);
           }
         }

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import { useGameState } from "../../hooks/useGameState";
+import { useDelayedIds } from "../../hooks/useDelayedIds";
 import { useMissionOutcomes } from "../../hooks/useMissionOutcomes";
 import { Lobby } from "../../components/Lobby";
 import { SetupPhase } from "../../components/SetupPhase";
@@ -23,7 +24,7 @@ import { highestUnlockedMission } from "../../lib/missionUnlocks";
 import { readRoomGameType } from "../../lib/roomGameType";
 import { apiHeaders } from "../../lib/serverApi";
 import { actingPlayerId } from "../../components/flip/actingSeat";
-import { DEV_SEAT_SWITCH_CLOSE_CODE, type ClientMessage } from "@tabletop/shared";
+import { DEV_SEAT_SWITCH_CLOSE_CODE, RECONNECT_INDICATOR_DELAY_MS, type ClientMessage } from "@tabletop/shared";
 
 /**
  * Flip's client->server actions (#383/#387). Cast rather than typed through
@@ -146,6 +147,12 @@ export function GameClient({
 
   const gameStatus = state.game?.status;
   const currentTurnPlayerId = state.game?.currentTurnPlayerId;
+
+  // #448 — the raw `reconnectingPlayerIds` is the server's undelayed truth;
+  // this is the SUBSET actually worth showing, past the display threshold
+  // (separate from #446's own 20s grace window — see RECONNECT_INDICATOR_
+  // DELAY_MS's own doc comment for why the two must stay distinct).
+  const visibleReconnectingIds = useDelayedIds(state.reconnectingPlayerIds, RECONNECT_INDICATOR_DELAY_MS);
 
   // #149 / #180: setup→active previously stranded the dev tester on
   // whatever seat they last placed a token as — active play starts on the
@@ -396,6 +403,7 @@ export function GameClient({
               sendFlipMessage({ type: "flip_choose_flip3_target", targetPlayerId: targetId })
             }
             onStartRound={() => sendFlipMessage({ type: "flip_start_round" })}
+            reconnectingIds={visibleReconnectingIds}
           />
         ) : (
           <p className="p-6 text-center text-sm text-ink-muted">Loading the table…</p>
@@ -456,6 +464,7 @@ export function GameClient({
             })
           }
           onRevealReds={() => send({ type: "reveal_reds" })}
+          reconnectingPlayerIds={visibleReconnectingIds}
         />
         {devPanel({ canRevealTokens: true, canSkipTurn: true })}
         <ErrorToast message={state.error} onDismiss={clearError} />

@@ -13,6 +13,7 @@ import { PlayerRack } from "./PlayerRack";
 import { ValidationTracker } from "./ValidationTracker";
 import { TurnIndicator } from "./TurnIndicator";
 import { ActionPanel, type ActionMode } from "./ActionPanel";
+import { ReconnectingBadge } from "./ReconnectingBadge";
 
 interface GameBoardProps {
   game: Game;
@@ -30,6 +31,8 @@ interface GameBoardProps {
   onSoloCut: (wireValue: string) => void;
   onDoubleDetector: (targetWireId: string, targetWireId2: string) => void;
   onRevealReds: () => void;
+  /** #448 — player ids to show a "Reconnecting…" badge for, already past the display-delay threshold (GameClient owns that timing via useDelayedIds). Omit or leave empty outside active play — e.g. GameBoard's own game-over usage never needs it. */
+  reconnectingPlayerIds?: readonly string[];
 }
 
 export function GameBoard({
@@ -48,6 +51,7 @@ export function GameBoard({
   onSoloCut,
   onDoubleDetector,
   onRevealReds,
+  reconnectingPlayerIds = [],
 }: GameBoardProps) {
   const isMyTurn = game.currentTurnPlayerId === localPlayerId;
   const localPlayer = players.find((p) => p.id === localPlayerId);
@@ -227,7 +231,13 @@ export function GameBoard({
 
           return (
             <div key={player.id}>
-              <div className="mb-1 flex items-center gap-2">
+              {/* #448 — flex-wrap added: "You"/name + Captain + Active +
+                  Reconnecting… can now legitimately be 4 items on one row
+                  (a captain reconnecting on their own active turn), which
+                  a bare `flex` would squeeze or overflow at 400px rather
+                  than wrap. Matches PlayerRack's own C6-cited wrap-first
+                  preference for the same class of problem. */}
+              <div className="mb-1 flex flex-wrap items-center gap-2">
                 <span
                   className={
                     isLocal
@@ -250,6 +260,7 @@ export function GameBoard({
                     Active
                   </span>
                 )}
+                {reconnectingPlayerIds.includes(player.id) && <ReconnectingBadge />}
               </div>
               <PlayerRack
                 wires={playerWires}

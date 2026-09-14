@@ -13,12 +13,24 @@
  */
 
 import type { FlipSeat } from "./types";
+import { ReconnectingBadge } from "../ReconnectingBadge";
 
 export interface SeatRailProps {
   seats: FlipSeat[];
+  /**
+   * #448 — player ids to show a "Reconnecting…" badge for, already past
+   * the display-delay threshold (GameClient owns that timing via
+   * useDelayedIds). Kept as a separate prop rather than a field on
+   * FlipSeat/toSeats: reconnecting status is a WS-connection-layer fact,
+   * not something derivable from the engine's own FlipGameState, and
+   * baking it into the adapter would make that adapter impure/aware of
+   * something outside game state (same reasoning as GameBoard's identical
+   * prop on the Wire side).
+   */
+  reconnectingIds?: readonly string[];
 }
 
-export function SeatRail({ seats }: SeatRailProps) {
+export function SeatRail({ seats, reconnectingIds = [] }: SeatRailProps) {
   const ordered = [...seats].sort((a, b) => a.order - b.order);
 
   return (
@@ -83,6 +95,15 @@ export function SeatRail({ seats }: SeatRailProps) {
               Left
             </span>
           )}
+
+          {/*
+            #448 — a departed ('left') seat can never legitimately also be
+            reconnecting (its connection is already fully torn down), but
+            the `!seat.isLeft` guard is defensive rather than load-bearing
+            — belt and suspenders against the two badges ever colliding on
+            one seat regardless of how that state got here.
+          */}
+          {!seat.isLeft && reconnectingIds.includes(seat.id) && <ReconnectingBadge />}
 
           {/* Count — always survives truncation per seat chip rules. */}
           <span className="tabular shrink-0 text-xs text-ink-muted">

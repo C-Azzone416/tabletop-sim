@@ -1080,6 +1080,34 @@ describe("message-handler", () => {
       expect(mockEngine.leaveGame).not.toHaveBeenCalled();
     });
 
+    // #448 — purely informational, so other clients can show a "give them
+    // a moment" indicator rather than nothing while the grace window is
+    // still running.
+    it("broadcasts player_reconnecting to the game when the grace timer arms", () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+
+      handleDisconnect(ws);
+
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith("g1", {
+        type: "player_reconnecting",
+        playerId: "p1",
+      });
+    });
+
+    it("does not broadcast player_reconnecting for the #462 dev-seat-switch exemption", () => {
+      process.env.ENABLE_DEV_SEED = "true";
+      process.env.NODE_ENV = "development";
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+
+      handleDisconnect(ws, DEV_SEAT_SWITCH_CLOSE_CODE);
+
+      expect(mockConnManager.broadcastToGame).not.toHaveBeenCalled();
+      delete process.env.ENABLE_DEV_SEED;
+      delete process.env.NODE_ENV;
+    });
+
     // #462 — a DevPanel seat switch closes the old seat's socket with
     // DEV_SEAT_SWITCH_CLOSE_CODE right before opening a new one for a
     // different seat: the old seat is parked, not leaving. Arming the

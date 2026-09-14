@@ -447,4 +447,28 @@ describe("GameBoard", () => {
       expect(screen.getByText("3 / 3")).toBeInTheDocument();
     });
   });
+
+  // #448 — the raw list GameClient passes in is already past the display
+  // delay (useDelayedIds' job); GameBoard's only job is to render exactly
+  // what it's given, for exactly the matching player.
+  describe("reconnecting indicator (#448)", () => {
+    it("shows the badge for a player id in reconnectingPlayerIds", () => {
+      const props = setup({ reconnectingPlayerIds: ["p2"] });
+      render(<GameBoard {...props} />);
+      expect(screen.getByText("Reconnecting…")).toBeInTheDocument();
+    });
+
+    it("does not show the badge when reconnectingPlayerIds is empty or omitted", () => {
+      render(<GameBoard {...setup()} />);
+      expect(screen.queryByText("Reconnecting…")).not.toBeInTheDocument();
+    });
+
+    it("does not show the badge for a different player than the one reconnecting", () => {
+      // p3 isn't seated in this 2-player setup — proves the check is by id,
+      // not "someone, somewhere is reconnecting".
+      const props = setup({ reconnectingPlayerIds: ["p3"] });
+      render(<GameBoard {...props} />);
+      expect(screen.queryByText("Reconnecting…")).not.toBeInTheDocument();
+    });
+  });
 });

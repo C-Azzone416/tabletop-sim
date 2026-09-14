@@ -54,6 +54,8 @@ export interface FlipTableProps {
    */
   onChooseFreezeTarget?: (playerId: string) => void;
   onChooseFlip3Target?: (playerId: string) => void;
+  /** #448 — player ids to show a "Reconnecting…" badge for in the seat rail; see SeatRail's own doc comment for why this is a separate prop rather than baked into toSeats/FlipSeat. */
+  reconnectingIds?: readonly string[];
 }
 
 export function FlipTable({
@@ -65,6 +67,7 @@ export function FlipTable({
   turnDeadline = null,
   onChooseFreezeTarget,
   onChooseFlip3Target,
+  reconnectingIds,
 }: FlipTableProps) {
   const [flattened, setFlattened] = useState(false);
   const [timeoutMessage, setTimeoutMessage] = useState<string | null>(null);
@@ -133,7 +136,7 @@ export function FlipTable({
     // clears both across every player count (2-5) at both 400px and desktop
     // widths. FlipTable never reserved either when it was built.
     <div className="flex flex-col gap-3 p-3 pt-28" data-game="flip">
-      <SeatRail seats={seats} />
+      <SeatRail seats={seats} reconnectingIds={reconnectingIds} />
 
       <TurnCountdown secondsRemaining={secondsRemaining} />
       <TimeoutAnnouncement message={timeoutMessage} />
