@@ -33,24 +33,27 @@ jobs:
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
 
     steps:
-      # #426 — resolve which commit this deploy is actually FOR before
-      # checking anything out. For a pull_request event, this is the PR's
-      # own head SHA/branch (github.head_ref / .head.sha) — NOT the ref
-      # actions/checkout@v4 defaults to for pull_request events
-      # (refs/pull/N/merge, GitHub's synthetic merge of the PR head into
-      # the base tip AT WORKFLOW-RUN TIME). That merge commit lives on no
-      # branch, silently re-bases whenever the base moves (two deploys of
-      # an untouched PR can differ), and means "it works on the preview"
-      # and "it works on the branch" are different claims. For a push
-      # event, github.ref_name/github.sha already name the real branch tip
-      # directly.
+      # #426 — DECISION: deploy the branch head, not GitHub's synthetic PR
+      # merge ref. actions/checkout@v4 defaults pull_request events to
+      # refs/pull/N/merge — the base tip merged with this PR's head AT
+      # WORKFLOW-RUN TIME. That merge ref is defensible (it's what will
+      # land), but it silently re-bases whenever the base moves: two
+      # deploys of an untouched PR can produce different previews, and
+      # nobody can go back and reproduce what a given preview was actually
+      # built from, because that commit lives on no branch and in no
+      # clone. Branch head is what "preview of this branch" means to
+      # everyone who reads it, and it's deterministic — the same PR head
+      # SHA always builds the same thing. "What will this look like once
+      # it's merged" is a real question, but CI already answers it, fresh,
+      # on every push against the base's current tip; a preview doesn't
+      # need to re-answer it non-deterministically on every redeploy. If
+      # you're reading this because you want to switch back to the
+      # checkout default: that is not equivalent to this decision, it's
+      # undoing it — don't do it silently.
       #
-      # DECISION (#426): deploy the branch head, not the merge ref. A
-      # preview should be a deterministic, reproducible artifact of the
-      # branch alone — "what will this look like once it's merged" is a
-      # real question, but a different one, and CI already answers it
-      # every PR run against the base's current tip; a preview doesn't
-      # need to re-answer it non-deterministically on every redeploy.
+      # This is a SEPARATE, independent decision from the --meta fix below
+      # — resolving this step's ref/branch first, purely so both steps can
+      # read the same values.
       - name: Resolve deploy ref
         id: ref
         run: |
@@ -62,16 +65,22 @@ jobs:
             echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
 
-      # Explicit ref, not the actions/checkout default — see the decision
-      # above. This also fixes Problem 2 (detached HEAD): checking out a
-      # named ref by SHA still leaves git in detached-HEAD state (same as
-      # the default), which is why the metadata below is passed to Vercel
-      # explicitly via --meta rather than left for `vercel deploy` to infer
-      # from the working copy, which is what produced every deployment
-      # showing commit ref `HEAD` — on push events too, not just PRs.
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.ref.outputs.sha }}
+
+      # #426 — the SINGLE root cause of every deployment (PR previews AND
+      # plain `develop`/`main` pushes alike) showing commit ref `HEAD` in
+      # the Vercel dashboard: `actions/checkout` leaves git in
+      # detached-HEAD state, and that is true regardless of which ref you
+      # check out — checking out this step's own resolved SHA above is
+      # STILL a detached checkout, exactly like the old default was.
+      # `vercel deploy --prebuilt` infers its git metadata from the
+      # working copy, and a detached HEAD gives it nothing to infer,
+      # hence `HEAD` on every single deploy. The ref decision above
+      # (branch head vs. merge ref) only controls WHAT gets built; it
+      # does nothing for the metadata labelling problem on its own — that
+      # is what the explicit --meta flags below actually fix.
 
       - name: Read commit metadata
         id: meta
