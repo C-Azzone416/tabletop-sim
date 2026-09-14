@@ -100,6 +100,20 @@ export async function switchToSeat(page: Page, name: string): Promise<void> {
   if (await openToggle.isVisible().catch(() => false)) {
     await openToggle.click();
   }
+
+  // #416 — already viewing this seat (e.g. the URL's default playerName
+  // happens to match the caller's target, which a random dealer makes a
+  // coin flip for a 2-player table). DevPanel.tsx disables the active
+  // seat's own button, so Playwright's actionability check on .click()
+  // below would retry until its 30s timeout waiting for it to become
+  // enabled, instead of failing fast or succeeding. Nothing to switch —
+  // the panel already confirms it, so return without clicking.
+  const alreadyViewing = await page
+    .getByText(`Viewing: ${name}`)
+    .isVisible()
+    .catch(() => false);
+  if (alreadyViewing) return;
+
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByText(`Viewing: ${name}`).waitFor();
   // The label above is client-side state, set synchronously on click — it
