@@ -71,41 +71,46 @@ test.describe("Flip — full game, dealer rotation", () => {
     // only while the seed built state directly; #400 changed that and made
     // this test a coin flip at two players (#416).
     //
-    // So read the dealer the seed reports, and derive the other seat from it.
-    const seed = await seedFlipGame(2);
-    const dealer = seed.players.find((p) => p.name === seed.dealerName)!;
-    const other = seed.players.find((p) => p.name !== seed.dealerName)!;
-    expect(dealer, "seed must report which seat is dealing").toBeTruthy();
+    // #436 raised Flip's floor to 3, so this is 3 seats now, not 2 — dealer
+    // rotation is `(dealerIndex + 1) % players.length` (game.ts), so "the
+    // other seat" no longer uniquely identifies the next dealer. Compute
+    // the actual turn order from the seed's own player array instead of
+    // assuming a binary dealer/other split.
+    const seed = await seedFlipGame(3);
+    const dealerIndex = seed.players.findIndex((p) => p.name === seed.dealerName);
+    expect(dealerIndex, "seed must report which seat is dealing").toBeGreaterThanOrEqual(0);
+    const dealer = seed.players[dealerIndex]!;
+    const nextDealer = seed.players[(dealerIndex + 1) % seed.players.length]!;
+    const thirdSeat = seed.players[(dealerIndex + 2) % seed.players.length]!;
 
     await page.goto(flipGameUrl(seed));
     await expect(page.getByTestId("play-surface")).toBeVisible();
     await expect(seatByName(page, dealer.name)).toContainText("Dealer");
 
-    // Freeze both seats in turn — deterministic (score 0 either way)
-    // regardless of what got dealt, so the round ends without depending on
-    // any card outcome.
-    await switchToSeat(page, other.name);
-    await expect(page.getByRole("button", { name: "Freeze" })).toBeVisible();
-    await page.getByRole("button", { name: "Freeze" }).click();
-    await waitForTurnToPass(page, other.name);
-
-    await switchToSeat(page, dealer.name);
-    await expect(page.getByRole("button", { name: "Freeze" })).toBeVisible();
-    await page.getByRole("button", { name: "Freeze" }).click();
+    // Freeze every seat in turn order (dealer's left first) — deterministic
+    // (score 0 either way) regardless of what got dealt, so the round ends
+    // without depending on any card outcome.
+    for (const seat of [nextDealer, thirdSeat, dealer]) {
+      await switchToSeat(page, seat.name);
+      await expect(page.getByRole("button", { name: "Freeze" })).toBeVisible();
+      await page.getByRole("button", { name: "Freeze" }).click();
+      if (seat !== dealer) await waitForTurnToPass(page, seat.name);
+    }
 
     // awaiting-round-start doesn't render SeatRail at all (FlipGameRoot
     // shows only the dealer prompt/Start Round button in this phase) — the
     // dealer-rotation check has to happen once FlipTable is back, after
     // round 2 starts.
     await expect(page.getByTestId("flip-awaiting-round-start")).toBeVisible();
-    await switchToSeat(page, other.name);
+    await switchToSeat(page, nextDealer.name);
     await expect(page.getByRole("button", { name: "Start Round" })).toBeVisible();
     await page.getByRole("button", { name: "Start Round" }).click();
     await expect(page.getByTestId("flip-awaiting-round-start")).toHaveCount(0);
     await expect(page.getByTestId("play-surface")).toBeVisible();
 
-    // Dealer rotated one seat left, to the player who was NOT dealer for round 1.
-    await expect(seatByName(page, other.name)).toContainText("Dealer");
+    // Dealer rotated one seat left, to the player immediately after the
+    // round-1 dealer in seat order.
+    await expect(seatByName(page, nextDealer.name)).toContainText("Dealer");
     await expect(seatByName(page, dealer.name)).not.toContainText("Dealer");
   });
 
@@ -224,7 +229,9 @@ test.describe("Flip — Second Chance (normal, not mid-Flip-3)", () => {
     // second-chance-save: hero (Alice) holds [9, second-chance]; the next
     // card is another 9. The save discards both the duplicate and the
     // Second Chance, leaving one card and an active (not busted) status.
-    const seed = await seedFlipGame(2, "second-chance-save");
+    // #436 raised Flip's floor to 3; this scenario only ever touches seat
+    // index 1 (see flip-scenario-states.ts), so the extra seat is inert.
+    const seed = await seedFlipGame(3, "second-chance-save");
     const alice = seed.players[1]!;
 
     await page.goto(flipGameUrl(seed));
@@ -244,7 +251,9 @@ test.describe("Flip — deck exhaustion", () => {
     // hits across the table are needed to drain 3 cards and force a 4th
     // draw with nothing left in the shoe — alternating Alice/Dev/Alice/Dev,
     // not 4 in a row from the same seat.
-    const seed = await seedFlipGame(2, "deck-exhaustion");
+    // #436 raised Flip's floor to 3; the scenario freezes the 3rd seat so
+    // the alternating Alice/Dev turn order below still holds exactly.
+    const seed = await seedFlipGame(3, "deck-exhaustion");
     const dev = seed.players[0]!;
     const alice = seed.players[1]!;
     const turnOrder = [alice, dev, alice, dev];
