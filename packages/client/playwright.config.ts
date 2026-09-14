@@ -14,6 +14,17 @@ const repoRoot = path.resolve(__dirname, "../..");
 const clientPort = new URL(baseURL).port || "3000";
 const serverPort = new URL(apiURL).port || "3001";
 
+// #486 — resolved ONCE here (rather than separately in the webServer env
+// below and in rate-limit.spec.ts's own process.env lookup) and written
+// back onto this config process's own env, so a spec file reading
+// `process.env.PROFILES_RATE_LIMIT_MAX` sees the SAME value the server was
+// actually launched with — Playwright spawns test workers as children of
+// this process, which inherit env at spawn time, but the server's own
+// child-only `env: {...}` override below never propagates back up to this
+// process on its own.
+const profilesRateLimitMax = process.env.PROFILES_RATE_LIMIT_MAX ?? "200";
+process.env.PROFILES_RATE_LIMIT_MAX = profilesRateLimitMax;
+
 export default defineConfig({
   testDir: "./test/e2e",
   fullyParallel: false,
@@ -61,7 +72,24 @@ export default defineConfig({
       url: `${apiURL}/health`,
       reuseExistingServer: false,
       timeout: 60_000,
-      env: { ...process.env, PORT: serverPort },
+      // #486 — #264's POST /profiles rate limiter defaults to 20 requests
+      // per 60s per IP, sized for real traffic. The FULL E2E directory runs
+      // single-worker against one server process, so every real sign-in
+      // across every spec file shares ONE bucket keyed on 127.0.0.1 — a
+      // suite that does 20+ real sign-ins trips the same limiter a real
+      // user would, non-deterministically, right at the boundary. Raised
+      // for the E2E/test stack ONLY, via the existing env var (never a new
+      // code path, see profilesRateLimitMax above) — staging and
+      // production are untouched, since they never set this override.
+      // Picked with headroom well past this file's current volume (this
+      // file alone already does 20+ real sign-ins after #435/#485), not
+      // just past today's exact count, so the next test this file grows
+      // doesn't reopen the same flake. rate-limit.spec.ts is the dedicated
+      // coverage that the limiter itself still actually fires — asserted
+      // against this exact configured value, never a hardcoded number, so
+      // raising it again later can't silently make that test assert
+      // nothing.
+      env: { ...process.env, PORT: serverPort, PROFILES_RATE_LIMIT_MAX: profilesRateLimitMax },
     },
     {
       command: "npm run start -w packages/client",
