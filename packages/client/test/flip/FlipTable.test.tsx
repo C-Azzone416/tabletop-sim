@@ -55,9 +55,21 @@ describe("FlipTable", () => {
     expect(onHit).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the shoe count", () => {
-    render(<FlipTable game={makeGame()} localPlayerId="p1" onHit={vi.fn()} onFreeze={vi.fn()} />);
+  // #494 — Caroline's ruling: the exact shoe count is a developer aid, not
+  // normal play. Gated on devToolsEnabled (threaded from GameClient's
+  // NEXT_PUBLIC_ENABLE_DEV_TOOLS), which defaults to false — the
+  // production-safe state. Both states asserted, since "renders under dev
+  // tools" alone wouldn't catch it silently reappearing without the gate.
+  it("shows the shoe count when devToolsEnabled is true (#494)", () => {
+    render(
+      <FlipTable game={makeGame()} localPlayerId="p1" onHit={vi.fn()} onFreeze={vi.fn()} devToolsEnabled />,
+    );
     expect(screen.getByTestId("cards-remaining")).toHaveTextContent("20 cards left");
+  });
+
+  it("hides the shoe count by default — not normal play (#494)", () => {
+    render(<FlipTable game={makeGame()} localPlayerId="p1" onHit={vi.fn()} onFreeze={vi.fn()} />);
+    expect(screen.queryByTestId("cards-remaining")).not.toBeInTheDocument();
   });
 
   it("shows the pending-action slot and hides turn controls when a target choice is pending", () => {
