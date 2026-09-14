@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Contract C2 play surface (DESIGN-APPENDIX.md §8): 7° tilt by default, 0°
+ * Contract C2 play surface (DESIGN-APPENDIX.md §8): 16° tilt by default, 0°
  * with the flatten toggle, eases to 0° when a tile is zoomed, never animates
  * mid-turn, and its max width is driven by seat count (§8 "Seat counts"
  * table). No existing component implements this — Wire's GameBoard.tsx is a
@@ -25,7 +25,7 @@ const MAX_WIDTH_BY_SEAT_COUNT: Record<2 | 3 | 4 | 5, number> = {
 export interface PlaySurfaceProps {
   /** Total seats in this game, 2-5 — drives the max-width table. */
   seatCount: 2 | 3 | 4 | 5;
-  /** User-controlled flatten toggle. 0° when true, 7° otherwise. */
+  /** User-controlled flatten toggle. 0° when true, 16° otherwise. */
   flattened: boolean;
   onToggleFlatten: () => void;
   /**
@@ -57,13 +57,13 @@ export function PlaySurface({
         className="w-full"
         style={{ maxWidth: MAX_WIDTH_BY_SEAT_COUNT[seatCount] }}
       >
-        <div style={{ perspective: "1400px" }}>
+        <div style={{ perspective: "900px" }}>
           <div
             data-testid="play-surface"
             data-tilted={tilted}
             className="rounded-cab border-2 border-outline bg-game-table p-4 shadow-print-md"
             style={{
-              transform: tilted ? "rotateX(7deg)" : "rotateX(0deg)",
+              transform: tilted ? "rotateX(16deg)" : "rotateX(0deg)",
               transformOrigin: "50% 100%",
               // §8: "Tilt never animates during a turn." Zero-duration
               // transition mid-turn, normal easing otherwise (flatten

@@ -84,7 +84,7 @@ A game spec opens by declaring which of these it triggers (see the capability ta
 | Contract | Triggered when | The platform requires |
 |---|---|---|
 | **C1 — Private state** | Any state visible to one player and not the others | It renders only on that player's client; the server never sends contents to anyone else, only a count or nothing. It lives on its own surface, visually distinct from shared state, using `--game-rack*`. That surface is pinned, never scrolls, never collapses, and holds every action available on the player's turn |
-| **C2 — Spatial play surface** | The game has a board, map, or grid | 7° tilt with a flatten toggle; tilt eases to 0° on zoom and never animates during a turn; pan and zoom act on the surface only, never on chrome; max width 640 / 600 / 560 / 520px at 2 / 3 / 4 / 5 players |
+| **C2 — Spatial play surface** | The game has a board, map, or grid | 16° tilt with a flatten toggle; tilt eases to 0° on zoom and never animates during a turn; pan and zoom act on the surface only, never on chrome; max width 640 / 600 / 560 / 520px at 2 / 3 / 4 / 5 players |
 | **C3 — Randomizer** | Dice, draws, shuffles, any visible random outcome | The result is shown resolving, not spinning: discrete steps, ≤260ms, no 3D. The outcome must be readable as text for screen readers before any animation completes |
 | **C4 — Turn default** | Always — every game has turns — but the *action* is game-defined | The platform guarantees a timeout exists, is announced with a visible countdown started ≥10s earlier, and never silently forfeits. **The game must supply the action taken on timeout.** The platform cannot know what "safest legal move" means and must not guess |
 
@@ -310,7 +310,7 @@ The rack is this game's implementation of C1. A game with no hidden per-player s
 
 **Contract C2 — only if the game has a spatial play surface:**
 
-- **Tilt is 7°** by default, 0° with the flatten toggle, and eases to 0° when a tile is zoomed. **Tilt never animates during a turn.**
+- **Tilt is 16°** by default, 0° with the flatten toggle, and eases to 0° when a tile is zoomed. **Tilt never animates during a turn.**
 - **The surface is what moves.** Pan and zoom act on it only.
 
 **Contract C1 — only if the game has private state:**
