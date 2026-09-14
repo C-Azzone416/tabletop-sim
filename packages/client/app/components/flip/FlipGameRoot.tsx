@@ -39,6 +39,17 @@ export interface FlipGameRootProps {
   onStartRound: () => void;
   /** #448 — passed straight through to FlipTable/SeatRail; see SeatRail's own doc comment. */
   reconnectingIds?: readonly string[];
+  /**
+   * #494 — Caroline's ruling: the exact shoe count is a developer aid, not
+   * normal play ("we should not show 91 cards left in the shoe... in /dev
+   * its fine but that shouldn't be a normal showed item"). Passed straight
+   * through to FlipTable/CardsRemaining; the decision belongs at the
+   * GameClient call site (NEXT_PUBLIC_ENABLE_DEV_TOOLS), not read from
+   * process.env here or in FlipTable/CardsRemaining themselves. Optional
+   * (default false, matching the production-safe state) so tests unrelated
+   * to this flag don't need to pass it explicitly.
+   */
+  devToolsEnabled?: boolean;
 }
 
 // FlipTable/PendingActionPicker never read shoe/discard *contents* — only
@@ -90,6 +101,7 @@ export function FlipGameRoot({
   onChooseFlip3Target,
   onStartRound,
   reconnectingIds,
+  devToolsEnabled = false,
 }: FlipGameRootProps) {
   // #422 — every bust gets an explicit, dismissed notice, not just the ones
   // that happen to fall inside a Freeze/Flip3 pending-action pause. Queued
@@ -181,6 +193,7 @@ export function FlipGameRoot({
         onChooseFreezeTarget={onChooseFreezeTarget}
         onChooseFlip3Target={onChooseFlip3Target}
         reconnectingIds={reconnectingIds}
+        devToolsEnabled={devToolsEnabled}
         pendingActionUi={
           <PendingActionPicker
             game={game}

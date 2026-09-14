@@ -404,6 +404,7 @@ export function GameClient({
             }
             onStartRound={() => sendFlipMessage({ type: "flip_start_round" })}
             reconnectingIds={visibleReconnectingIds}
+            devToolsEnabled={devToolsEnabled}
           />
         ) : (
           <p className="p-6 text-center text-sm text-ink-muted">Loading the table…</p>

@@ -56,6 +56,13 @@ export interface FlipTableProps {
   onChooseFlip3Target?: (playerId: string) => void;
   /** #448 — player ids to show a "Reconnecting…" badge for in the seat rail; see SeatRail's own doc comment for why this is a separate prop rather than baked into toSeats/FlipSeat. */
   reconnectingIds?: readonly string[];
+  /**
+   * #494 — gates CardsRemaining; see FlipGameRoot's own doc comment on this
+   * prop for the ruling. Threaded, not read from process.env here. Optional
+   * (default false, matching the production-safe state) so tests unrelated
+   * to this flag don't need to pass it explicitly.
+   */
+  devToolsEnabled?: boolean;
 }
 
 export function FlipTable({
@@ -68,6 +75,7 @@ export function FlipTable({
   onChooseFreezeTarget,
   onChooseFlip3Target,
   reconnectingIds,
+  devToolsEnabled = false,
 }: FlipTableProps) {
   const [flattened, setFlattened] = useState(false);
   const [timeoutMessage, setTimeoutMessage] = useState<string | null>(null);
@@ -150,7 +158,13 @@ export function FlipTable({
         <TableSeating players={seatedPlayers} localPlayerId={localPlayerId} />
       </PlaySurface>
 
-      <CardsRemaining count={game.shoe.length} />
+      {/* #494 — Caroline's ruling: an exact shoe count does the counting FOR
+          the player. Memory is a deliberate skill in this game (#362), and a
+          real table gives you a shoe to eyeball, not a number — showing 91
+          is strictly more information than the physical game offers, which
+          undercuts the same principle #362 invoked to ban discard browsing.
+          Dev-tools-only now, not normal play. */}
+      {devToolsEnabled && <CardsRemaining count={game.shoe.length} />}
 
       <PendingActionSlot pendingAction={game.pendingAction}>{pendingActionUi}</PendingActionSlot>
 
