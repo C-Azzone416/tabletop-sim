@@ -11,6 +11,9 @@ import { GameBoard } from "../../components/GameBoard";
 import { FlipGameRoot } from "../../components/flip/FlipGameRoot";
 import { GameOverOverlay } from "../../components/GameOverOverlay";
 import { RoomClosedNotice } from "../../components/RoomClosedNotice";
+import { MissionEndedNotice } from "../../components/MissionEndedNotice";
+import { LeaveGameWarning } from "../../components/LeaveGameWarning";
+import { BackAffordance } from "../../components/BackAffordance";
 import { DevPanel } from "../../components/DevPanel";
 import { ErrorToast } from "../../components/ErrorToast";
 import { JoinCodeBadge } from "../../components/JoinCodeBadge";
@@ -57,7 +60,7 @@ export function GameClient({
   initialFollowActingSeat,
 }: GameClientProps) {
   const router = useRouter();
-  const { state, handleMessage, clearError } = useGameState();
+  const { state, handleMessage, clearError, dismissMissionEnded } = useGameState();
   const [activeSeat, setActiveSeat] = useState<DevSeatOption>({ profileId, name: playerName });
   const { status, connect, disconnect, send } = useWebSocket(
     handleMessage,
@@ -71,6 +74,20 @@ export function GameClient({
   // hears back about its own departure (see useGameState's roomClosedReason
   // doc comment) — navigate immediately rather than waiting on a response.
   const handleLeave = () => {
+    send({ type: "leave_game" });
+    router.push("/play");
+  };
+
+  // #432 — the ONLY exit from an active Wire game (Lobby's own leave only
+  // covers the pre-game phase). Gated behind an explicit warning rather
+  // than firing on click, since this is destructive for everyone else at
+  // the table: the modal's copy branches on captaincy (LeaveGameWarning's
+  // own doc comment) but the actor's own navigation afterward is identical
+  // either way — same "leave_game then push /play" as the Lobby's leave,
+  // since the departing client never hears its own room_closed/player_left.
+  const [leaveWarningOpen, setLeaveWarningOpen] = useState(false);
+  const confirmLeaveActiveGame = () => {
+    setLeaveWarningOpen(false);
     send({ type: "leave_game" });
     router.push("/play");
   };
@@ -250,6 +267,15 @@ export function GameClient({
     return <RoomClosedNotice reason={state.roomClosedReason} />;
   }
 
+  // #432 — Wire Game's non-host mid-game leave: the mission ended but the
+  // room survives. By the time this fires `gameStatus` has already reset
+  // to 'waiting' server-side, so this has to be checked ahead of the
+  // Lobby branch below or the interstitial would never render — the
+  // Lobby underneath is revealed once dismissed, not routed to.
+  if (state.missionEndedReason) {
+    return <MissionEndedNotice reason={state.missionEndedReason} onDismiss={dismissMissionEnded} />;
+  }
+
   // Waiting / Lobby
   if (!state.game || gameStatus === "waiting") {
     return (
@@ -336,9 +362,26 @@ export function GameClient({
 
   // Active game
   if (gameStatus === "active") {
+    const isCaptain = state.localPlayer?.id === state.game.captainId;
     return (
       <div className="min-h-screen bg-surface">
         <JoinCodeBadge joinCode={joinCode} />
+        {/*
+          #432 — nothing rendered a way out of an active Wire game before
+          this. Fixed top-right (opposite JoinCodeBadge), below DevPanel's
+          top-40 so #171's "dev tools stay usable in every game state"
+          still holds — this never overlaps it.
+        */}
+        <div className="fixed top-4 right-4 z-40 rounded-cab border-2 border-outline bg-surface-raised/90 px-3 py-1.5 text-xs shadow-print-sm backdrop-blur-sm">
+          <BackAffordance label="Leave" onClick={() => setLeaveWarningOpen(true)} />
+        </div>
+        {leaveWarningOpen && (
+          <LeaveGameWarning
+            isCaptain={isCaptain}
+            onConfirm={confirmLeaveActiveGame}
+            onCancel={() => setLeaveWarningOpen(false)}
+          />
+        )}
         <GameBoard
           game={state.game}
           players={state.players}
