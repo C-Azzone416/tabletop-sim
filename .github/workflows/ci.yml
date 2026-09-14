@@ -157,5 +157,48 @@ jobs:
       # still runs and reports before this can trip; the gate still blocks
       # the merge either way; only its position moved. Not a job split —
       # that's #307, filed and explicitly out of scope here.
+      #
+      # #302 round 2 (Caroline's ruling) — position alone wasn't enough: a
+      # bare `npm audit` failure at the end of a long job still reads as
+      # ordinary breakage to someone scanning a red check. The actual harm in
+      # #284 was never the redness, it was the ambiguity — "nothing ran" and
+      # "something is broken" looked identical, and that ambiguity is what
+      # cost the day (four PRs stacked behind an unverifiable one, sign-offs
+      # issued against tests that never ran). So a failure here must say, in
+      # the job's own output, that every step above (build, type checks,
+      # lint, tests, coverage, E2E, migrations, the #417 wiring checks) has
+      # already run and reported, and that this specific failure implicates
+      # no code in this PR — only an upstream advisory against an already-
+      # installed dependency version, which can fire with zero changes in
+      # this repo. The gate still fails the job either way; only the
+      # ambiguity is removed, not the block.
       - name: Security audit (npm)
-        run: npm audit --audit-level=high
+        run: |
+          set +e
+          npm audit --audit-level=high
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "## :warning: Dependency advisory gate failed — this is NOT a code defect in this PR"
+              echo
+              echo "Every other step in this job (migrations, both builds, both type"
+              echo "checks, lint, test, both coverage runs, the server+client build,"
+              echo "Playwright E2E, check:migrations, and the #417 build-order/env-parity/"
+              echo "clean-build checks) already ran and reported above this one — their"
+              echo "results stand regardless of this failure."
+              echo
+              echo "**No code in this PR is implicated.** This step only fails when"
+              echo "\`npm audit --audit-level=high\` finds a high/critical advisory against"
+              echo "an already-installed dependency version — which can happen with zero"
+              echo "changes in this repo (see #284, where three CVEs were published"
+              echo "upstream against a green, unchanged \`develop\`)."
+              echo
+              echo "This is a real gate, not a false alarm to dismiss: nothing merges"
+              echo "past an unresolved high/critical advisory. If it's already triaged or"
+              echo "a false positive, that conversation belongs on #302, not on debugging"
+              echo "this PR's own code."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Dependency advisory gate failed (npm audit --audit-level=high) — every earlier step in this job ran and reported; no code in this PR is implicated. See the job summary and #302."
+          fi
+          exit "$status"
