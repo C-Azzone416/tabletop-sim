@@ -56,13 +56,27 @@ jobs:
       # read the same values.
       - name: Resolve deploy ref
         id: ref
+        env:
+          # #469 — git ref names don't block $, backticks, ", ; or | the
+          # way SHAs (fixed-format hex) do, so a branch/ref name is
+          # attacker-influenceable text in a job that holds VERCEL_TOKEN.
+          # Passed through env: and referenced as $VARS below, matching
+          # #465's --meta flags further down this file: env: expands a
+          # value, it never re-parses it as shell syntax, whereas a
+          # ${{ }} substituted directly into run: becomes script text
+          # before the shell runs at all. Same data, different exposure.
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.head_ref }}
+          PUSH_SHA: ${{ github.sha }}
+          PUSH_REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
-            echo "branch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+            echo "branch=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
           else
-            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "sha=$PUSH_SHA" >> "$GITHUB_OUTPUT"
+            echo "branch=$PUSH_REF_NAME" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/checkout@v4
@@ -105,6 +119,16 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
+      # #469 — these two ${{ }} uses ARE safe inline, despite the pattern
+      # this issue otherwise moves away from: the substituted text is
+      # always one of two FIXED literals ('production'/'preview',
+      # '--prod'/'') chosen by the `== 'main'` comparison, never
+      # `github.ref_name` itself. GitHub Actions evaluates the whole
+      # ternary before substitution, so no attacker-influenceable text
+      # ever reaches the script. Don't "fix" these into env: vars thinking
+      # they're the same hazard as #469's actual finding — the difference
+      # is whether the SUBSTITUTED VALUE can vary with attacker input, not
+      # whether a GitHub context appears inside ${{ }} at all.
       - name: Pull Vercel environment
         run: vercel pull --yes --environment=${{ github.ref_name == 'main' && 'production' || 'preview' }}
 
@@ -126,7 +150,16 @@ jobs:
           GH_REPO: ${{ github.event.repository.name }}
           PROD_FLAG: ${{ github.ref_name == 'main' && '--prod' || '' }}
         run: |
-          url=$(vercel deploy --prebuilt $PROD_FLAG \
+          # --archive=tgz — unrelated to #469's fix above (this whole
+          # Deploy step already used the safe env:/$VAR pattern). Added
+          # separately: uploads ONE tarball instead of one API call per
+          # file in the build output, which is what exhausted Vercel's
+          # free-tier 5000-upload/24h quota tonight ("Too many requests
+          # ... code: api-upload-free" — the quota is on file uploads, not
+          # deploys). This is the actual fix for that, not a 24h
+          # workaround; the failing deploy check on this very PR is the
+          # live test of whether it works.
+          url=$(vercel deploy --prebuilt --archive=tgz $PROD_FLAG \
             --meta githubCommitRef="$DEPLOY_BRANCH" \
             --meta githubCommitSha="$DEPLOY_SHA" \
             --meta githubCommitMessage="$DEPLOY_MESSAGE" \

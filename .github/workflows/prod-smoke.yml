@@ -44,6 +44,11 @@ jobs:
         # #98 dev-tooling-gate state it exists to verify. If unset, the
         # script still runs and reports a distinct "couldn't verify" failure
         # rather than misreporting exposure — see prod-smoke-check.ts.
+        # #469 swept this file: safe. Every ${{ }} here is vars.*/secrets.*
+        # (repo-admin-configured, never attacker-influenceable text like a
+        # branch name, PR title, or commit message), and this workflow has
+        # no pull_request trigger at all — nothing here is reachable from
+        # anything a PR author controls.
         run: >-
           npx tsx scripts/prod-smoke-check.ts
           "${{ vars.PROD_SERVER_URL || 'https://tabletop-sim.onrender.com' }}"
