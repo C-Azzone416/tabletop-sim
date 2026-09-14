@@ -33,7 +33,70 @@ jobs:
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
 
     steps:
+      # #426 — DECISION: deploy the branch head, not GitHub's synthetic PR
+      # merge ref. actions/checkout@v4 defaults pull_request events to
+      # refs/pull/N/merge — the base tip merged with this PR's head AT
+      # WORKFLOW-RUN TIME. That merge ref is defensible (it's what will
+      # land), but it silently re-bases whenever the base moves: two
+      # deploys of an untouched PR can produce different previews, and
+      # nobody can go back and reproduce what a given preview was actually
+      # built from, because that commit lives on no branch and in no
+      # clone. Branch head is what "preview of this branch" means to
+      # everyone who reads it, and it's deterministic — the same PR head
+      # SHA always builds the same thing. "What will this look like once
+      # it's merged" is a real question, but CI already answers it, fresh,
+      # on every push against the base's current tip; a preview doesn't
+      # need to re-answer it non-deterministically on every redeploy. If
+      # you're reading this because you want to switch back to the
+      # checkout default: that is not equivalent to this decision, it's
+      # undoing it — don't do it silently.
+      #
+      # This is a SEPARATE, independent decision from the --meta fix below
+      # — resolving this step's ref/branch first, purely so both steps can
+      # read the same values.
+      - name: Resolve deploy ref
+        id: ref
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+            echo "branch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.sha }}
+
+      # #426 — the HEAD labelling was a PR-PREVIEW-ONLY problem, confirmed
+      # against the actual Vercel dashboard, not assumed: `develop`/`main`
+      # push deploys already showed their real branch before this change
+      # (`GITHUB_REF` is `refs/heads/<branch>` for a push, which the
+      # Vercel CLI parses into a real branch name on its own). Only PR
+      # previews showed `HEAD` — `GITHUB_REF` for a `pull_request` event is
+      # `refs/pull/N/merge`, the synthetic ref from the checkout default,
+      # which isn't parseable as a branch, so the CLI's own inference had
+      # nothing to fall back to.
+      #
+      # The explicit --meta flags below are still the right fix even
+      # though push events were never broken: they make every deploy's
+      # metadata EXPLICIT rather than inferred, so labelling no longer
+      # depends on which event type happens to produce a parseable
+      # GITHUB_REF — a property that shouldn't have to be true for this to
+      # work, and that the PR-preview case already proved isn't reliable.
+      # The ref decision above (branch head vs. merge ref) only controls
+      # WHAT gets built; it doesn't affect metadata labelling on its own.
+
+      - name: Read commit metadata
+        id: meta
+        run: |
+          {
+            echo "message<<COMMIT_MESSAGE_EOF"
+            git log -1 --format=%s
+            echo "COMMIT_MESSAGE_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "author=$(git log -1 --format=%an)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:
@@ -50,21 +113,52 @@ jobs:
 
       - name: Deploy
         id: deploy
+        env:
+          # Passed as env vars rather than interpolated directly into the
+          # script below: a commit message/author can contain characters
+          # (quotes, backticks, $) that would otherwise break out of the
+          # run: block's shell quoting when substituted via ${{ }}.
+          DEPLOY_SHA: ${{ steps.ref.outputs.sha }}
+          DEPLOY_BRANCH: ${{ steps.ref.outputs.branch }}
+          DEPLOY_MESSAGE: ${{ steps.meta.outputs.message }}
+          DEPLOY_AUTHOR: ${{ steps.meta.outputs.author }}
+          GH_ORG: ${{ github.repository_owner }}
+          GH_REPO: ${{ github.event.repository.name }}
+          PROD_FLAG: ${{ github.ref_name == 'main' && '--prod' || '' }}
         run: |
-          url=$(vercel deploy --prebuilt ${{ github.ref_name == 'main' && '--prod' || '' }})
+          url=$(vercel deploy --prebuilt $PROD_FLAG \
+            --meta githubCommitRef="$DEPLOY_BRANCH" \
+            --meta githubCommitSha="$DEPLOY_SHA" \
+            --meta githubCommitMessage="$DEPLOY_MESSAGE" \
+            --meta githubCommitAuthorName="$DEPLOY_AUTHOR" \
+            --meta githubOrg="$GH_ORG" \
+            --meta githubRepo="$GH_REPO" \
+            --meta githubDeployment=1)
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Deployed: $url" >> "$GITHUB_STEP_SUMMARY"
+          echo "Branch: $DEPLOY_BRANCH @ $DEPLOY_SHA" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment preview URL on PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+          DEPLOY_BRANCH: ${{ steps.ref.outputs.branch }}
+          DEPLOY_SHA: ${{ steps.ref.outputs.sha }}
         with:
           script: |
             const url = process.env.DEPLOY_URL;
+            const branch = process.env.DEPLOY_BRANCH;
+            const sha = process.env.DEPLOY_SHA;
             const marker = '<!-- vercel-preview-comment -->';
-            const body = `${marker}\n**Preview deployment:** ${url}`;
+            // #426 — names the exact branch head this was built from (this
+            // workflow deploys the branch head, not GitHub's synthetic PR
+            // merge ref — see the "DECISION (#426)" comment above), so a
+            // reviewer can tell a stale preview from a current one without
+            // cross-referencing the Actions run, and can tell at a glance
+            // that this build does NOT incorporate anything merged into
+            // the base since this SHA.
+            const body = `${marker}\n**Preview deployment:** ${url}\n**Branch:** \`${branch}\` @ \`${sha.slice(0, 7)}\``;
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
