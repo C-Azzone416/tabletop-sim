@@ -1,5 +1,6 @@
 import type { WebSocket } from 'ws';
 import type { AuthenticatedUser } from './auth.js';
+import type { LobbyConfigValue } from '@tabletop/shared';
 
 interface ConnectionInfo {
   playerId: string;
@@ -44,6 +45,27 @@ export function cancelPendingLeave(playerId: string): boolean {
 
 export function hasPendingLeave(playerId: string): boolean {
   return pendingLeaveTimers.has(playerId);
+}
+
+// #329 — the lobby's in-progress config value, keyed by gameId. Ephemeral
+// and in-memory on purpose: it's a live preview of the captain's pick, not
+// authoritative game data (that stays `start_game`'s own `mission` field),
+// so it does not belong in the games table and does not need to survive a
+// server restart. Callers clear it once it stops being relevant — the
+// lobby closes (room_closed) or the game actually starts — so this never
+// accumulates entries beyond the currently-open lobbies.
+const lobbyConfigs = new Map<string, LobbyConfigValue>();
+
+export function setLobbyConfig(gameId: string, config: LobbyConfigValue): void {
+  lobbyConfigs.set(gameId, config);
+}
+
+export function getLobbyConfig(gameId: string): LobbyConfigValue | null {
+  return lobbyConfigs.get(gameId) ?? null;
+}
+
+export function clearLobbyConfig(gameId: string): void {
+  lobbyConfigs.delete(gameId);
 }
 
 export function setAuthenticatedUser(socket: WebSocket, user: AuthenticatedUser): void {

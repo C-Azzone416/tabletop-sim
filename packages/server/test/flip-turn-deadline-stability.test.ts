@@ -32,6 +32,7 @@ vi.mock("../src/db/flip-games.js", () => ({
 }));
 vi.mock("../src/ws/connection-manager.js", () => ({
   getGameSockets: vi.fn(() => new Map()),
+  getLobbyConfig: vi.fn(() => null),
   sendToPlayer: vi.fn(),
 }));
 vi.mock("../src/db/players.js", () => ({ getPlayersByGameId: vi.fn() }));

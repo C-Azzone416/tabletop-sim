@@ -1,5 +1,5 @@
 import type { WebSocket } from 'ws';
-import type { ClientMessage, GameId, ServerMessage } from '@tabletop/shared';
+import type { ClientMessage, GameId, LobbyConfigValue, ServerMessage } from '@tabletop/shared';
 import { DEV_SEAT_SWITCH_CLOSE_CODE, isAvailableGameId } from '@tabletop/shared';
 import * as engine from '../engine/game-engine.js';
 import * as gamesDb from '../db/games.js';
@@ -103,6 +103,20 @@ function validateMessage(parsed: unknown): ClientMessage | null {
       // for create_game's own maxPlayers.
       if (typeof msg.maxPlayers !== 'number' || !Number.isInteger(msg.maxPlayers) || msg.maxPlayers < 1) return null;
       return { type: 'update_player_count', maxPlayers: msg.maxPlayers };
+    case 'update_lobby_config':
+      // Shape check only, and a loose one — the platform never interprets
+      // this value (see LobbyConfigValue's own doc comment), so this just
+      // rules out something that plainly could not be one: a string, an
+      // array, null. Everything else (who may send it, when) is
+      // handleUpdateLobbyConfig/the engine's job, the same split
+      // update_player_count uses.
+      if (
+        typeof msg.config !== 'number' &&
+        (typeof msg.config !== 'object' || msg.config === null || Array.isArray(msg.config))
+      ) {
+        return null;
+      }
+      return { type: 'update_lobby_config', config: msg.config as LobbyConfigValue };
     default:
       return null;
   }
@@ -196,6 +210,9 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       case 'update_player_count':
         await handleUpdatePlayerCount(socket, msg.maxPlayers);
         break;
+      case 'update_lobby_config':
+        await handleUpdateLobbyConfig(socket, msg.config);
+        break;
       default:
         sendError(socket, 'Unknown message type');
     }
@@ -215,6 +232,8 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Game is not in setup phase', 'Can only place info token on your own wire', 'Info token already placed',
       'Opening info token must be placed on a blue wire',
       'Game is not in waiting phase', 'Mission is locked', 'Unknown game type', 'Invalid player count',
+      // #329 — lobby config replication.
+      'Only the captain can change the game config', 'Game config can only change in the lobby',
       // #387 — Flip. Every one of these is a rejection the player caused and
       // can act on, so it is safe (and useful) to name; anything else from the
       // Flip path still falls through to the generic 'Internal error' below,
@@ -275,7 +294,11 @@ async function handleCreateGame(socket: WebSocket, _playerName: string, gameType
   const { game, player } = await withTimeout(engine.createGame(user.name, gameType, maxPlayers, user.profileId), 'createGame');
   connManager.registerConnection(socket, player.id, game.id);
 
-  const response: ServerMessage = { type: 'game_created', game, player };
+  // #329 — no config has been set yet; the captain's own client sends the
+  // first update_lobby_config shortly after this, once its panel resolves
+  // a default. Never anything other than null here — nothing has run yet
+  // that could have set one for a room that didn't exist a moment ago.
+  const response: ServerMessage = { type: 'game_created', game, player, lobbyConfig: null };
   socket.send(JSON.stringify(response));
 }
 
@@ -311,7 +334,16 @@ async function handleJoinGame(socket: WebSocket, joinCode: string, _playerName: 
   const { game, player, players } = await withTimeout(engine.joinGame(joinCode, user.name, user.profileId), 'joinGame');
   connManager.registerConnection(socket, player.id, game.id);
 
-  const response: ServerMessage = { type: 'joined_game', game, player, players };
+  // #329 — carries whatever the captain has already picked, so a late
+  // joiner sees the live selection immediately rather than waiting for
+  // the captain's next change to broadcast one.
+  const response: ServerMessage = {
+    type: 'joined_game',
+    game,
+    player,
+    players,
+    lobbyConfig: connManager.getLobbyConfig(game.id),
+  };
   socket.send(JSON.stringify(response));
 
   // Notify others
@@ -338,6 +370,10 @@ async function handleStartGame(socket: WebSocket, mission: number): Promise<void
       engine.startFlipRoom(info.gameId, info.playerId),
       'startFlipRoom',
     );
+    // #329 — the lobby config preview stops being relevant the moment the
+    // room leaves 'waiting'; the mission/config that actually mattered was
+    // already committed into the start itself.
+    connManager.clearLobbyConfig(info.gameId);
     // Flip has no per-player view, so the ordinary broadcast is the whole
     // story — no `game_started` snowflake needed. The table arrives at
     // awaiting-round-start with the dealer's Start Round button live.
@@ -346,6 +382,7 @@ async function handleStartGame(socket: WebSocket, mission: number): Promise<void
   }
 
   const { game, players, wires, candidates } = await withTimeout(engine.startGame(info.gameId, info.playerId, mission), 'startGame');
+  connManager.clearLobbyConfig(info.gameId);
 
   // Send game_started with per-player wire views
   const gameSockets = connManager.getGameSockets(info.gameId);
@@ -425,7 +462,11 @@ async function handleRespondDualCut(socket: WebSocket, accepted: boolean): Promi
     const gameSockets = connManager.getGameSockets(info.gameId);
     for (const [playerId, playerSocket] of gameSockets) {
       const playerWireView = buildPlayerView(updatedWires, playerId);
-      const stateMsg: ServerMessage = { type: 'game_state', game, players, wires: playerWireView, infoTokens: [], validationTokens: [], localPlayerId: playerId, candidates: [] };
+      // #329 — always null in practice here (the game is already active,
+      // so connection-manager's lobbyConfigs entry was cleared on start),
+      // but read via the same accessor as every other game_state
+      // construction rather than hardcoding null.
+      const stateMsg: ServerMessage = { type: 'game_state', game, players, wires: playerWireView, infoTokens: [], validationTokens: [], localPlayerId: playerId, candidates: [], lobbyConfig: connManager.getLobbyConfig(info.gameId) };
       playerSocket.send(JSON.stringify(stateMsg));
     }
     await broadcastGameState(info.gameId, game);
@@ -573,6 +614,24 @@ async function handleUpdatePlayerCount(socket: WebSocket, maxPlayers: number): P
   await broadcastGameState(info.gameId, game);
 }
 
+// #329 — the platform validates who may send this and when (captain,
+// lobby-only), never what's inside `config` — that shape belongs to
+// whichever slot owns the room's game type, and the platform must not
+// need to know it to forward it. The basic-shape check (a string/array/
+// null could not be a LobbyConfigValue at all) already happened in
+// validateMessage above — same split update_player_count uses between
+// shape (there) and business rules (here/the engine).
+async function handleUpdateLobbyConfig(socket: WebSocket, config: LobbyConfigValue): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  await withTimeout(engine.assertCanUpdateLobbyConfig(info.gameId, info.playerId), 'assertCanUpdateLobbyConfig');
+
+  connManager.setLobbyConfig(info.gameId, config);
+  const update: ServerMessage = { type: 'lobby_config_updated', config };
+  connManager.broadcastToGame(info.gameId, update);
+}
+
 // #431 — shared by handleLeaveGame and handleDisconnect below. Deregistering
 // the departing socket happens in both callers BEFORE this runs, so the
 // broadcasts here never reach the player who just left.
@@ -591,6 +650,8 @@ async function performLeave(gameId: string, playerId: string): Promise<void> {
       reason: result.reason,
     };
     connManager.broadcastToGame(gameId, notice);
+    // #329 — the room no longer exists; nothing left to preview a config for.
+    connManager.clearLobbyConfig(gameId);
 
     // deleteGame cascades every player row in the DB, but the in-memory
     // socket bindings survive it — deregister every remaining connection so
