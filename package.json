@@ -7,6 +7,7 @@
     "packages/games/*"
   ],
   "scripts": {
+    "prepare": "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
     "dev:client": "npm run dev -w packages/client",
     "dev:server": "npm run dev -w packages/server",
     "dev": "npm run dev:client & npm run dev:server",

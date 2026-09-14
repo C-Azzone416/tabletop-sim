@@ -1,0 +1,75 @@
+#!/bin/sh
+# #427 — guardrail (not a policy gate) against two multi-agent worktree
+# hazards:
+#
+#   1. Committing on a detached HEAD. Those commits are reachable from no
+#      ref; they survive only in the reflog until the next gc, then vanish
+#      with no conflict and no error. We've already had agents land in the
+#      wrong checkout and misidentify themselves, so this is not
+#      hypothetical.
+#   2. Committing directly on develop/main. Branch protection here is
+#      plan-gated (Pro declined), so "PR + both sign-offs only" is
+#      enforced by convention alone today.
+#
+# Rebase, bisect, cherry-pick, merge and revert are all legitimately
+# detached (or otherwise mid-operation) states. Getting these exemptions
+# wrong is exactly what gets a hook like this disabled within a day, so
+# each one is checked explicitly via its own on-disk marker rather than
+# inferred some other way.
+#
+# Every refusal names --no-verify: this is a guardrail against slips, not
+# a lock. Someone who genuinely means it should not be stuck.
+#
+# Wired via `core.hooksPath = .githooks`, set by this repo's npm `prepare`
+# script on every `npm install`. That unconditionally OVERWRITES any
+# existing core.hooksPath — if you had your own (husky, lefthook, a
+# personal dotfiles hook), it stopped firing the moment you last ran
+# `npm install` here, silently. It's local-only and one `git config
+# core.hooksPath <your path>` away from getting your own hooks back;
+# this repo's hook just wins the slot by going last.
+
+# Resolves worktree-specific paths correctly (rebase-merge/rebase-apply
+# and the *_HEAD markers below all live per-worktree, not in the shared
+# repo .git dir) — see `git rev-parse --git-path` in git-rev-parse(1).
+git_path() {
+  git rev-parse --git-path "$1" 2>/dev/null
+}
+
+in_progress_operation() {
+  for marker in rebase-merge rebase-apply BISECT_LOG CHERRY_PICK_HEAD MERGE_HEAD REVERT_HEAD; do
+    path=$(git_path "$marker")
+    if [ -n "$path" ] && [ -e "$path" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+branch=$(git symbolic-ref -q --short HEAD)
+
+if [ -z "$branch" ]; then
+  if in_progress_operation; then
+    exit 0
+  fi
+  echo "pre-commit: refusing to commit on a detached HEAD." >&2
+  echo "" >&2
+  echo "Commits made here are reachable from no ref and are lost for good" >&2
+  echo "once the reflog expires. Check out a branch first." >&2
+  echo "" >&2
+  echo "If you genuinely mean this: git commit --no-verify" >&2
+  exit 1
+fi
+
+case "$branch" in
+  develop|main)
+    echo "pre-commit: refusing to commit directly on '$branch'." >&2
+    echo "" >&2
+    echo "Use a feature branch and open a PR — dev + both sign-offs, not a" >&2
+    echo "direct commit." >&2
+    echo "" >&2
+    echo "If you genuinely mean this: git commit --no-verify" >&2
+    exit 1
+    ;;
+esac
+
+exit 0
