@@ -106,6 +106,45 @@ jobs:
       - name: Check migrations
         run: npm run check:migrations
 
+      # #417 Check A — static, ~1s: every @tabletop/* workspace dependency
+      # of packages/server and packages/client must be built, in order,
+      # before its dependent, in every real build chain (root package.json's
+      # build/build:server scripts, this file, render.yaml, vercel.json).
+      # This is the fast first signal, not the proof — see Check B below,
+      # which is authoritative if the two ever disagree.
+      - name: Check build order
+        run: npm run check:build-order
+
+      # #417 Check D — every process.env reference in packages/server/src
+      # and packages/client/app must be documented in that package's
+      # .env.example (commented-out counts), so a var that works locally
+      # and is unset on Vercel/Render is visible in review instead of
+      # silent.
+      - name: Check env var parity
+        run: npm run check:env-parity
+
+      # #417 Check B (highest value) — proves the build ORDER actually
+      # works by running render.yaml's own buildCommand verbatim, from a
+      # genuinely clean tree. This is stronger than Check A above because
+      # it does not compare strings: it executes the exact command Render
+      # runs, so CI cannot drift from what the deploy actually does. If
+      # Check A and this ever disagree, THIS is authoritative.
+      #
+      # The clean step is not optional — a warm dist/ hides exactly this
+      # failure, which is what made PR #368's first CI run red (a stale
+      # local dist masked a missing build-chain entry that a fresh install
+      # would have caught immediately).
+      - name: Verify render.yaml build command builds cleanly
+        run: |
+          rm -rf packages/*/dist packages/games/*/dist
+          CMD=$(grep -m1 '^[[:space:]]*buildCommand:' render.yaml | sed 's/^[[:space:]]*buildCommand:[[:space:]]*//')
+          if [ -z "$CMD" ]; then
+            echo "ERROR: could not find a buildCommand: line in render.yaml" >&2
+            exit 1
+          fi
+          echo "Running render.yaml's buildCommand verbatim: $CMD"
+          bash -c "$CMD"
+
       # #185 — hard gate against advisory drift (#175's post-triage state was
       # 0 advisories, so this starts green). audit-level=high fails on
       # high/critical; low/moderate stay visible in the job log without
