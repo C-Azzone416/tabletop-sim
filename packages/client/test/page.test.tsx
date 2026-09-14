@@ -18,10 +18,6 @@ vi.mock("next-auth/react", () => ({
   signOut: (...args: unknown[]) => mockSignOut(...args),
 }));
 
-vi.mock("../app/hooks/useMissionOutcomes", () => ({
-  useMissionOutcomes: () => ({}),
-}));
-
 function setSession(user: { id: string; name: string } | null, status: string) {
   mockUseSession.mockReturnValue({
     data: user ? { user } : null,
@@ -47,9 +43,10 @@ describe("Home (app/page.tsx)", () => {
       setSession(null, "unauthenticated");
     });
 
-    it("shows the landing page with a Join button, not the sign-in form", () => {
+    it("shows the illustrated home page with a Join button, not the sign-in form", () => {
       render(<Home />);
       expect(screen.getByText("Tabletop Simulator")).toBeInTheDocument();
+      expect(screen.getByTestId("game-room-scene")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Join" })).toBeInTheDocument();
       expect(screen.queryByPlaceholderText("Choose your name")).not.toBeInTheDocument();
     });
@@ -125,10 +122,22 @@ describe("Home (app/page.tsx)", () => {
       expect(screen.getByText("Alice")).toBeInTheDocument();
     });
 
-    it("renders the mission progress indicators (#170)", () => {
+    // #425 — the illustrated shell used to be signed-out-only, so a live
+    // session cookie (i.e. anyone who'd used the app before) never saw it.
+    it("shows the same illustrated home page as the signed-out state", () => {
       render(<Home />);
-      expect(screen.getByLabelText("Mission progress")).toBeInTheDocument();
-      expect(screen.getByTestId("mission-progress-1")).toBeInTheDocument();
+      expect(screen.getByTestId("game-room-scene")).toBeInTheDocument();
+    });
+
+    // #425 — the unlabelled 1-8 mission strip read as a broken
+    // player-count picker on a screen with no other context. Dropped from
+    // the home screen entirely rather than labelled in place; #170's
+    // mission-progress data and its own component/tests are untouched,
+    // this just stops rendering it here.
+    it("does not render the mission progress strip", () => {
+      render(<Home />);
+      expect(screen.queryByLabelText("Mission progress")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("mission-progress-1")).not.toBeInTheDocument();
     });
 
     it("signs out when Change name is clicked", () => {
