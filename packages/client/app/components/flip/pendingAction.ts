@@ -98,7 +98,14 @@ export function describeLastEvent(
 
   switch (last.effect) {
     case 'number-busted':
-      return `${name} busted — 0 for the round, and the rest of that Flip 3 is skipped.`;
+      // #497 — BustNotice (FlipGameRoot) now narrates every bust on its own,
+      // including one that lands mid-Flip-3-pause, with the actual causing
+      // card shown — strictly more than this one-line text ever did. This
+      // used to duplicate that here whenever a bust happened to be the most
+      // recent event during a Freeze/Flip 3 pause; returning null lets
+      // PendingActionPicker's narration slot render nothing for this case,
+      // rather than saying the same thing twice.
+      return null;
     case 'freeze-drawn':
       return 'A Freeze was drawn mid-Flip 3 — it resolves first, and the rest of that flip is skipped.';
     case 'number-flip7':

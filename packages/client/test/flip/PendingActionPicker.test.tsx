@@ -136,7 +136,10 @@ describe("PendingActionPicker", () => {
     expect(onChooseFreezeTarget).not.toHaveBeenCalled();
   });
 
-  it("narrates the most recent resolutionLog event — a bust stop condition", () => {
+  // #497 — a bust is now narrated exclusively by BustNotice (FlipGameRoot),
+  // not repeated here. PendingActionPicker's own narration slot renders
+  // nothing for this event, so the same bust isn't said twice on screen.
+  it("does not narrate a bust stop condition — BustNotice owns that (#497)", () => {
     render(
       <PendingActionPicker
         game={baseGame({
@@ -150,7 +153,7 @@ describe("PendingActionPicker", () => {
       />,
     );
 
-    expect(screen.getByTestId("flip-pending-action-narration")).toHaveTextContent(/busted/i);
+    expect(screen.queryByTestId("flip-pending-action-narration")).not.toBeInTheDocument();
   });
 
   it("narrates a Second Chance save as continuing, not stopping", () => {

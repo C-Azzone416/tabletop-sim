@@ -131,6 +131,34 @@ describe("FlipGameRoot — bust notice (#422)", () => {
     expect(screen.getByTestId("card-c10")).toBeInTheDocument();
   });
 
+  // #497 AC — a bust during a Flip 3/Freeze pause still renders BustNotice,
+  // without double-narrating alongside PendingActionPicker. Before this fix,
+  // PendingActionPicker's own narration slot (describeLastEvent) ALSO said
+  // "<name> busted — 0 for the round..." for the exact same event, so both
+  // the modal notice and the pause's inline text showed the bust at once.
+  it("shows the bust notice during a Flip3 pause without PendingActionPicker also narrating it", () => {
+    const flip = makeFlip({
+      pendingAction: { kind: "flip3", flipperId: "p1", eligibleTargetIds: ["p1", "p2"] },
+      resolutionLog: [
+        { targetId: "p2", card: { id: "c9", kind: "number", value: 6 }, effect: "number-busted", context: "flip3" },
+      ],
+    });
+    render(
+      <FlipGameRoot
+        flip={flip}
+        localPlayerId="p1"
+        onHit={noop}
+        onFreeze={noop}
+        onChooseFreezeTarget={noop}
+        onChooseFlip3Target={noop}
+        onStartRound={noop}
+      />,
+    );
+    expect(screen.getByTestId("bust-notice")).toHaveTextContent("Bea busted!");
+    expect(screen.getByTestId("flip-pending-action-picker")).toBeInTheDocument();
+    expect(screen.queryByTestId("flip-pending-action-narration")).not.toBeInTheDocument();
+  });
+
   it("shows nothing when resolutionLog has no bust events", () => {
     const flip = makeFlip({
       resolutionLog: [
