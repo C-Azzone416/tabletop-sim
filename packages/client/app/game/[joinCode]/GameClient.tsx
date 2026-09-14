@@ -242,7 +242,24 @@ export function GameClient({
   ) {
     if (!devToolsEnabled) return null;
     return (
+      // #432 — a stable key, not an accident of sibling position. Every
+      // phase branch below returns a DIFFERENT top-level JSX tree from a
+      // different `if`, and without a key React reconciles this component
+      // by its INDEX among siblings — which happened to line up the same
+      // (index 2) across every branch before this PR added new siblings
+      // ahead of it in the active-Wire-game branch specifically. That
+      // shifted DevPanel to a different index there, so a setup->active
+      // transition (e.g. clicking "Reveal All Tokens" to completion) no
+      // longer matched it against its previous instance: React unmounted
+      // the open panel and mounted a fresh, collapsed one — reported as a
+      // dev-reveal-tokens.spec.ts failure ("Hide Dev Tokens" never
+      // reappearing) that traced back to exactly this. A key makes the
+      // "same DevPanel across phase transitions" behavior explicit and
+      // robust regardless of what any future branch puts around it,
+      // instead of relying on every branch happening to keep it at the
+      // same sibling index by luck.
       <DevPanel
+        key="dev-panel"
         seatOptions={seatOptions}
         activeProfileId={activeSeat.profileId}
         onSwitchSeat={handleSwitchSeat}

@@ -980,6 +980,53 @@ describe("GameClient — full game flow integration", () => {
       const toggleAfter = screen.getByRole("button", { name: "Open dev tools" });
       expect(toggleAfter.textContent).toContain("Viewing: Carol");
     });
+
+    // #432 review — without DevPanel's explicit `key`, this raced React's
+    // no-key positional reconciliation: the active-Wire-game branch's new
+    // leave affordance shifted DevPanel to a different sibling index than
+    // the setup branch used, so this exact transition unmounted the open
+    // panel and mounted a fresh, collapsed one — caught as a red
+    // dev-reveal-tokens.spec.ts run in CI, not by any test in this file
+    // (nothing here previously drove an open DevPanel across a real
+    // setup->active transition). Reverting the `key` fix reproduces this
+    // failing locally.
+    it("keeps the dev panel open across a setup -> active transition (#432 review)", () => {
+      render(
+        <GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={seatOptions} />
+      );
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          candidates: [],
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Dev" }), makePlayer({ id: "p2", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1", rackPosition: 1 })],
+        });
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      expect(screen.getByRole("button", { name: "Close dev tools" })).toBeInTheDocument();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          candidates: [],
+          game: makeGame({ id: "g1", status: "active", captainId: "p1", currentTurnPlayerId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Dev" }), makePlayer({ id: "p2", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1", rackPosition: 1 })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+
+      // Still open — not reset to the collapsed default.
+      expect(screen.getByRole("button", { name: "Close dev tools" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Open dev tools" })).not.toBeInTheDocument();
+    });
   });
 
   // #451 — the lobby's Leave affordance, room_closed (host departure, every
