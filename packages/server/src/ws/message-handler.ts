@@ -644,6 +644,38 @@ async function handleLeaveGame(socket: WebSocket): Promise<void> {
 // length a still-present human would find the room hanging for.
 export const DISCONNECT_GRACE_MS = 20_000;
 
+// #394 (Contract C4) — Flip's turn/pending-action timeout. Placed next to
+// DISCONNECT_GRACE_MS deliberately: the two compose into the worst-case
+// stall a disconnected player's turn can cause (#446's 20s grace window,
+// during which the seat looks live and the turn is still theirs, PLUS this
+// timeout once the seat is confirmed gone) — whoever changes one needs to
+// see the other.
+//
+// A judgement call, not a derived number (Caroline, 2026-09-14) — revisit
+// after the first full game with real people. Reasoning: the DECISION here
+// (hit or freeze) is trivial, but the THINKING behind it isn't — reading
+// what's already left the shoe is the whole skill the game is built on
+// (press-your-luck), and this is normally played with friends talking to
+// each other, often on a call. A short clock (~20s) punishes the ordinary
+// act of looking away mid-conversation, and a timer that fires on engaged
+// players is one people ask to have removed. Not much longer either:
+// capping near a minute total (grace + this) keeps a genuine departure from
+// stranding the table for long. C4 only requires the countdown be visible
+// ≥10s before it fires; the client shows it for the final 15s, well clear
+// of that floor.
+export const FLIP_TURN_TIMEOUT_MS = 45_000;
+
+// #394 — dev tooling gets a much LONGER duration, never an exemption
+// (Caroline's explicit ruling). Exempting would make the timeout a no-op in
+// exactly the environment it's exercised most — the DevPanel seat-switcher
+// workflow driving every seat manually — so its first real test would be a
+// live game with real players, the same "green proves nothing about the
+// thing you care about" pattern this whole session kept running into.
+// Overridable via env so the mechanism can be driven deliberately in a few
+// seconds during manual testing rather than only ever observed by waiting
+// out the full duration.
+export const FLIP_DEV_TURN_TIMEOUT_MS = Number(process.env.FLIP_DEV_TURN_TIMEOUT_MS ?? 600_000);
+
 /**
  * #431/#446 — disconnect is treated as a deliberate leave, host and
  * non-host alike (Caroline's ruling: "for now", no reconnect window

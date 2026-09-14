@@ -21,6 +21,7 @@ function makeFlip(overrides: Partial<FlipTableView> = {}): FlipTableView {
     lastRoundResult: null,
     winnerId: null,
     resolutionLog: [],
+    turnDeadline: null,
     ...overrides,
   };
 }
@@ -177,5 +178,45 @@ describe("FlipGameRoot — bust notice (#422)", () => {
       />,
     );
     expect(screen.queryByTestId("bust-notice")).not.toBeInTheDocument();
+  });
+});
+
+// #394 — the actual gap this issue closed: FlipTable's turnDeadline prop
+// and the whole countdown/timeout hook underneath it were real but
+// permanently null, because FlipGameRoot never passed the wire field
+// through to it. This proves the wiring, not just that FlipTable can
+// render a countdown when handed one directly (FlipTable.test.tsx already
+// covers that in isolation).
+describe("FlipGameRoot — turnDeadline wiring (#394)", () => {
+  it("passes flip.turnDeadline through to FlipTable, so a live deadline shows a countdown", () => {
+    const flip = makeFlip({ turnDeadline: Date.now() + 5_000 }); // within the 15s visible window
+    render(
+      <FlipGameRoot
+        flip={flip}
+        localPlayerId="p1"
+        onHit={noop}
+        onFreeze={noop}
+        onChooseFreezeTarget={noop}
+        onChooseFlip3Target={noop}
+        onStartRound={noop}
+      />,
+    );
+    expect(screen.getByTestId("turn-countdown")).toBeInTheDocument();
+  });
+
+  it("shows no countdown when the server sends turnDeadline: null", () => {
+    const flip = makeFlip({ turnDeadline: null });
+    render(
+      <FlipGameRoot
+        flip={flip}
+        localPlayerId="p1"
+        onHit={noop}
+        onFreeze={noop}
+        onChooseFreezeTarget={noop}
+        onChooseFlip3Target={noop}
+        onStartRound={noop}
+      />,
+    );
+    expect(screen.queryByTestId("turn-countdown")).not.toBeInTheDocument();
   });
 });

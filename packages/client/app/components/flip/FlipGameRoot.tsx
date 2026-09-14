@@ -188,10 +188,20 @@ export function FlipGameRoot({
         onFreeze={onFreeze}
         // #366's C4 timeout self-targets through these same two callbacks
         // (see FlipTable's own doc comment) — without passing them through,
-        // a Freeze/Flip3 target-choice timeout has nothing to call and the
-        // prompt would hang forever even once turnDeadline exists.
+        // a Freeze/Flip3 target-choice timeout has nothing to call once the
+        // deadline below actually expires client-side.
         onChooseFreezeTarget={onChooseFreezeTarget}
         onChooseFlip3Target={onChooseFlip3Target}
+        // #394 — the wire field FlipTableView now carries: server-owned,
+        // recomputed on every broadcast. This is the fix for the gap #394
+        // found: FlipTable's `turnDeadline` prop and the whole countdown
+        // hook underneath it were real but permanently `null`, since
+        // nothing ever passed a value through this exact spot. The server
+        // guarantees the timeout fires regardless of what this prop does;
+        // wiring it is only what lets a CONNECTED client also see the
+        // countdown and self-target locally the instant it expires, rather
+        // than waiting for the server's own re-broadcast to catch up.
+        turnDeadline={flip.turnDeadline}
         reconnectingIds={reconnectingIds}
         devToolsEnabled={devToolsEnabled}
         pendingActionUi={

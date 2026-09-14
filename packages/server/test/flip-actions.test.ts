@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildFlipDeck, buildFlipGameState, flipCards, type FlipGameState } from "@tabletop/game-flip";
-import { applyFlipAction } from "../src/ws/flip-actions.js";
+import { applyFlipAction, flipTimeoutAction } from "../src/ws/flip-actions.js";
 
 // #387 — authorization is the point of this file.
 //
@@ -250,5 +250,68 @@ describe("applyFlipAction — start-round (#358: the dealer triggers each round)
     expect(() => applyFlipAction(liveState(), "p0", { kind: "start-round" })).toThrow(
       "a round cannot be started right now",
     );
+  });
+});
+
+// #394 (Contract C4) — what the platform fires on a turn/pending-action's
+// behalf. The load-bearing property to prove, per the ruled defaults
+// (#358/#366) AND the design invariant that going idle must never be usable
+// to damage an opponent: every target-choice default is the FLIPPER
+// (turnPlayerId), never any other seated player, for every seat that could
+// possibly be the flipper.
+describe("flipTimeoutAction — Contract C4 defaults", () => {
+  it("auto-Freezes when a Hit/Freeze decision is outstanding (no pendingAction)", () => {
+    const action = flipTimeoutAction(liveState());
+    expect(action).toEqual({ kind: "freeze" });
+  });
+
+  it("self-targets a pending Freeze card, for whichever seat is the flipper", () => {
+    for (const flipperId of ["p0", "p1", "p2"]) {
+      const state = liveState({ turnPlayerId: flipperId, pendingAction: { kind: "freeze" } });
+      expect(flipTimeoutAction(state)).toEqual({ kind: "choose-freeze-target", targetPlayerId: flipperId });
+    }
+  });
+
+  it("self-targets a pending Flip 3 card, for whichever seat is the flipper", () => {
+    for (const flipperId of ["p0", "p1", "p2"]) {
+      const state = liveState({ turnPlayerId: flipperId, pendingAction: { kind: "flip3" } });
+      expect(flipTimeoutAction(state)).toEqual({ kind: "choose-flip3-target", targetPlayerId: flipperId });
+    }
+  });
+
+  // The invariant, proved rather than merely exercised: across every legal
+  // (flipper, non-flipper target-choice) combination the engine could
+  // produce, the returned target is NEVER anyone other than the flipper —
+  // there is no case in this table where the "opponent" column could leak
+  // into the result.
+  it("never returns a target other than the flipper themselves, for any seat/kind combination", () => {
+    for (const flipperId of ["p0", "p1", "p2"]) {
+      for (const kind of ["freeze", "flip3"] as const) {
+        const state = liveState({ turnPlayerId: flipperId, pendingAction: { kind } });
+        const action = flipTimeoutAction(state);
+        expect(action).not.toBeNull();
+        if (action && "targetPlayerId" in action) {
+          expect(action.targetPlayerId).toBe(flipperId);
+          for (const otherSeat of seats.map((s) => s.id).filter((id) => id !== flipperId)) {
+            expect(action.targetPlayerId).not.toBe(otherSeat);
+          }
+        }
+      }
+    }
+  });
+
+  it("returns null when the round isn't in progress — awaiting-round-start", () => {
+    const state = liveState({ phase: "awaiting-round-start", turnPlayerId: undefined });
+    expect(flipTimeoutAction(state)).toBeNull();
+  });
+
+  it("returns null when there is no turn player (round-over)", () => {
+    const state = liveState({ phase: "round-over", turnPlayerId: undefined });
+    expect(flipTimeoutAction(state)).toBeNull();
+  });
+
+  it("returns null when there is no turn player (game-over)", () => {
+    const state = liveState({ phase: "game-over", turnPlayerId: undefined });
+    expect(flipTimeoutAction(state)).toBeNull();
   });
 });

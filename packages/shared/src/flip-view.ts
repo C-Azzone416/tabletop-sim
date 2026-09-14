@@ -158,4 +158,17 @@ export interface FlipTableView {
   readonly winnerId: string | null;
   /** What the most recent action did, in order. Reset per action, not a history. */
   readonly resolutionLog: readonly FlipResolutionEventView[];
+  /**
+   * #394 (Contract C4) — epoch ms this turn or pending-action expires, or
+   * `null` while nothing is timed (no live turn, or the round isn't in
+   * progress). Server-authoritative and recomputed fresh on every
+   * broadcast rather than persisted, so it can't drift out of sync with
+   * whatever timer the server is actually holding — see
+   * `broadcastFlipGameState` in `packages/server/src/ws/state-broadcaster.ts`.
+   * The server guarantees the expiry action fires even with no client
+   * watching; this field only lets a connected client show the same
+   * countdown, per FlipTable's existing (previously unwired) `turnDeadline`
+   * prop.
+   */
+  readonly turnDeadline: number | null;
 }

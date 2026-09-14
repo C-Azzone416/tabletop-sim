@@ -24,6 +24,20 @@ vi.mock("../src/ws/connection-manager.js", () => ({
 // #445 — players is queried fresh inside broadcastGameState now, not passed
 // in by the caller (see state-broadcaster.ts's doc comment on why).
 vi.mock("../src/db/players.js", () => ({ getPlayersByGameId: vi.fn() }));
+// #394 — read once per broadcast to pick the turn-timeout duration (dev vs.
+// real). Mocked here so these wire-message-shape tests don't hit a real DB
+// connection just because a fixture's Flip state happens to have a live
+// turn; flip-turn-timer.spec.ts is what actually exercises the duration
+// branch.
+vi.mock("../src/db/games.js", () => ({ getGameCreatedVia: vi.fn() }));
+// #394 — real setTimeout calls have no place in a suite asserting on
+// broadcast message shape: an un-mocked schedule would arm a genuine
+// 45s/10min timer per live-turn test case, accumulating across the whole
+// run for no assertion this file makes.
+vi.mock("../src/ws/flip-turn-timer.js", () => ({
+  scheduleFlipTurnTimeout: vi.fn(),
+  cancelFlipTurnTimeout: vi.fn(),
+}));
 
 import * as wiresDb from "../src/db/wires.js";
 import * as tokensDb from "../src/db/tokens.js";
@@ -31,6 +45,8 @@ import * as candidatesDb from "../src/db/candidates.js";
 import * as connManager from "../src/ws/connection-manager.js";
 import * as flipGamesDb from "../src/db/flip-games.js";
 import * as playersDb from "../src/db/players.js";
+import * as gamesDb from "../src/db/games.js";
+import * as flipTurnTimer from "../src/ws/flip-turn-timer.js";
 import { buildFlipGameState, flipCards } from "@tabletop/game-flip";
 
 const mockFlipGamesDb = vi.mocked(flipGamesDb);
@@ -39,11 +55,15 @@ const mockTokensDb = vi.mocked(tokensDb);
 const mockCandidatesDb = vi.mocked(candidatesDb);
 const mockConnManager = vi.mocked(connManager);
 const mockPlayersDb = vi.mocked(playersDb);
+const mockGamesDb = vi.mocked(gamesDb);
+const mockScheduleFlipTurnTimeout = vi.mocked(flipTurnTimer.scheduleFlipTurnTimeout);
+const mockCancelFlipTurnTimeout = vi.mocked(flipTurnTimer.cancelFlipTurnTimeout);
 
 describe("state-broadcaster", () => {
   beforeEach(() => {
     resetIds();
     vi.clearAllMocks();
+    mockGamesDb.getGameCreatedVia.mockResolvedValue("lobby");
   });
 
   describe("buildPlayerView", () => {
@@ -435,6 +455,82 @@ describe("state-broadcaster", () => {
         expect(mockWiresDb.getWiresByGameId).not.toHaveBeenCalled();
         // No table means there can be no history either — don't query for it.
         expect(mockFlipGamesDb.getFlipRoundScores).not.toHaveBeenCalled();
+      });
+    });
+
+    // #394 (Contract C4) — the deadline computation and the timer that backs
+    // it. broadcastFlipGameState is the single chokepoint every Flip
+    // broadcast (a real action, a reconnect, a join) goes through, so this
+    // is where "reset on every broadcast" actually lives.
+    describe("turn timeout (#394)", () => {
+      it("sets turnDeadline and arms the timer for a live turn", async () => {
+        mockGamesDb.getGameCreatedVia.mockResolvedValue("lobby");
+        mockFlipGamesDb.getFlipGameState.mockResolvedValue(
+          buildFlipGameState({ players: twoSeats }), // round-in-progress, has a turnPlayerId by default
+        );
+        connect("p0", "p1");
+
+        const before = Date.now();
+        await broadcastGameState("g1", flipGame());
+        const after = Date.now();
+
+        expect(mockScheduleFlipTurnTimeout).toHaveBeenCalledTimes(1);
+        const [gameId, delayMs] = mockScheduleFlipTurnTimeout.mock.calls[0];
+        expect(gameId).toBe("g1");
+        expect(delayMs).toBe(45_000); // FLIP_TURN_TIMEOUT_MS for a lobby-created game
+        expect(mockCancelFlipTurnTimeout).not.toHaveBeenCalled();
+
+        const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+        const turnDeadline = (message as { flip: { turnDeadline: number | null } }).flip.turnDeadline;
+        expect(turnDeadline).not.toBeNull();
+        expect(turnDeadline!).toBeGreaterThanOrEqual(before + 45_000);
+        expect(turnDeadline!).toBeLessThanOrEqual(after + 45_000);
+      });
+
+      it("uses the dev duration for a dev-seeded game — longer, not exempt", async () => {
+        mockGamesDb.getGameCreatedVia.mockResolvedValue("dev_seed");
+        mockFlipGamesDb.getFlipGameState.mockResolvedValue(
+          buildFlipGameState({ players: twoSeats }),
+        );
+        connect("p0", "p1");
+
+        await broadcastGameState("g1", flipGame());
+
+        const [, delayMs] = mockScheduleFlipTurnTimeout.mock.calls[0];
+        expect(delayMs).toBe(600_000); // FLIP_DEV_TURN_TIMEOUT_MS default — longer, still a real timeout
+        expect(delayMs).toBeGreaterThan(45_000);
+
+        const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+        expect((message as { flip: { turnDeadline: number | null } }).flip.turnDeadline).not.toBeNull();
+      });
+
+      it("sets turnDeadline to null and cancels the timer once no round is in progress", async () => {
+        mockGamesDb.getGameCreatedVia.mockResolvedValue("lobby");
+        mockFlipGamesDb.getFlipGameState.mockResolvedValue(
+          buildFlipGameState({ players: twoSeats, phase: "round-over", turnPlayerId: undefined as unknown as string }),
+        );
+        connect("p0", "p1");
+
+        await broadcastGameState("g1", flipGame());
+
+        expect(mockCancelFlipTurnTimeout).toHaveBeenCalledWith("g1");
+        expect(mockScheduleFlipTurnTimeout).not.toHaveBeenCalled();
+        // Never even reads createdVia when there's nothing live to time —
+        // no point picking a duration for a timer that won't be armed.
+        expect(mockGamesDb.getGameCreatedVia).not.toHaveBeenCalled();
+
+        const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
+        expect((message as { flip: { turnDeadline: number | null } }).flip.turnDeadline).toBeNull();
+      });
+
+      it("cancels the timer when there is no table at all (lobby)", async () => {
+        mockFlipGamesDb.getFlipGameState.mockResolvedValue(null);
+        connect("p0", "p1");
+
+        await broadcastGameState("g1", flipGame());
+
+        expect(mockCancelFlipTurnTimeout).toHaveBeenCalledWith("g1");
+        expect(mockScheduleFlipTurnTimeout).not.toHaveBeenCalled();
       });
     });
   });

@@ -5,8 +5,52 @@ import * as tokensDb from '../db/tokens.js';
 import * as candidatesDb from '../db/candidates.js';
 import * as flipGamesDb from '../db/flip-games.js';
 import * as playersDb from '../db/players.js';
+import * as gamesDb from '../db/games.js';
 import { groupRoundsByPlayer, toFlipTableView } from './flip-view.js';
 import { getGameSockets, sendToPlayer } from './connection-manager.js';
+import { flipTimeoutAction, executeFlipAction } from './flip-actions.js';
+import { scheduleFlipTurnTimeout, cancelFlipTurnTimeout } from './flip-turn-timer.js';
+import { FLIP_TURN_TIMEOUT_MS, FLIP_DEV_TURN_TIMEOUT_MS } from './message-handler.js';
+
+/**
+ * #394 (Contract C4) — fires when a Flip turn/pending-action's timer
+ * (scheduleFlipTurnTimeout, armed by broadcastFlipGameState) elapses with
+ * nobody having acted. Re-derives the action from freshly-loaded state
+ * (never from anything captured when the timer was armed) and runs it
+ * through the EXACT SAME executeFlipAction path a real player's click
+ * does — same authorization, same persistence, same broadcast at the end —
+ * so there is no separate "auto-action" code path that could authorize or
+ * behave differently than a manual one.
+ *
+ * If the state changed between the timer being armed and this firing (a
+ * manual action landed first, or the round otherwise moved on),
+ * flipTimeoutAction reads the FRESH state and simply returns null / a
+ * now-irrelevant action that executeFlipAction's own authorization refuses
+ * — either way this is a no-op rather than a misfire, because it never
+ * trusts anything about the state other than what it reads right now.
+ */
+async function fireFlipTurnTimeout(gameId: string): Promise<void> {
+  const stored = await flipGamesDb.getFlipGameState(gameId);
+  if (!stored) return;
+  const state = stored as FlipGameState;
+
+  const action = flipTimeoutAction(state);
+  if (!action || state.turnPlayerId === null) return;
+
+  try {
+    await executeFlipAction(gameId, state.turnPlayerId, action);
+  } catch {
+    // Stale by the time this ran (a manual action already resolved it, or
+    // the round ended) — executeFlipAction's own authorization/engine
+    // guards correctly refused it. Nothing to recover: the next real
+    // broadcast already reflects whatever actually happened.
+    return;
+  }
+
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) return;
+  await broadcastGameState(gameId, game);
+}
 
 /**
  * #382 — the Flip table, rebuilt from the persisted state blob on every
@@ -34,6 +78,31 @@ async function broadcastFlipGameState(
   // staying wrong indefinitely.
   const players = await playersDb.getPlayersByGameId(gameId);
   const stored = await flipGamesDb.getFlipGameState(gameId);
+  const state = stored as FlipGameState | null;
+
+  // #394 (Contract C4) — recomputed fresh on EVERY broadcast (not
+  // persisted, so it can't drift), and the server's own guaranteeing timer
+  // re-armed to match: whatever this broadcast tells a client the deadline
+  // is, is exactly when the server itself will fire the ruled default
+  // action if nobody has acted by then — including for a client that never
+  // sees this message at all. A turn/pending-action is "live" only during
+  // round-in-progress with a turn player set; awaiting-round-start,
+  // round-over and game-over all correctly compute `null` (nothing to time
+  // out) and cancel any timer left over from the round that just ended.
+  const isLiveTurn = state !== null && state.phase === 'round-in-progress' && state.turnPlayerId !== null;
+  let turnDeadline: number | null = null;
+  if (isLiveTurn) {
+    // #394 — dev tooling gets a much longer duration, never an exemption
+    // (Caroline's ruling): the DevPanel seat-switcher workflow depends on
+    // this read, not on the timeout being a no-op. One extra read per
+    // broadcast, same tradeoff #396 already made for round history.
+    const createdVia = await gamesDb.getGameCreatedVia(gameId);
+    const durationMs = createdVia === 'dev_seed' ? FLIP_DEV_TURN_TIMEOUT_MS : FLIP_TURN_TIMEOUT_MS;
+    turnDeadline = Date.now() + durationMs;
+    scheduleFlipTurnTimeout(gameId, durationMs, () => fireFlipTurnTimeout(gameId));
+  } else {
+    cancelFlipTurnTimeout(gameId);
+  }
 
   // #406 — a Flip room in the lobby has no table yet, and that is NORMAL under
   // the ruled awaiting-round-start flow: no Flip state exists until the dealer
@@ -54,8 +123,8 @@ async function broadcastFlipGameState(
   // current round plus cumulative totals. One extra read per broadcast, which
   // is what keeps the scoreboard correct across a reconnect. Skipped entirely
   // when there is no table, since there can be no history either.
-  const flip = stored
-    ? toFlipTableView(stored as FlipGameState, groupRoundsByPlayer(await flipGamesDb.getFlipRoundScores(gameId)))
+  const flip = state
+    ? toFlipTableView(state, groupRoundsByPlayer(await flipGamesDb.getFlipRoundScores(gameId)), turnDeadline)
     : null;
   const gameSockets = getGameSockets(gameId);
 

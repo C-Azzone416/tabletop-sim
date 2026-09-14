@@ -51,6 +51,11 @@ export function groupRoundsByPlayer(
 export function toFlipTableView(
   state: FlipGameState,
   roundsByPlayer: Map<string, FlipRoundScoreView[]> = new Map(),
+  // #394 — computed by the caller (broadcastFlipGameState), not here: it
+  // depends on wall-clock time and, for the dev-duration branch, a DB read
+  // for the game's createdVia — neither belongs in this otherwise-pure
+  // state-to-DTO mapper.
+  turnDeadline: number | null = null,
 ): FlipTableView {
   const dealer = state.players[state.dealerIndex];
   if (!dealer) throw new Error(`flip state has no seat at dealerIndex ${state.dealerIndex}`);
@@ -100,5 +105,6 @@ export function toFlipTableView(
       effect: event.effect,
       context: event.context,
     })),
+    turnDeadline,
   };
 }

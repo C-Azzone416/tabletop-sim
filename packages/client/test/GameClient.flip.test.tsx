@@ -64,6 +64,7 @@ function flipView(overrides: Partial<FlipTableView> = {}): FlipTableView {
     lastRoundResult: null,
     winnerId: null,
     resolutionLog: [],
+    turnDeadline: null,
     ...overrides,
   };
 }

@@ -110,6 +110,35 @@ export function applyFlipAction(
 }
 
 /**
+ * #394 (Contract C4) — what the platform fires on a turn/pending-action's
+ * behalf when nobody acts before it expires. `null` when there is nothing
+ * live to time out (no turn player, or the round isn't in progress —
+ * covers awaiting-round-start, round-over and game-over alike).
+ *
+ * SELF-TARGETING INVARIANT (#358/#366, non-negotiable — going idle must
+ * never be usable to damage an opponent): every target-choice default here
+ * is `state.turnPlayerId` — the flipper — and nothing else. This is
+ * structural, not a rule this function chooses to follow: `state` carries
+ * no OTHER player id this function could read as a target, so there is no
+ * path through it that could ever self-target anyone but the flipper. See
+ * flip-actions.test.ts's fuzz coverage for the proof, not just the
+ * assertion.
+ */
+export function flipTimeoutAction(state: FlipGameState): FlipActionKind | null {
+  if (state.phase !== 'round-in-progress' || state.turnPlayerId === null) return null;
+  const flipperId = state.turnPlayerId;
+
+  // #366's ruled defaults: Hit/Freeze auto-Freezes (locks and scores the
+  // hand); a Freeze or Flip 3 target choice self-targets.
+  if (state.pendingAction === null) {
+    return { kind: 'freeze' };
+  }
+  return state.pendingAction.kind === 'freeze'
+    ? { kind: 'choose-freeze-target', targetPlayerId: flipperId }
+    : { kind: 'choose-flip3-target', targetPlayerId: flipperId };
+}
+
+/**
  * Loads, authorizes, applies and persists. The caller broadcasts — this
  * returns nothing, because every client learns the outcome the same way, from
  * the #382 `game_state` broadcast, rather than from a bespoke reply.
