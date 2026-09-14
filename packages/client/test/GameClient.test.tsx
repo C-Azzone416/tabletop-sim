@@ -980,6 +980,53 @@ describe("GameClient — full game flow integration", () => {
       const toggleAfter = screen.getByRole("button", { name: "Open dev tools" });
       expect(toggleAfter.textContent).toContain("Viewing: Carol");
     });
+
+    // #432 review — without DevPanel's explicit `key`, this raced React's
+    // no-key positional reconciliation: the active-Wire-game branch's new
+    // leave affordance shifted DevPanel to a different sibling index than
+    // the setup branch used, so this exact transition unmounted the open
+    // panel and mounted a fresh, collapsed one — caught as a red
+    // dev-reveal-tokens.spec.ts run in CI, not by any test in this file
+    // (nothing here previously drove an open DevPanel across a real
+    // setup->active transition). Reverting the `key` fix reproduces this
+    // failing locally.
+    it("keeps the dev panel open across a setup -> active transition (#432 review)", () => {
+      render(
+        <GameClient joinCode="ABC123" profileId="p1" playerName="Dev" seatOptions={seatOptions} />
+      );
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_started",
+          candidates: [],
+          game: makeGame({ id: "g1", status: "setup", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Dev" }), makePlayer({ id: "p2", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1", rackPosition: 1 })],
+        });
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Open dev tools" }));
+      expect(screen.getByRole("button", { name: "Close dev tools" })).toBeInTheDocument();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          candidates: [],
+          game: makeGame({ id: "g1", status: "active", captainId: "p1", currentTurnPlayerId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Dev" }), makePlayer({ id: "p2", name: "Alice" })],
+          wires: [makeWire({ id: "w1", playerId: "p1", rackPosition: 1 })],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+
+      // Still open — not reset to the collapsed default.
+      expect(screen.getByRole("button", { name: "Close dev tools" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Open dev tools" })).not.toBeInTheDocument();
+    });
   });
 
   // #451 — the lobby's Leave affordance, room_closed (host departure, every
@@ -1125,6 +1172,178 @@ describe("GameClient — full game flow integration", () => {
       fireEvent.click(screen.getByRole("button", { name: "3" }));
 
       expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: "update_player_count", maxPlayers: 3 }));
+    });
+  });
+
+  // #432 — Wire's non-host mid-game leave: an exit from the active game
+  // that didn't exist before this, gated behind a warning (heavier than
+  // Flip's plain confirm, #434) since it's destructive for everyone else
+  // still at the table.
+  describe("active-game leave warning (#432)", () => {
+    function renderActiveGame(localProfileId: "p1" | "p2") {
+      render(<GameClient joinCode="ABC123" profileId={localProfileId} playerName={localProfileId === "p1" ? "Alice" : "Bob"} />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      const activeGame = makeGame({ id: "g1", status: "active", captainId: "p1", currentTurnPlayerId: "p1" });
+      const players = [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })];
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          candidates: [],
+          game: activeGame,
+          players,
+          wires: [],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: localProfileId,
+        });
+      });
+      return ws;
+    }
+
+    it("renders a Leave affordance in the active game", () => {
+      renderActiveGame("p2");
+      expect(screen.getByRole("button", { name: "Leave" })).toBeInTheDocument();
+    });
+
+    it("clicking Leave opens the warning rather than leaving immediately", () => {
+      const ws = renderActiveGame("p2");
+      fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+      expect(ws.send).not.toHaveBeenCalled();
+    });
+
+    it("shows the non-captain copy (mission ends, room stays open) for a non-host", () => {
+      renderActiveGame("p2");
+      fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+      expect(screen.getByText(/end the mission for everyone/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "End the Mission" })).toBeInTheDocument();
+    });
+
+    it("shows the captain copy (room closes for everyone) for the host", () => {
+      renderActiveGame("p1");
+      fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+      expect(screen.getByText(/close the room for everyone/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Close the Room" })).toBeInTheDocument();
+    });
+
+    it("Cancel closes the warning without sending leave_game or navigating", () => {
+      const ws = renderActiveGame("p2");
+      // mockPush isn't reset between tests in this file (no
+      // beforeEach(mockPush.mockClear())) — assert the call COUNT is
+      // unchanged rather than "never called", so this doesn't depend on
+      // whether an earlier test in the same run already navigated.
+      const pushCallsBefore = mockPush.mock.calls.length;
+      fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(ws.send).not.toHaveBeenCalled();
+      expect(mockPush.mock.calls.length).toBe(pushCallsBefore);
+    });
+
+    it("confirming sends leave_game and routes to /play, same as the lobby's leave", () => {
+      const ws = renderActiveGame("p2");
+      fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+      fireEvent.click(screen.getByRole("button", { name: "End the Mission" }));
+
+      expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: "leave_game" }));
+      expect(mockPush).toHaveBeenCalledWith("/play");
+    });
+  });
+
+  // #432 — the remaining-players' side: the mission ended but the room
+  // survives, so dismissing reveals the Lobby rather than navigating away
+  // (contrast with room_closed's "Back to Play" navigation).
+  describe("mission-ended interstitial, room survives (#432)", () => {
+    it("shows the interstitial instead of the lobby when a non-host leave ends the mission", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      const activeGame = makeGame({ id: "g1", status: "active", captainId: "p1", currentTurnPlayerId: "p1" });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          candidates: [],
+          game: activeGame,
+          players: [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })],
+          wires: [],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+      expect(screen.getByText("Your turn — choose an action")).toBeInTheDocument();
+
+      act(() => {
+        ws.simulateMessage({ type: "player_left", playerId: "p2", playerName: "Bob", gameEnded: true });
+      });
+      // The reset-to-waiting game_state that #432's server side sends right
+      // after player_left — the interstitial must still show even once the
+      // room has already reset underneath it.
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          candidates: [],
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+
+      expect(screen.getByText("Mission Ended")).toBeInTheDocument();
+      expect(screen.getByText("Bob left. The mission has ended.")).toBeInTheDocument();
+      expect(screen.queryByText("Game Lobby")).not.toBeInTheDocument();
+    });
+
+    it("dismissing the interstitial reveals the lobby underneath, no navigation", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          candidates: [],
+          game: makeGame({ id: "g1", status: "active", captainId: "p1", currentTurnPlayerId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })],
+          wires: [],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+      act(() => {
+        ws.simulateMessage({ type: "player_left", playerId: "p2", playerName: "Bob", gameEnded: true });
+      });
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          candidates: [],
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          players: [makePlayer({ id: "p1", name: "Alice" })],
+          wires: [],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p1",
+        });
+      });
+      expect(screen.getByText("Mission Ended")).toBeInTheDocument();
+
+      // See the Cancel test above: mockPush isn't reset between tests here.
+      const pushCallsBefore = mockPush.mock.calls.length;
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+      expect(screen.queryByText("Mission Ended")).not.toBeInTheDocument();
+      expect(screen.getByText("Game Lobby")).toBeInTheDocument();
+      expect(mockPush.mock.calls.length).toBe(pushCallsBefore);
     });
   });
 });

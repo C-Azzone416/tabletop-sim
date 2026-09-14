@@ -35,6 +35,19 @@ export interface GameState {
    * only ever fires for the players who stayed behind.
    */
   roomClosedReason: string | null;
+  /**
+   * #432 — a non-host mid-game departure that ended the MISSION rather
+   * than the room (Wire Game's `gameEnded: true` on `player_left`; Flip's
+   * non-host leave never sets this — it continues instead, or produces
+   * `room_closed` below its floor, already covered by `roomClosedReason`
+   * above). Set only when `gameEnded` is true; a normal lobby-phase
+   * departure (`gameEnded: false`) never touches this field. Cleared by an
+   * explicit dismiss, same "checked ahead of the waiting/lobby branch,
+   * explicit button, no auto-navigate" idiom `roomClosedReason` established
+   * — the room survives here, so dismissing reveals the Lobby underneath
+   * rather than routing anywhere.
+   */
+  missionEndedReason: string | null;
 }
 
 const initialState: GameState = {
@@ -51,12 +64,14 @@ const initialState: GameState = {
   gameOverReason: null,
   error: null,
   roomClosedReason: null,
+  missionEndedReason: null,
 };
 
 type Action =
   | { type: "SET_ERROR"; message: string }
   | { type: "CLEAR_ERROR" }
   | { type: "SERVER_MESSAGE"; message: ServerMessage }
+  | { type: "DISMISS_MISSION_ENDED" }
   | { type: "RESET" };
 
 function gameReducer(state: GameState, action: Action): GameState {
@@ -65,6 +80,8 @@ function gameReducer(state: GameState, action: Action): GameState {
       return { ...state, error: action.message };
     case "CLEAR_ERROR":
       return { ...state, error: null };
+    case "DISMISS_MISSION_ENDED":
+      return { ...state, missionEndedReason: null };
     case "RESET":
       return initialState;
     case "SERVER_MESSAGE":
@@ -213,10 +230,21 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
     // grace window). Filters the roster only; what happens next (stay in
     // the lobby, end the game, continue play) is #432/#433/#434's call per
     // game, not this hook's.
+    //
+    // #432 — `gameEnded` rides this same message (see shared/src/types.ts's
+    // doc comment on why) rather than a separate one. Only set
+    // missionEndedReason when it's true; a normal continue (Flip, or Wire
+    // in the lobby) must not touch it. Identical whether the departure was
+    // a deliberate leave_game or a disconnect past the grace window — both
+    // funnel through the same server-side path and produce the same
+    // message, so no separate wiring is needed here for the disconnect case.
     case "player_left":
       return {
         ...state,
         players: state.players.filter((p) => p.id !== msg.playerId),
+        missionEndedReason: msg.gameEnded
+          ? `${msg.playerName} left. The mission has ended.`
+          : state.missionEndedReason,
       };
 
     // #451 — the host left or disconnected. Every remaining client, in
@@ -251,5 +279,9 @@ export function useGameState() {
     dispatch({ type: "RESET" });
   }, []);
 
-  return { state, handleMessage, setError, clearError, reset };
+  const dismissMissionEnded = useCallback(() => {
+    dispatch({ type: "DISMISS_MISSION_ENDED" });
+  }, []);
+
+  return { state, handleMessage, setError, clearError, reset, dismissMissionEnded };
 }

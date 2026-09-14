@@ -210,6 +210,60 @@ describe("useGameState", () => {
     expect(result.current.state.players).toEqual([alice]);
   });
 
+  // #432 — the mission-ended-but-room-survives case (Wire Game's non-host
+  // mid-game leave). Rides the same player_left message as the plain
+  // roster-filter case above, distinguished only by gameEnded.
+  it("handles player_left with gameEnded:true by setting missionEndedReason", () => {
+    const { result } = renderHook(() => useGameState());
+    expect(result.current.state.missionEndedReason).toBeNull();
+
+    act(() => {
+      result.current.handleMessage({
+        type: "player_left",
+        playerId: "p2",
+        playerName: "Bob",
+        gameEnded: true,
+      });
+    });
+
+    expect(result.current.state.missionEndedReason).toBe("Bob left. The mission has ended.");
+  });
+
+  it("does not set missionEndedReason for a plain lobby-phase player_left (gameEnded false/absent)", () => {
+    const { result } = renderHook(() => useGameState());
+
+    act(() => {
+      result.current.handleMessage({
+        type: "player_left",
+        playerId: "p2",
+        playerName: "Bob",
+        gameEnded: false,
+      });
+    });
+    expect(result.current.state.missionEndedReason).toBeNull();
+
+    act(() => {
+      result.current.handleMessage({ type: "player_left", playerId: "p3", playerName: "Carol" });
+    });
+    expect(result.current.state.missionEndedReason).toBeNull();
+  });
+
+  it("dismissMissionEnded clears missionEndedReason", () => {
+    const { result } = renderHook(() => useGameState());
+    act(() => {
+      result.current.handleMessage({
+        type: "player_left",
+        playerId: "p2",
+        playerName: "Bob",
+        gameEnded: true,
+      });
+    });
+    expect(result.current.state.missionEndedReason).not.toBeNull();
+
+    act(() => result.current.dismissMissionEnded());
+    expect(result.current.state.missionEndedReason).toBeNull();
+  });
+
   // #451 — the host-departure case. Applies in every phase/game, so this
   // hook only records the reason; GameClient decides what to render.
   it("handles room_closed by setting roomClosedReason", () => {
