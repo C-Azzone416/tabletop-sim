@@ -139,6 +139,97 @@ describe("connection-manager", () => {
     expect(ws2.send).not.toHaveBeenCalled();
   });
 
+  // #454 — a stale socket for the same player id, still registered when a
+  // newer one connects, must not be left able to later reconnect and steal
+  // broadcast routing back (the mid-game room_closed misrouting bug).
+  describe("registerConnection evicts a stale socket for the same player", () => {
+    it("closes the old socket when a new one registers for the same player+game", () => {
+      const wsOld = mockSocket();
+      const wsNew = mockSocket();
+      registerConnection(wsOld, "cm-evict-p1", "cm-evict-g1");
+
+      registerConnection(wsNew, "cm-evict-p1", "cm-evict-g1");
+
+      expect(wsOld.close).toHaveBeenCalled();
+    });
+
+    it("routes future broadcasts to the new socket only, not the evicted one", () => {
+      const wsOld = mockSocket();
+      const wsNew = mockSocket();
+      registerConnection(wsOld, "cm-evict-p2", "cm-evict-g2");
+      registerConnection(wsNew, "cm-evict-p2", "cm-evict-g2");
+
+      broadcastToGame("cm-evict-g2", { type: "msg" });
+
+      expect(wsNew.send).toHaveBeenCalled();
+      expect(wsOld.send).not.toHaveBeenCalled();
+    });
+
+    it("deregisters the evicted socket so its own later close is a no-op, not a fresh leave", () => {
+      const wsOld = mockSocket();
+      const wsNew = mockSocket();
+      registerConnection(wsOld, "cm-evict-p3", "cm-evict-g3");
+      registerConnection(wsNew, "cm-evict-p3", "cm-evict-g3");
+
+      // The evicted socket's own 'close' handler (handleDisconnect) looks
+      // this up before deciding whether to arm a #446 grace-window leave —
+      // it must find nothing, or a stale reconnect would spuriously end the
+      // still-very-much-connected player's session 20s later.
+      expect(getConnectionInfo(wsOld)).toBeUndefined();
+    });
+
+    it("does not close an already-closed stale socket, and does not evict a different game's registration", () => {
+      const wsClosed = mockSocket(3 /* CLOSED */);
+      const wsNew = mockSocket();
+      registerConnection(wsClosed, "cm-evict-p4", "cm-evict-g4");
+
+      registerConnection(wsNew, "cm-evict-p4", "cm-evict-g4");
+
+      expect(wsClosed.close).not.toHaveBeenCalled();
+
+      const wsOtherGame = mockSocket();
+      registerConnection(wsOtherGame, "cm-evict-p4", "cm-evict-g5");
+      expect(wsNew.close).not.toHaveBeenCalled();
+    });
+
+    it("re-registering the exact same socket object is a no-op, not a self-eviction", () => {
+      const ws = mockSocket();
+      registerConnection(ws, "cm-evict-p5", "cm-evict-g6");
+
+      registerConnection(ws, "cm-evict-p5", "cm-evict-g6");
+
+      expect(ws.close).not.toHaveBeenCalled();
+      expect(getConnectionInfo(ws)).toBeDefined();
+    });
+  });
+
+  describe("removeConnection only clears the game-level entry it still owns", () => {
+    it("does not erase a newer registration when a superseded socket's own close arrives late", () => {
+      const wsOld = mockSocket();
+      const wsNew = mockSocket();
+      registerConnection(wsOld, "cm-remove-p1", "cm-remove-g1");
+      registerConnection(wsNew, "cm-remove-p1", "cm-remove-g1");
+
+      // Simulate the old socket's close handler running after the new one
+      // already took over — removeConnection must see it's no longer the
+      // registered socket for this player and leave the new one intact.
+      removeConnection(wsOld);
+
+      const sockets = getGameSockets("cm-remove-g1");
+      expect(sockets.get("cm-remove-p1")).toBe(wsNew);
+    });
+
+    it("still removes the entry normally when it is the current socket", () => {
+      const ws = mockSocket();
+      registerConnection(ws, "cm-remove-p2", "cm-remove-g2");
+
+      removeConnection(ws);
+
+      const sockets = getGameSockets("cm-remove-g2");
+      expect(sockets.has("cm-remove-p2")).toBe(false);
+    });
+  });
+
   // #446 — the disconnect grace window's timer bookkeeping.
   describe("schedulePendingLeave / cancelPendingLeave", () => {
     afterEach(() => {

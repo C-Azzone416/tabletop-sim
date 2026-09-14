@@ -15,12 +15,13 @@ vi.mock("next-auth/react", () => ({
 
 let capturedOnMessage: ((message: unknown) => void) | null = null;
 const mockConnect = vi.fn();
+const mockDisconnect = vi.fn();
 const mockSend = vi.fn();
 let mockWsStatus: "connecting" | "connected" | "disconnected" = "disconnected";
 vi.mock("../app/hooks/useWebSocket", () => ({
   useWebSocket: (onMessage: (message: unknown) => void) => {
     capturedOnMessage = onMessage;
-    return { status: mockWsStatus, connect: mockConnect, send: mockSend };
+    return { status: mockWsStatus, connect: mockConnect, disconnect: mockDisconnect, send: mockSend };
   },
 }));
 

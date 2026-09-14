@@ -25,6 +25,16 @@ export interface GameState {
   pendingDualCutCorrect: Extract<ServerMessage, { type: "dual_cut_correct" }> | null;
   gameOverReason: string | null;
   error: string | null;
+  /**
+   * #451 — the host left or disconnected past the grace window; the room
+   * no longer exists server-side. Set from `room_closed`, checked ahead of
+   * every phase branch in GameClient (it applies in every phase and every
+   * game — not per-game, unlike player_left's per-game handling in
+   * #432/#434). A leaving client never receives its own room_closed
+   * (deregistered before the broadcast — see message-handler.ts), so this
+   * only ever fires for the players who stayed behind.
+   */
+  roomClosedReason: string | null;
 }
 
 const initialState: GameState = {
@@ -40,6 +50,7 @@ const initialState: GameState = {
   pendingDualCutCorrect: null,
   gameOverReason: null,
   error: null,
+  roomClosedReason: null,
 };
 
 type Action =
@@ -197,6 +208,21 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
 
     case "players_updated":
       return { ...state, players: msg.players };
+
+    // #451 — a non-host departure (explicit leave or disconnect past the
+    // grace window). Filters the roster only; what happens next (stay in
+    // the lobby, end the game, continue play) is #432/#433/#434's call per
+    // game, not this hook's.
+    case "player_left":
+      return {
+        ...state,
+        players: state.players.filter((p) => p.id !== msg.playerId),
+      };
+
+    // #451 — the host left or disconnected. Every remaining client, in
+    // every phase, routes to /play — see roomClosedReason's doc comment.
+    case "room_closed":
+      return { ...state, roomClosedReason: msg.reason };
 
     case "error":
       return { ...state, error: msg.message };

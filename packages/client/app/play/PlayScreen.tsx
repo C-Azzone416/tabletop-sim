@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackAffordance } from "../components/BackAffordance";
 
 interface PlayScreenProps {
   /** Where "← Back" goes. /play -> "/", /play/* -> "/play" (#310 ruling). */
@@ -15,18 +15,16 @@ interface PlayScreenProps {
  * drift apart.
  *
  * Back is a real <Link> to a real route, so browser back behaves the same
- * as the affordance — these screens are not modal state.
+ * as the affordance — these screens are not modal state. The affordance
+ * itself lives in BackAffordance (#451) — Lobby's leave control is the
+ * same component, rendered as a button instead of a Link since it has to
+ * send leave_game before it navigates anywhere.
  */
 export function PlayScreen({ backHref, title, subtitle, children }: PlayScreenProps) {
   return (
     <div className="min-h-screen bg-surface px-4 py-6 font-sans sm:px-6 sm:py-10">
       <div className="mx-auto w-full max-w-3xl">
-        <Link
-          href={backHref}
-          className="inline-flex min-h-11 items-center text-body text-ink-muted hover:text-ink"
-        >
-          ← Back
-        </Link>
+        <BackAffordance href={backHref} label="← Back" />
 
         <header className="mt-4 sm:mt-6">
           <h1 className="text-display-l-sm font-display tracking-tight text-ink sm:text-display-l">

@@ -203,6 +203,144 @@ test.describe("host-chosen player count is enforced on join (#437)", () => {
   });
 });
 
+test.describe("leaving a room (#451, #430)", () => {
+  test("a non-host leaving the lobby updates the other player's roster, no ghost entry", async ({
+    page,
+    browser,
+  }) => {
+    await signInAsNewPlayer(page, "Host");
+    await page.getByRole("button", { name: "Play" }).click();
+    await page.getByRole("link", { name: "Host New Game" }).click();
+    await page.getByText("Wire Game").click();
+    await page.getByRole("button", { name: "4" }).click();
+    await page.getByRole("button", { name: "Create Room" }).click();
+    await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
+    const joinCode = joinCodeFromUrl(page);
+
+    const joinerContext = await browser.newContext();
+    const joinerPage = await joinerContext.newPage();
+
+    try {
+      const joinerName = await signInAsNewPlayer(joinerPage, "Joiner");
+      await joinerPage.getByRole("button", { name: "Play" }).click();
+      await joinerPage.getByRole("link", { name: "Join Game" }).click();
+      await joinerPage.getByPlaceholder("Enter code").fill(joinCode);
+      await joinerPage.getByRole("button", { name: "Join" }).click();
+      await expect(joinerPage).toHaveURL(new RegExp(`/game/${joinCode}$`), { timeout: 10_000 });
+      await expectPlayerCountEventually(page, "Players (2/4)");
+
+      await joinerPage.getByRole("button", { name: /leave/i }).click();
+      await expect(joinerPage).toHaveURL(/\/play$/, { timeout: 10_000 });
+
+      // The remaining (host) client's roster drops the departed player —
+      // no ghost entry left behind.
+      await expectPlayerCountEventually(page, "Players (1/4)");
+      await expect(page.getByText(joinerName)).not.toBeVisible();
+    } finally {
+      await joinerContext.close();
+      await cleanupGame(joinCode);
+    }
+  });
+
+  test("the host leaving closes the room and routes the remaining player to /play", async ({
+    page,
+    browser,
+  }) => {
+    await signInAsNewPlayer(page, "Host");
+    await page.getByRole("button", { name: "Play" }).click();
+    await page.getByRole("link", { name: "Host New Game" }).click();
+    await page.getByText("Wire Game").click();
+    await page.getByRole("button", { name: "4" }).click();
+    await page.getByRole("button", { name: "Create Room" }).click();
+    await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
+    const joinCode = joinCodeFromUrl(page);
+
+    const joinerContext = await browser.newContext();
+    const joinerPage = await joinerContext.newPage();
+
+    try {
+      await signInAsNewPlayer(joinerPage, "Joiner");
+      await joinerPage.getByRole("button", { name: "Play" }).click();
+      await joinerPage.getByRole("link", { name: "Join Game" }).click();
+      await joinerPage.getByPlaceholder("Enter code").fill(joinCode);
+      await joinerPage.getByRole("button", { name: "Join" }).click();
+      await expect(joinerPage).toHaveURL(new RegExp(`/game/${joinCode}$`), { timeout: 10_000 });
+      await expect(joinerPage.getByText("Game Lobby")).toBeVisible();
+
+      await page.getByRole("button", { name: /leave/i }).click();
+
+      // The remaining player sees an explicit notice, not a stale lobby —
+      // this is exactly the case #451 was filed over: without it, this
+      // client sits on a room that no longer exists, indefinitely.
+      await expect(joinerPage.getByText("Room Closed")).toBeVisible({ timeout: 10_000 });
+      await joinerPage.getByRole("button", { name: "Back to Play" }).click();
+      await expect(joinerPage).toHaveURL(/\/play$/, { timeout: 10_000 });
+    } finally {
+      await joinerContext.close();
+      await cleanupGame(joinCode);
+    }
+  });
+
+  // #454 — the host DISCONNECTING (real page close, past the #446 grace
+  // window) mid-game, not the explicit Leave button. QA's repro: the
+  // joiner's own socket had, moments earlier, been left open and orphaned
+  // by /play/join's usePlayAction hook (its job — send join_game, get
+  // joined_game back — was done, but nothing disconnected it before
+  // navigating to /game/:joinCode). That leaked socket could later
+  // reconnect and, since connection-manager's registration was
+  // last-write-wins, silently steal broadcast routing away from the
+  // GameClient the joiner is actually looking at — so room_closed reached
+  // an invisible orphaned connection instead of the rendered page, which
+  // sat stuck on stale setup-phase content indefinitely. Fixed by (a)
+  // usePlayAction disconnecting the instant its job is done and (b)
+  // connection-manager evicting any stale registration a new one supersedes,
+  // so this can't happen via any other leak path either. This test would
+  // have caught the misroute: the lobby-only tests above never reach a
+  // phase where a stray join-flow socket has had a chance to matter yet.
+  test("the host disconnecting mid-game (not leave_game) still closes the room for the remaining player", async ({
+    page,
+    browser,
+  }) => {
+    await signInAsNewPlayer(page, "Host");
+    await page.getByRole("button", { name: "Play" }).click();
+    await page.getByRole("link", { name: "Host New Game" }).click();
+    await page.getByText("Wire Game").click();
+    await page.getByRole("button", { name: "2" }).click();
+    await page.getByRole("button", { name: "Create Room" }).click();
+    await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
+    const joinCode = joinCodeFromUrl(page);
+
+    const joinerContext = await browser.newContext();
+    const joinerPage = await joinerContext.newPage();
+
+    try {
+      await signInAsNewPlayer(joinerPage, "Joiner");
+      await joinerPage.getByRole("button", { name: "Play" }).click();
+      await joinerPage.getByRole("link", { name: "Join Game" }).click();
+      await joinerPage.getByPlaceholder("Enter code").fill(joinCode);
+      await joinerPage.getByRole("button", { name: "Join" }).click();
+      await expect(joinerPage).toHaveURL(new RegExp(`/game/${joinCode}$`), { timeout: 10_000 });
+
+      await page.getByRole("button", { name: "Ready" }).click();
+      await joinerPage.getByRole("button", { name: "Ready" }).click();
+      await page.getByRole("button", { name: /Start Mission/ }).click();
+      await expect(joinerPage.getByRole("heading", { name: /Place Your Opening/i })).toBeVisible({ timeout: 10_000 });
+
+      // A real disconnect, not leave_game — closing the context drops the
+      // socket without ever sending a deliberate leave, which is what arms
+      // the #446 grace-window path rather than an immediate leave.
+      await page.close();
+
+      // DISCONNECT_GRACE_MS (message-handler.ts) is 20s; wait comfortably
+      // past it for the server to actually close the room and broadcast.
+      await expect(joinerPage.getByText("Room Closed")).toBeVisible({ timeout: 30_000 });
+    } finally {
+      await joinerContext.close();
+      await cleanupGame(joinCode);
+    }
+  });
+});
+
 test.describe("join path: error states", () => {
   test("joining a well-formed but nonexistent code shows an error instead of hanging", async ({
     page,

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Player } from "@tabletop/shared";
 import { resolveLobbyConfigSlot } from "./lobbyConfig/registry";
 import type { LobbyStartArg } from "./lobbyConfig/types";
+import { BackAffordance } from "./BackAffordance";
 
 interface LobbyProps {
   joinCode: string;
@@ -12,6 +13,12 @@ interface LobbyProps {
   captainId: string | null;
   onReady: () => void;
   onStartGame: (startArg: LobbyStartArg) => void;
+  /**
+   * #451/#430 — leaving the lobby frees a seat, so this sends `leave_game`
+   * (not a plain route change) before GameClient navigates away. The only
+   * pre-game view #430's audit found with no exit at all.
+   */
+  onLeave: () => void;
   // #179: {1..highestUnlocked} are pickable for the captain.
   highestUnlocked: number;
   /**
@@ -37,6 +44,7 @@ export function Lobby({
   captainId,
   onReady,
   onStartGame,
+  onLeave,
   highestUnlocked,
   gameType = null,
   maxPlayers: roomMaxPlayers = null,
@@ -82,6 +90,10 @@ export function Lobby({
 
   return (
     <div className="flex flex-col items-center gap-8 p-8">
+      <div className="w-full max-w-sm self-start">
+        <BackAffordance label="← Leave" onClick={onLeave} />
+      </div>
+
       <div className="text-center">
         <h2 className="text-2xl font-bold text-ink">
           Game Lobby
