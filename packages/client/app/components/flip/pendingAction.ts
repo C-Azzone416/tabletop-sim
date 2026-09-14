@@ -106,7 +106,17 @@ export function describeLastEvent(
     case 'number-saved':
       return `${name}'s Second Chance saved the draw — the Flip 3 continues.`;
     case 'flip3-drawn':
-      return 'A nested Flip 3 was drawn — it resolves fully, then the outer flip continues.';
+      // #401 — this effect fires for both a genuinely nested draw (context
+      // 'flip3', a Flip 3 drawn mid-resolution of another Flip 3) and the
+      // outer, turn-opening draw (context 'deal'/'hit', a Flip 3 drawn as a
+      // player's own dealt/hit card, with nothing outer to return to yet).
+      // The switch used to ignore context entirely, so an outer draw got
+      // the nested copy — a player learning the rules from the banner
+      // would learn them wrong, which #363's "legible to a watching
+      // player" requirement makes a correctness bug, not cosmetic.
+      return last.context === 'flip3'
+        ? 'A nested Flip 3 was drawn — it resolves fully, then the outer flip continues.'
+        : 'A Flip 3 was drawn — resolving it now.';
     case 'second-chance-gained':
       return `${name} gained a Second Chance.`;
     case 'second-chance-discarded':
