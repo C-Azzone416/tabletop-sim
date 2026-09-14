@@ -23,6 +23,11 @@ test.describe("host path: launch -> /play -> Host -> Wire Game -> lobby -> start
 
     await page.getByText("Wire Game").click();
 
+    // #437: picking a game moves to a count step on the same screen before
+    // create_game is sent — pick a count, then confirm.
+    await page.getByRole("button", { name: "4" }).click();
+    await page.getByRole("button", { name: "Create Room" }).click();
+
     // create_game round-trips over the WebSocket -> game_created -> push.
     await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
     const joinCode = joinCodeFromUrl(page);
@@ -61,6 +66,8 @@ test.describe("join path: a second browser context joins by code into the same l
     await page.getByRole("button", { name: "Play" }).click();
     await page.getByRole("link", { name: "Host New Game" }).click();
     await page.getByText("Wire Game").click();
+    await page.getByRole("button", { name: "4" }).click();
+    await page.getByRole("button", { name: "Create Room" }).click();
     await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
     const joinCode = joinCodeFromUrl(page);
 
@@ -91,6 +98,74 @@ test.describe("join path: a second browser context joins by code into the same l
       await expect(page.getByText(joinerName)).toBeVisible({ timeout: 10_000 });
     } finally {
       await joinerContext.close();
+      await cleanupGame(joinCode);
+    }
+  });
+});
+
+test.describe("host-chosen player count is enforced on join (#437)", () => {
+  test("a host who picks 3 gets a room that refuses a 4th real joiner, even though Wire Game's registry max is 4", async ({
+    page,
+    browser,
+  }) => {
+    await signInAsNewPlayer(page, "Host");
+
+    await page.getByRole("button", { name: "Play" }).click();
+    await page.getByRole("link", { name: "Host New Game" }).click();
+    await page.getByText("Wire Game").click();
+    await page.getByRole("button", { name: "3" }).click();
+    await page.getByRole("button", { name: "Create Room" }).click();
+    await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
+    const joinCode = joinCodeFromUrl(page);
+
+    const secondContext = await browser.newContext();
+    const thirdContext = await browser.newContext();
+    const secondPage = await secondContext.newPage();
+    const thirdPage = await thirdContext.newPage();
+
+    try {
+      await expect(page.getByText("Players (1/3)")).toBeVisible();
+
+      // Fills the room to the host's chosen 3 (registry max for Wire Game is 4).
+      await signInAsNewPlayer(secondPage, "Second");
+      await secondPage.getByRole("button", { name: "Play" }).click();
+      await secondPage.getByRole("link", { name: "Join Game" }).click();
+      await secondPage.getByPlaceholder("Enter code").fill(joinCode);
+      await secondPage.getByRole("button", { name: "Join" }).click();
+      await expect(secondPage).toHaveURL(new RegExp(`/game/${joinCode}$`), {
+        timeout: 10_000,
+      });
+      await expect(page.getByText("Players (2/3)")).toBeVisible({ timeout: 10_000 });
+
+      // This is the case #437 exists to close: a registry ceiling of 4 must
+      // not open a 4th seat once the room's persisted choice (3) is full.
+      await signInAsNewPlayer(thirdPage, "Third");
+      await thirdPage.getByRole("button", { name: "Play" }).click();
+      await thirdPage.getByRole("link", { name: "Join Game" }).click();
+      await thirdPage.getByPlaceholder("Enter code").fill(joinCode);
+      await thirdPage.getByRole("button", { name: "Join" }).click();
+      await expect(thirdPage).toHaveURL(new RegExp(`/game/${joinCode}$`), {
+        timeout: 10_000,
+      });
+      await expect(page.getByText("Players (3/3)")).toBeVisible({ timeout: 10_000 });
+
+      const fourthContext = await browser.newContext();
+      const fourthPage = await fourthContext.newPage();
+      try {
+        await signInAsNewPlayer(fourthPage, "Fourth");
+        await fourthPage.getByRole("button", { name: "Play" }).click();
+        await fourthPage.getByRole("link", { name: "Join Game" }).click();
+        await fourthPage.getByPlaceholder("Enter code").fill(joinCode);
+        await fourthPage.getByRole("button", { name: "Join" }).click();
+
+        await expect(fourthPage.getByText("Game is full")).toBeVisible({ timeout: 10_000 });
+        await expect(fourthPage).toHaveURL(/\/play\/join$/);
+      } finally {
+        await fourthContext.close();
+      }
+    } finally {
+      await secondContext.close();
+      await thirdContext.close();
       await cleanupGame(joinCode);
     }
   });
