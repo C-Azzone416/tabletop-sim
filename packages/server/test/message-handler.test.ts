@@ -968,7 +968,7 @@ describe("message-handler", () => {
       // The reset-to-waiting game_state still follows — remaining clients'
       // Lobby view (once #454 lands) comes from this broadcast, same path
       // as any other game_state push, not a separate mechanism.
-      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", resetGame, remainingPlayers);
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", resetGame);
     });
   });
 
@@ -1072,7 +1072,7 @@ describe("message-handler", () => {
         playerName: "Bob",
         gameEnded: true,
       });
-      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", resetGame, remainingPlayers);
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", resetGame);
     });
 
     it("never throws even if the engine call fails once the window elapses — the socket is already closing", async () => {
