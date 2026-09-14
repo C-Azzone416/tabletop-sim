@@ -79,4 +79,35 @@ describe("game registry", () => {
       GAME_REGISTRY[0].available = true;
     }).toThrow(TypeError);
   });
+
+  // #331 — Object.freeze is shallow: it locks an object's own property
+  // SLOTS (no add/remove/reassign), but a value that is itself an
+  // object/array is not frozen by that alone — someone could still mutate
+  // THROUGH it. Every field is a primitive today, so the per-entry freeze
+  // above happens to be a complete deep freeze — but that completeness is
+  // a property of today's flat DATA, not something the code enforces, and
+  // the test above would keep passing even if it stopped being true (it
+  // only checks `Object.isFrozen(game)`, which stays true regardless of
+  // what a nested value's own mutability is).
+  //
+  // This is the enforcement: the moment a future entry gains a nested
+  // field, this fails LOUDLY. Deliberately not a recursive deepFreeze —
+  // this registry is the runtime validation allowlist for a
+  // client-supplied gameType (#313), and #314 already contemplates a
+  // per-game config-panel/starter pointer (#216 too), either of which
+  // would introduce nesting. Someone adding one should be stopped and
+  // made to think about whether it can be attacker-influenced, not have
+  // the tooling quietly absorb it into "frozen" and move on.
+  it("keeps every registry entry field a primitive, so the per-entry freeze stays a genuine deep freeze", () => {
+    for (const game of GAME_REGISTRY) {
+      for (const [key, value] of Object.entries(game)) {
+        expect(
+          value === null || typeof value !== "object",
+          `GAME_REGISTRY["${game.id}"].${key} is an object/array — Object.freeze(entry) does not freeze it. ` +
+            "Either deep-freeze this field explicitly, or confirm it can never be mutated through a reference " +
+            "an attacker controls before adding it to a security allowlist.",
+        ).toBe(true);
+      }
+    }
+  });
 });
