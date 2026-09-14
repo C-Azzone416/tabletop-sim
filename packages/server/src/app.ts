@@ -16,7 +16,7 @@ import * as wiresDb from './db/wires.js';
 import { getMigrationsStatus } from './db/migrations.js';
 import * as engine from './engine/game-engine.js';
 import { handleMessage, handleDisconnect } from './ws/message-handler.js';
-import { setAuthenticatedUser, registerConnection } from './ws/connection-manager.js';
+import { setAuthenticatedUser, registerConnection, cancelPendingLeave } from './ws/connection-manager.js';
 import { authenticateUpgrade, authenticateProfile } from './ws/auth.js';
 import { broadcastGameState } from './ws/state-broadcaster.js';
 
@@ -325,16 +325,18 @@ export async function buildApp() {
       await handleMessage(socket, raw.toString(), app.log);
     });
 
-    // #431 — disconnect is treated as a deliberate leave (host and
-    // non-host alike): handleDisconnect runs the same leaveGame path
-    // handleLeaveGame does, then deregisters the socket. It never throws.
+    // #431/#446 — a disconnect arms a deferred leave rather than performing
+    // one immediately (see handleDisconnect's doc comment): this session's
+    // own reconnects (a reload, a seat switch) must not read as leaving.
+    // The reconnect branch below cancels the timer the instant it
+    // identifies the same player reconnecting.
     socket.on('close', () => {
-      void handleDisconnect(socket, app.log);
+      handleDisconnect(socket, app.log);
     });
 
     socket.on('error', (err: Error) => {
       app.log.error(err, 'WebSocket error');
-      void handleDisconnect(socket, app.log);
+      handleDisconnect(socket, app.log);
     });
 
     try {
@@ -351,6 +353,13 @@ export async function buildApp() {
       try {
         const player = await playersDb.getActivePlayerByProfileId(user.profileId);
         if (player) {
+          // #446 — first thing, before anything else: this player still has
+          // a row, so any disconnect grace timer armed for them was this
+          // exact reconnect, not a departure. Cancelling here (rather than
+          // after registerConnection/broadcast) closes the gap where a
+          // slow-to-cancel timer could still fire mid-reconnect and delete
+          // the room out from under it.
+          cancelPendingLeave(player.id);
           const game = await gamesDb.getGameById(player.gameId);
           if (game) {
             registerConnection(socket, player.id, game.id);
