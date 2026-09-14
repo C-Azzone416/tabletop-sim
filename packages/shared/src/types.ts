@@ -246,10 +246,18 @@ export type ServerMessage =
   // this is purely informational — "give them a moment." Never sent for the
   // #462 dev-seat-switch exemption, since that path never arms the timer
   // in the first place. `player_reconnected` fires if they reconnect before
-  // the window elapses; `player_left` (or `room_closed`, if they were the
-  // captain) covers the window actually elapsing — a client only ever needs
-  // to clear its own local "reconnecting" flag on whichever of the three
-  // arrives, not specifically wait for `player_reconnected`.
+  // the window elapses; `player_left` covers the window actually elapsing
+  // for that player — a client clears its own local "reconnecting" flag on
+  // whichever of those two arrives, not specifically wait for
+  // `player_reconnected`.
+  //
+  // `room_closed` (the captain's own window elapsing, or any other host
+  // departure) is deliberately NOT part of that clearing set — #451
+  // established that once a room closes, the client routes away without
+  // reconciling any other piece of GameState (players/wires/game are all
+  // left stale too, not just this), so there is nothing for a per-player
+  // "reconnecting" flag to stay correct for. See useGameState's
+  // `reconnectingPlayerIds` doc comment.
   | { type: 'player_reconnecting'; playerId: string }
   | { type: 'player_reconnected'; playerId: string }
   | { type: 'error'; message: string };

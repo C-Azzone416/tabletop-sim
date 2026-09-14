@@ -51,12 +51,17 @@ export interface GameState {
   /**
    * #448 — player ids the server has told us are inside #446's disconnect
    * grace window right now (armed by `player_reconnecting`, cleared by
-   * `player_reconnected`). They have NOT left — this is purely "give them
-   * a moment" information, not a correctness signal; nothing about turns,
-   * scoring, or the roster depends on it. GameClient/SeatRail/PlayerRack
-   * decide whether and when to actually SHOW an indicator for an id in
-   * here (see the separate display-delay hook) — this set is the raw,
-   * undelayed truth.
+   * `player_reconnected` or, belt-and-suspenders, `player_left`). They have
+   * NOT left — this is purely "give them a moment" information, not a
+   * correctness signal; nothing about turns, scoring, or the roster depends
+   * on it. GameClient/SeatRail/PlayerRack decide whether and when to
+   * actually SHOW an indicator for an id in here (see the separate
+   * display-delay hook) — this set is the raw, undelayed truth.
+   *
+   * #478 — `room_closed` deliberately does NOT clear this. Once the room
+   * closes the client routes away without reconciling anything else in
+   * GameState either (players/wires/game are all left stale too), so
+   * there's nothing left for a per-player flag to stay correct for.
    */
   reconnectingPlayerIds: readonly string[];
 }
@@ -266,6 +271,9 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
 
     // #451 — the host left or disconnected. Every remaining client, in
     // every phase, routes to /play — see roomClosedReason's doc comment.
+    // #478 — deliberately does not also clear reconnectingPlayerIds (or any
+    // other field): nothing downstream reads any of this state once
+    // roomClosedReason is set, so there's nothing to reconcile.
     case "room_closed":
       return { ...state, roomClosedReason: msg.reason };
 
