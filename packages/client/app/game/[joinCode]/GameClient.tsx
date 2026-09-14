@@ -9,6 +9,7 @@ import { Lobby } from "../../components/Lobby";
 import { SetupPhase } from "../../components/SetupPhase";
 import { GameBoard } from "../../components/GameBoard";
 import { FlipGameRoot } from "../../components/flip/FlipGameRoot";
+import { FlipLeaveConfirm } from "../../components/flip/FlipLeaveConfirm";
 import { GameOverOverlay } from "../../components/GameOverOverlay";
 import { RoomClosedNotice } from "../../components/RoomClosedNotice";
 import { MissionEndedNotice } from "../../components/MissionEndedNotice";
@@ -88,6 +89,18 @@ export function GameClient({
   const [leaveWarningOpen, setLeaveWarningOpen] = useState(false);
   const confirmLeaveActiveGame = () => {
     setLeaveWarningOpen(false);
+    send({ type: "leave_game" });
+    router.push("/play");
+  };
+
+  // #434 — Flip's own exit from the active game, same "leave_game then
+  // navigate immediately" actor-side behavior as the lobby's leave, gated
+  // behind a confirm (heavier for the captain — #431's room-closes rule is
+  // universal — lighter for everyone else, since a non-host leaving Flip
+  // costs nobody else anything: see FlipLeaveConfirm's own doc comment).
+  const [flipLeaveConfirmOpen, setFlipLeaveConfirmOpen] = useState(false);
+  const confirmFlipLeave = () => {
+    setFlipLeaveConfirmOpen(false);
     send({ type: "leave_game" });
     router.push("/play");
   };
@@ -351,9 +364,25 @@ export function GameClient({
   // which must stay completely unaffected (#383 AC: "the wire game is
   // completely unaffected — its rendering path must not regress").
   if (gameStatus === "active" && readRoomGameType(state.game) === "flip") {
+    const isCaptain = state.localPlayer?.id === state.game.captainId;
     return (
       <div className="min-h-screen bg-surface">
         <JoinCodeBadge joinCode={joinCode} />
+        {/*
+          #434 — nothing rendered a way out of an active Flip game before
+          this either. Same fixed top-right placement as Wire's (#432),
+          below DevPanel's top-40 for the same #171 reason.
+        */}
+        <div className="fixed top-4 right-4 z-40 rounded-cab border-2 border-outline bg-surface-raised/90 px-3 py-1.5 text-xs shadow-print-sm backdrop-blur-sm">
+          <BackAffordance label="Leave" onClick={() => setFlipLeaveConfirmOpen(true)} />
+        </div>
+        {flipLeaveConfirmOpen && (
+          <FlipLeaveConfirm
+            isCaptain={isCaptain}
+            onConfirm={confirmFlipLeave}
+            onCancel={() => setFlipLeaveConfirmOpen(false)}
+          />
+        )}
         {state.flip ? (
           <FlipGameRoot
             flip={state.flip}

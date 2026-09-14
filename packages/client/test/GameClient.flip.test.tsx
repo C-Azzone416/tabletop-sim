@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, fireEvent } from "@testing-library/react";
+import { render, screen, act, fireEvent, within } from "@testing-library/react";
 
 import { GameClient } from "../app/game/[joinCode]/GameClient";
 import { makeGame, makePlayer, resetIds } from "./fixtures";
@@ -432,6 +432,124 @@ describe("GameClient — Flip rendering (#383)", () => {
 
       const finalWs = getWs();
       expect(finalWs.url).toContain("profileId=p2");
+    });
+  });
+
+  // #434 — Flip's own exit from the active game, lighter than Wire's
+  // LeaveGameWarning (#432) for a non-host, but still heavier for the
+  // captain since #431's room-closes rule is unconditional.
+  describe("active-game leave confirm (#434)", () => {
+    it("renders a Leave affordance in the active game", () => {
+      render(<GameClient joinCode="ABC123" profileId="p2" playerName="Bob" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage(flipGameStateMessage({ gameOverrides: { captainId: "p1" }, localPlayerId: "p2" }));
+      });
+
+      expect(screen.getByRole("button", { name: "Leave" })).toBeInTheDocument();
+    });
+
+    it("clicking Leave opens the confirm rather than leaving immediately", () => {
+      render(<GameClient joinCode="ABC123" profileId="p2" playerName="Bob" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage(flipGameStateMessage({ gameOverrides: { captainId: "p1" }, localPlayerId: "p2" }));
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+      expect(ws.send).not.toHaveBeenCalled();
+    });
+
+    it("shows the light copy for a non-captain", () => {
+      render(<GameClient joinCode="ABC123" profileId="p2" playerName="Bob" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage(flipGameStateMessage({ gameOverrides: { captainId: "p1" }, localPlayerId: "p2" }));
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+      expect(screen.getByText(/play continues for everyone else/i)).toBeInTheDocument();
+    });
+
+    it("shows the heavier room-closes copy for the captain", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage(flipGameStateMessage({ gameOverrides: { captainId: "p1" }, localPlayerId: "p1" }));
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+      expect(screen.getByText(/close the room for everyone/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Close the Room" })).toBeInTheDocument();
+    });
+
+    it("Cancel closes the confirm without sending leave_game or navigating", () => {
+      render(<GameClient joinCode="ABC123" profileId="p2" playerName="Bob" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage(flipGameStateMessage({ gameOverrides: { captainId: "p1" }, localPlayerId: "p2" }));
+      });
+      // mockPush isn't reset between tests in this file — assert the call
+      // count is unchanged, not "never called".
+      const pushCallsBefore = mockPush.mock.calls.length;
+
+      fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(ws.send).not.toHaveBeenCalled();
+      expect(mockPush.mock.calls.length).toBe(pushCallsBefore);
+    });
+
+    it("confirming sends leave_game and routes to /play", () => {
+      render(<GameClient joinCode="ABC123" profileId="p2" playerName="Bob" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage(flipGameStateMessage({ gameOverrides: { captainId: "p1" }, localPlayerId: "p2" }));
+      });
+
+      // The trigger and the confirm's own button share the label "Leave" —
+      // scope the second click to the dialog to disambiguate.
+      fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+      fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Leave" }));
+
+      expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: "leave_game" }));
+      expect(mockPush).toHaveBeenCalledWith("/play");
+    });
+
+    // #434 — nobody else needs a notice the way Wire's non-host leave needs
+    // MissionEndedNotice (#432): play continues, and the departed seat
+    // showing "Left" in the live seat-rail broadcast IS the notification.
+    it("a remaining player sees the departed seat marked Left in the live table, no separate interstitial", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+      act(() => {
+        ws.simulateMessage(
+          flipGameStateMessage({
+            gameOverrides: { captainId: "p1" },
+            localPlayerId: "p1",
+            flip: {
+              players: [
+                { id: "p1", name: "Alice", status: "active", hand: [], totalScore: 0, uniqueNumberCount: 0, rounds: [] },
+                { id: "p2", name: "Bob", status: "left", hand: [], totalScore: 0, uniqueNumberCount: 0, rounds: [] },
+              ],
+            },
+          }),
+        );
+      });
+
+      expect(screen.getByText("Left")).toBeInTheDocument();
+      expect(screen.queryByText("Mission Ended")).not.toBeInTheDocument();
+      expect(screen.queryByText("Room Closed")).not.toBeInTheDocument();
     });
   });
 });

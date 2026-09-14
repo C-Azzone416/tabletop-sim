@@ -17,6 +17,7 @@ export function toSeats(game: FlipGameState): FlipSeat[] {
     isDealer: order === game.dealerIndex,
     isFrozen: player.status === "frozen",
     isBusted: player.status === "busted",
+    isLeft: player.status === "left",
     cardCount: player.hand.length,
   }));
 }
