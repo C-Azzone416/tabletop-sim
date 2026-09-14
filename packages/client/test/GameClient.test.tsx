@@ -856,6 +856,12 @@ describe("GameClient — full game flow integration", () => {
       act(() => vi.advanceTimersByTime(0));
 
       expect(firstWs.close).toHaveBeenCalled();
+      // #462 — a seat switch must close with DEV_SEAT_SWITCH_CLOSE_CODE
+      // (4700), not a bare close: that's what tells the server's #446
+      // grace-window logic this seat is parked, not leaving. A plain close
+      // here would silently drop a seat left switched-away-from for more
+      // than DISCONNECT_GRACE_MS during a longer manual multi-seat session.
+      expect(firstWs.close).toHaveBeenCalledWith(4700, "dev seat switch");
       expect(MockWebSocket.instances).toHaveLength(2);
       const secondWs = getWs();
       expect(secondWs.url).toContain("profileId=p2");

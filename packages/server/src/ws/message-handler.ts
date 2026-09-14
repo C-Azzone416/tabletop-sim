@@ -1,6 +1,6 @@
 import type { WebSocket } from 'ws';
 import type { ClientMessage, GameId, ServerMessage } from '@tabletop/shared';
-import { isAvailableGameId } from '@tabletop/shared';
+import { DEV_SEAT_SWITCH_CLOSE_CODE, isAvailableGameId } from '@tabletop/shared';
 import * as engine from '../engine/game-engine.js';
 import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
@@ -669,10 +669,37 @@ export const DISCONNECT_GRACE_MS = 20_000;
  * socket is already closing, there is nowhere to send an error — and
  * scheduling can't itself fail the way the awaited leave used to.
  */
-export function handleDisconnect(socket: WebSocket, log?: ActionLogger): void {
+export function handleDisconnect(socket: WebSocket, closeCode?: number, log?: ActionLogger): void {
   const info = connManager.getConnectionInfo(socket);
   connManager.removeConnection(socket);
   if (!info) return;
+
+  // #462 — a DevPanel seat switch closes the OLD seat's socket with this
+  // specific code before immediately opening a new one for a DIFFERENT
+  // seat: the old seat is being parked, not left. Arming the normal grace
+  // timer for it meant any seat left parked (switched away from, not
+  // reconnected) for more than DISCONNECT_GRACE_MS during a longer manual
+  // multi-seat QA session was silently dropped from the room with no
+  // leave_game ever sent and no UI indication — reported as an apparent
+  // data-loss bug in #460 before this was traced back to a real, if
+  // dormant, hazard here.
+  //
+  // Gated on ENABLE_DEV_SEED (the same combined gate every other /dev-only
+  // bypass in this codebase uses) so the exemption can only ever be
+  // produced by dev tooling: DEV_SEAT_SWITCH_CLOSE_CODE is not something a
+  // real player's browser has any reason to ever send, and this check
+  // additionally refuses to honor it outside dev regardless. A genuine
+  // disconnect — tab close, reload, network drop, crash — always closes
+  // with no code or a browser-default one, so it is completely untouched
+  // by this branch and gets the exact same window as before. HARD
+  // CONSTRAINT (desert-dove): production's window must not change, and this
+  // check is what keeps that true regardless of what leaks past the
+  // client-side gate.
+  const isDevSeatSwitch =
+    closeCode === DEV_SEAT_SWITCH_CLOSE_CODE &&
+    process.env.ENABLE_DEV_SEED === 'true' &&
+    process.env.NODE_ENV !== 'production';
+  if (isDevSeatSwitch) return;
 
   connManager.schedulePendingLeave(info.playerId, DISCONNECT_GRACE_MS, async () => {
     await performLeave(info.gameId, info.playerId).catch((err) => {

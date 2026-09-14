@@ -134,6 +134,26 @@ export interface Turn {
 
 // WebSocket message types
 
+/**
+ * #462 — the WS close code the client's DevPanel seat switcher uses when it
+ * intentionally closes a seat's socket to open a different one, as opposed
+ * to a genuine disconnect (tab close, reload, network drop, crash), which
+ * always closes with no code or a browser-default one.
+ *
+ * The server-side #446 disconnect-grace-window logic recognizes this
+ * specific code as "parked, not leaving" and skips arming the timer for it
+ * — gated on ENABLE_DEV_SEED so the exemption can only ever be produced by
+ * dev tooling, never by a real player's browser (which has no reason to
+ * ever send this code). A real disconnect while using DevPanel still uses
+ * no code / a default one and gets the exact same grace window as any other
+ * player — this constant changes nothing about production behavior.
+ *
+ * Chosen from the 3000-4999 application-defined range (RFC 6455 §7.4.2),
+ * clear of both the reserved 1000-1015 range and the server's own existing
+ * 4001 (auth failure) and 1000 ("superseded by a newer connection") uses.
+ */
+export const DEV_SEAT_SWITCH_CLOSE_CODE = 4700;
+
 export type ClientMessage =
   // #437 — maxPlayers is the host's chosen room capacity, required of the
   // caller for the same reason gameType is (#313): no client-side default,

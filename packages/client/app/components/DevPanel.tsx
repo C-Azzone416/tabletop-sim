@@ -114,6 +114,23 @@ export function DevPanel({
               </button>
             ))}
           </div>
+          {/*
+            #462 — a real, if easy-to-miss, hazard: this panel switches
+            seats by closing one WS connection and opening another, and the
+            server can't tell "parked here, coming back" from "actually
+            left" on its own. Switching seats here doesn't drop anyone; a
+            REAL disconnect elsewhere (a closed tab, a crashed browser,
+            not this panel) still removes a player after 20s with no
+            reconnect, same as any live game — this note exists so that
+            doesn't read as a bug the next time a longer multi-seat session
+            leaves a seat parked for a while.
+          */}
+          <p className="text-[10px] leading-snug text-zinc-400 dark:text-zinc-500">
+            Switching seats here won&apos;t drop anyone, however long you leave a
+            seat parked. A REAL disconnect (closed tab, crash, dropped
+            network) still removes a player after 20s with no reconnect —
+            same as in a live game.
+          </p>
         </div>
       )}
 
