@@ -95,6 +95,14 @@ function validateMessage(parsed: unknown): ClientMessage | null {
       return { type: 'flip_choose_flip3_target', targetPlayerId: msg.targetPlayerId };
     case 'leave_game':
       return { type: 'leave_game' };
+    case 'update_player_count':
+      // Shape check only — whether the requester is the host, whether the
+      // room is still in the lobby, whether it's locked, and whether the
+      // value is within the game's registry bounds/current occupancy are
+      // all engine.updatePlayerCount's job (#438), the same split #437 uses
+      // for create_game's own maxPlayers.
+      if (typeof msg.maxPlayers !== 'number' || !Number.isInteger(msg.maxPlayers) || msg.maxPlayers < 1) return null;
+      return { type: 'update_player_count', maxPlayers: msg.maxPlayers };
     default:
       return null;
   }
@@ -185,6 +193,9 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       case 'leave_game':
         await handleLeaveGame(socket);
         break;
+      case 'update_player_count':
+        await handleUpdatePlayerCount(socket, msg.maxPlayers);
+        break;
       default:
         sendError(socket, 'Unknown message type');
     }
@@ -228,6 +239,13 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Must hold a matching wire to propose this guess', 'Must hold a yellow wire to propose this guess',
       'You must hold all remaining uncut wires of that number to solo cut it',
       'Game is not in a won or lost state', 'Only the captain can start the next mission',
+      // #438 — host-only lobby resize. Every rejection here is something the
+      // host caused and can act on (pick a valid host, wait for the lobby,
+      // wait for someone to unready, pick a value in bounds, or ask someone
+      // to leave), so it's safe to name.
+      'Only the host can change the player count', 'Player count can only change in the lobby',
+      'Player count is locked once everyone is ready',
+      'Cannot lower below the players already in the lobby',
     ];
     sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
   } finally {
@@ -539,6 +557,20 @@ async function handlePlayerReady(socket: WebSocket): Promise<void> {
 
   const response: ServerMessage = { type: 'players_updated', players };
   connManager.broadcastToGame(info.gameId, response);
+}
+
+// #438 — no bespoke ack. Every other lobby mutation (join, ready) sends
+// game_state/players_updated on its own broadcast path; this reuses the
+// same one, which is what makes "every player in the lobby sees the
+// change without a refresh" true for free rather than something built
+// twice.
+async function handleUpdatePlayerCount(socket: WebSocket, maxPlayers: number): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+
+  const { game } = await withTimeout(engine.updatePlayerCount(info.gameId, info.playerId, maxPlayers), 'updatePlayerCount');
+
+  await broadcastGameState(info.gameId, game);
 }
 
 // #431 — shared by handleLeaveGame and handleDisconnect below. Deregistering

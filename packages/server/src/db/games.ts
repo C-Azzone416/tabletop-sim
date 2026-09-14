@@ -65,6 +65,13 @@ export async function updateMission(id: string, mission: number): Promise<Game> 
   return mapGame(rows[0]);
 }
 
+export async function updateMaxPlayers(id: string, maxPlayers: number): Promise<Game> {
+  const rows = await sql`
+    UPDATE games SET max_players = ${maxPlayers} WHERE id = ${id} RETURNING *
+  `;
+  return mapGame(rows[0]);
+}
+
 export async function updateDetonator(id: string, position: number): Promise<Game> {
   const rows = await sql`
     UPDATE games SET detonator_position = ${position} WHERE id = ${id} RETURNING *

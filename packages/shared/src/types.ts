@@ -169,7 +169,13 @@ export type ClientMessage =
   | { type: 'flip_choose_flip3_target'; targetPlayerId: string }
   // #431 — no payload: the actor comes from the socket's authenticated
   // binding, same reasoning as the Flip actions above.
-  | { type: 'leave_game' };
+  | { type: 'leave_game' }
+  // #438 — host-only, lobby-only room resize. No acting-player field, same
+  // reasoning as leave_game: the host is derived server-side from
+  // game.captainId against the socket's bound player id, never claimed by
+  // the client. maxPlayers is the requested new value, validated against
+  // the game's registry bounds and current occupancy in engine.updatePlayerCount.
+  | { type: 'update_player_count'; maxPlayers: number };
 
 export type ServerMessage =
   | { type: 'game_created'; game: Game; player: Player }

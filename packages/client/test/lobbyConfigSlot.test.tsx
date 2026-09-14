@@ -121,6 +121,7 @@ describe("lobby config slot (#319)", () => {
       onReady: vi.fn(),
       onStartGame: vi.fn(),
       onLeave: vi.fn(),
+      onChangePlayerCount: vi.fn(),
       highestUnlocked: 8,
       ...overrides,
     });

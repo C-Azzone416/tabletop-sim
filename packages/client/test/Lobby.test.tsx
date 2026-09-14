@@ -18,6 +18,7 @@ describe("Lobby", () => {
       onReady: vi.fn(),
       onStartGame: vi.fn(),
       onLeave: vi.fn(),
+      onChangePlayerCount: vi.fn(),
       highestUnlocked: 8,
     };
   };
@@ -173,6 +174,81 @@ describe("Lobby", () => {
       render(<Lobby {...props} />);
       expect(screen.getByText("Players (5/4)")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Start Mission/ })).toBeDisabled();
+    });
+  });
+
+  // #438 — the host resizing the room's player count from the lobby, before
+  // everyone is ready. Server-enforced independently of this; these tests
+  // cover the UI's own gating (captain-only visibility, lock messaging,
+  // fixed-size games offering no control), not the engine gates themselves
+  // (game-engine.test.ts covers those).
+  describe("player count control (#438)", () => {
+    it("renders for the captain, defaulting to gameType-less (Wire Game) bounds", () => {
+      render(<Lobby {...defaultProps()} />);
+      expect(screen.getByText("Player Count")).toBeInTheDocument();
+      // Wire Game: 2-4.
+      expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(
+        expect.arrayContaining(["2", "3", "4"]),
+      );
+    });
+
+    it("does not render for a non-captain", () => {
+      const props = { ...defaultProps(), localPlayerId: "p2" };
+      render(<Lobby {...props} />);
+      expect(screen.queryByText("Player Count")).not.toBeInTheDocument();
+    });
+
+    it("calls onChangePlayerCount with the picked value", async () => {
+      const user = userEvent.setup();
+      const props = defaultProps();
+      render(<Lobby {...props} />);
+      await user.click(screen.getByRole("button", { name: "3" }));
+      expect(props.onChangePlayerCount).toHaveBeenCalledWith(3);
+    });
+
+    it("locks the control once everyone is ready, with a reason shown", () => {
+      const props = { ...defaultProps(), ...allReady() };
+      render(<Lobby {...props} />);
+      for (const button of screen.getAllByRole("button", { name: /^[0-9]+$/ })) {
+        expect(button).toBeDisabled();
+      }
+      expect(screen.getByText("Locked — everyone is ready.")).toBeInTheDocument();
+    });
+
+    it("stays editable while any seated player, including the captain, is not ready", () => {
+      render(<Lobby {...defaultProps()} />);
+      const threeButton = screen.getByRole("button", { name: "3" });
+      expect(threeButton).not.toBeDisabled();
+    });
+
+    it("disables options below current occupancy and explains why, without locking the whole control", async () => {
+      const user = userEvent.setup();
+      const players = Array.from({ length: 3 }, (_, i) =>
+        makePlayer({ id: `p${i + 1}`, name: `Player${i + 1}`, ready: false }),
+      );
+      const props = { ...defaultProps(), players, localPlayerId: "p1", captainId: "p1" };
+      render(<Lobby {...props} />);
+
+      expect(screen.getByRole("button", { name: "2" })).toBeDisabled();
+      expect(screen.getByText(/Can't go below 3/)).toBeInTheDocument();
+
+      const fourButton = screen.getByRole("button", { name: "4" });
+      expect(fourButton).not.toBeDisabled();
+      await user.click(fourButton);
+      expect(props.onChangePlayerCount).toHaveBeenCalledWith(4);
+    });
+
+    it("shows no occupancy caption when occupancy is already at the registry floor", () => {
+      render(<Lobby {...defaultProps()} />); // 2 players, Wire Game floor is 2
+      expect(screen.queryByText(/Can't go below/)).not.toBeInTheDocument();
+    });
+
+    // Spades is fixed at 4-4 — PlayerCountPicker's own statement branch
+    // renders no control at all, matching "offers no control" from the issue.
+    it("renders nothing for a fixed-size game", () => {
+      const props = { ...defaultProps(), gameType: "spades" };
+      render(<Lobby {...props} />);
+      expect(screen.queryByText("Player Count")).not.toBeInTheDocument();
     });
   });
 

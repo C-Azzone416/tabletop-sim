@@ -56,4 +56,53 @@ describe("PlayerCountPicker", () => {
       expect(button).toBeDisabled();
     }
   });
+
+  // #438 — the lobby resize control refuses to lower below current
+  // occupancy (Caroline's ruling: refuse, don't eject). Only the options
+  // below minSelectable are individually disabled; the rest of the picker
+  // stays interactive.
+  describe("minSelectable (#438)", () => {
+    it("disables only counts below minSelectable, leaving the rest interactive", () => {
+      const game = makeGame({ minPlayers: 2, maxPlayers: 5 });
+      const onChange = vi.fn();
+      render(<PlayerCountPicker game={game} value={4} onChange={onChange} minSelectable={4} />);
+
+      expect(screen.getByRole("button", { name: "2" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "3" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "4" })).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: "5" })).not.toBeDisabled();
+
+      fireEvent.click(screen.getByRole("button", { name: "5" }));
+      expect(onChange).toHaveBeenCalledWith(5);
+    });
+
+    it("does not disable anything when minSelectable is at or below the registry floor", () => {
+      const game = makeGame({ minPlayers: 2, maxPlayers: 4 });
+      render(<PlayerCountPicker game={game} value={2} onChange={vi.fn()} minSelectable={2} />);
+
+      for (const button of screen.getAllByRole("button")) {
+        expect(button).not.toBeDisabled();
+      }
+    });
+
+    it("names the reason on the disabled option's title attribute", () => {
+      const game = makeGame({ minPlayers: 2, maxPlayers: 5 });
+      render(<PlayerCountPicker game={game} value={4} onChange={vi.fn()} minSelectable={4} />);
+
+      expect(screen.getByRole("button", { name: "2" })).toHaveAttribute(
+        "title",
+        "4 players are already in the lobby",
+      );
+      expect(screen.getByRole("button", { name: "4" })).not.toHaveAttribute("title");
+    });
+
+    it("disabled (locked) and minSelectable compose — everything stays disabled", () => {
+      const game = makeGame({ minPlayers: 2, maxPlayers: 5 });
+      render(<PlayerCountPicker game={game} value={4} onChange={vi.fn()} disabled minSelectable={4} />);
+
+      for (const button of screen.getAllByRole("button")) {
+        expect(button).toBeDisabled();
+      }
+    });
+  });
 });

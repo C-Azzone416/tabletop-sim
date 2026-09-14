@@ -125,6 +125,75 @@ export async function joinGame(joinCode: string, playerName: string, profileId?:
 }
 
 /**
+ * #438 — the host resizing the room's player count from the lobby, before
+ * everyone is ready. Every gate here is a Caroline ruling or an explicit
+ * scope point from the issue, not a default:
+ *
+ *  - Host only (`requestingPlayerId` must be the room's captain). A
+ *    non-host attempting this must be refused server-side, not merely
+ *    hidden client-side — this is the actual enforcement, the lobby UI
+ *    hiding the control for non-captains is just the friendly version.
+ *  - Lobby only (`game.status === 'waiting'`) — the issue's own second
+ *    question, resolved "assumed no" and confirmed by "before everyone
+ *    says they are ready" itself. A room past the lobby is never
+ *    'waiting', so this same check covers both "not started yet" and
+ *    (for Flip, whose occupancy can fall mid-game per #434) "already
+ *    started" without a separate branch.
+ *  - Locks once everyone currently seated is ready — readiness needs an
+ *    actual consequence, and this is it.
+ *  - Bounded by the game's registry entry, exactly like createGame's own
+ *    maxPlayers validation (#437) — a fixed-size game (minPlayers ===
+ *    maxPlayers, e.g. Spades) has no valid value to move to, so any call
+ *    for one is refused.
+ *  - Caroline's ruling on lowering below current occupancy: refused, not
+ *    resolved by ejecting anyone. Silently removing a seated player is a
+ *    worse surprise than an unavailable control, and the host can ask
+ *    them to leave. Overridable by Caroline later; this is the spec until
+ *    then.
+ *
+ * No bespoke ack: the caller broadcasts the updated `game` the same way
+ * every other mutation does, and "every player in the lobby sees the
+ * change without a refresh" falls out of that broadcast path for free —
+ * the same one #445 hardened to query the roster fresh rather than trust
+ * a caller-held snapshot.
+ */
+export async function updatePlayerCount(gameId: string, requestingPlayerId: string, maxPlayers: number): Promise<{ game: Game }> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.captainId !== requestingPlayerId) throw new Error('Only the host can change the player count');
+  if (game.status !== 'waiting') throw new Error('Player count can only change in the lobby');
+
+  const players = await playersDb.getPlayersByGameId(gameId);
+  if (players.length > 0 && players.every(p => p.ready)) {
+    throw new Error('Player count is locked once everyone is ready');
+  }
+
+  const entry = getGameById(game.gameType);
+  if (!entry) throw new Error('Unknown game type');
+  // A fixed-size game (Spades: 4-4) has no other value to move to — refuse
+  // outright rather than accepting a no-op "change" to the value it's
+  // already at, matching the issue's "offers no control at all".
+  if (
+    entry.minPlayers === entry.maxPlayers ||
+    !Number.isInteger(maxPlayers) ||
+    maxPlayers < entry.minPlayers ||
+    maxPlayers > entry.maxPlayers
+  ) {
+    throw new Error('Invalid player count');
+  }
+  // Static message, not interpolated with the count: message-handler's
+  // safeMessages allowlist matches error text exactly, and the client
+  // already renders "Players (X/Y)" itself, so the count doesn't need to
+  // ride in the error string for the UI to explain why.
+  if (maxPlayers < players.length) {
+    throw new Error('Cannot lower below the players already in the lobby');
+  }
+
+  const updatedGame = await gamesDb.updateMaxPlayers(gameId, maxPlayers);
+  return { game: updatedGame };
+}
+
+/**
  * #402 — starting a Flip room from the real lobby.
  *
  * `startGame` below is wire-game shaped end to end: it deals wire tiles,

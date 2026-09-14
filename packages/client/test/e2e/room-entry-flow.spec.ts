@@ -341,6 +341,134 @@ test.describe("leaving a room (#451, #430)", () => {
   });
 });
 
+test.describe("host resizing the room's player count from the lobby (#438)", () => {
+  test("the host lowers the count, the joiner sees it live, and it locks once everyone is ready", async ({
+    page,
+    browser,
+  }) => {
+    await signInAsNewPlayer(page, "Host438");
+    await page.getByRole("button", { name: "Play" }).click();
+    await page.getByRole("link", { name: "Host New Game" }).click();
+    await page.getByText("Wire Game").click();
+    await page.getByRole("button", { name: "4" }).click();
+    await page.getByRole("button", { name: "Create Room" }).click();
+    await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
+    const joinCode = joinCodeFromUrl(page);
+
+    const joinerContext = await browser.newContext();
+    const joinerPage = await joinerContext.newPage();
+
+    try {
+      await signInAsNewPlayer(joinerPage, "Joiner438");
+      await joinerPage.getByRole("button", { name: "Play" }).click();
+      await joinerPage.getByRole("link", { name: "Join Game" }).click();
+      await joinerPage.getByPlaceholder("Enter code").fill(joinCode);
+      await joinerPage.getByRole("button", { name: "Join" }).click();
+      await expect(joinerPage).toHaveURL(new RegExp(`/game/${joinCode}$`), { timeout: 10_000 });
+
+      // Only the host sees the control at all.
+      await expect(page.getByText("Player Count")).toBeVisible();
+      await expect(joinerPage.getByText("Player Count")).not.toBeVisible();
+
+      // Two seated, room capped at 4: lowering below 2 has nothing to
+      // refuse in Wire Game's own 2-4 range, so pick a real change — 4 -> 3.
+      await page.getByRole("button", { name: "3", exact: true }).click();
+
+      // The joiner's OWN page reflects it without a reload — the point of
+      // building this on #445's hardened broadcast path.
+      await expect(joinerPage.getByText("Players (2/3)")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText("Players (2/3)")).toBeVisible();
+
+      // Locks once everyone is ready — readiness gets an actual consequence.
+      await page.getByRole("button", { name: "Ready" }).click();
+      await joinerPage.getByRole("button", { name: "Ready" }).click();
+      await expect(page.getByText("Locked — everyone is ready.")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("button", { name: "4", exact: true })).toBeDisabled();
+    } finally {
+      await joinerContext.close();
+      await cleanupGame(joinCode);
+    }
+  });
+
+  test("refuses to lower below current occupancy, with the reason shown, and enforces host-only server-side", async ({
+    page,
+    browser,
+  }) => {
+    await signInAsNewPlayer(page, "Host438b");
+    await page.getByRole("button", { name: "Play" }).click();
+    await page.getByRole("link", { name: "Host New Game" }).click();
+    await page.getByText("Wire Game").click();
+    await page.getByRole("button", { name: "4" }).click();
+    await page.getByRole("button", { name: "Create Room" }).click();
+    await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
+    const joinCode = joinCodeFromUrl(page);
+
+    const secondContext = await browser.newContext();
+    const thirdContext = await browser.newContext();
+    const secondPage = await secondContext.newPage();
+    const thirdPage = await thirdContext.newPage();
+
+    try {
+      for (const [joinerPage, name] of [
+        [secondPage, "Second438"],
+        [thirdPage, "Third438"],
+      ] as const) {
+        await signInAsNewPlayer(joinerPage, name);
+        await joinerPage.getByRole("button", { name: "Play" }).click();
+        await joinerPage.getByRole("link", { name: "Join Game" }).click();
+        await joinerPage.getByPlaceholder("Enter code").fill(joinCode);
+        await joinerPage.getByRole("button", { name: "Join" }).click();
+        await expect(joinerPage).toHaveURL(new RegExp(`/game/${joinCode}$`), { timeout: 10_000 });
+      }
+      await expect(page.getByText("Players (3/4)")).toBeVisible({ timeout: 10_000 });
+
+      // Caroline's ruling: refuse, don't eject. "2" is below the 3 already
+      // seated, so it's disabled with the reason shown, not just missing.
+      await expect(page.getByRole("button", { name: "2", exact: true })).toBeDisabled();
+      await expect(page.getByText(/Can't go below 3/)).toBeVisible();
+      // The room is still at its original 4 — the refused option never took.
+      await expect(page.getByText("Players (3/4)")).toBeVisible();
+
+      // Host-only is the actual gate, enforced server-side, not merely
+      // hidden client-side — a non-host has no picker in the DOM at all
+      // (asserted implicitly: `secondPage` never renders "Player Count"),
+      // so this drives the attempt at the network layer instead, using the
+      // page's own browser WebSocket API directly (Playwright's own
+      // WebSocket handle is read-only for observing frames, not for
+      // sending them) — the only way to prove the server itself refuses a
+      // non-host's attempt rather than the UI simply never offering one.
+      const apiURL = process.env.E2E_API_URL ?? "http://localhost:3001";
+      const errorMessage = await secondPage.evaluate(async (apiURL) => {
+        const res = await fetch("/api/auth/session");
+        const session = await res.json();
+        const url = new URL(`${apiURL}/ws`);
+        url.searchParams.set("profileId", session.user.id);
+        url.searchParams.set("name", session.user.name);
+        return new Promise<string>((resolve, reject) => {
+          const ws = new WebSocket(url.toString().replace(/^http/, "ws"));
+          const timeout = setTimeout(() => reject(new Error("no error frame within 5s")), 5000);
+          ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === "error") {
+              clearTimeout(timeout);
+              ws.close();
+              resolve(data.message);
+            }
+          };
+          ws.onopen = () => {
+            ws.send(JSON.stringify({ type: "update_player_count", maxPlayers: 4 }));
+          };
+        });
+      }, apiURL);
+      expect(errorMessage).toBe("Only the host can change the player count");
+    } finally {
+      await secondContext.close();
+      await thirdContext.close();
+      await cleanupGame(joinCode);
+    }
+  });
+});
+
 test.describe("join path: error states", () => {
   test("joining a well-formed but nonexistent code shows an error instead of hanging", async ({
     page,
