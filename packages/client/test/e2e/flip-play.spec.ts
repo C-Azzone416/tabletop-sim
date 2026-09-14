@@ -348,7 +348,11 @@ test.describe("Flip — fixed-overlay layout (#450)", () => {
     { width: 400, height: 800, label: "400px phone width" },
     { width: 1280, height: 900, label: "1280px desktop" },
   ]) {
-    for (const playerCount of [2, 3, 4, 5] as const) {
+    // #449 raised Flip's registry floor to 3 (2 is no longer a legal
+    // playerCount for /dev/seed's gameType: "flip") — narrowed from the
+    // original 2-5, not silently dropping the 2-player case: it's simply
+    // unreachable for Flip now. Still every count Flip actually seats.
+    for (const playerCount of [3, 4, 5] as const) {
       test(`${playerCount} players at ${viewport.label}: Join Code badge and DevPanel toggle don't cover a seat chip or card`, async ({
         page,
       }) => {
