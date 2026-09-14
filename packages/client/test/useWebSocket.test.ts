@@ -164,6 +164,22 @@ describe("useWebSocket", () => {
     expect(ws.close).toHaveBeenCalled();
   });
 
+  // #462 — disconnect(code, reason) is additive: a plain disconnect() call
+  // (the test above) still closes with no arguments, exactly as before.
+  // This is what lets a caller (GameClient's seat switch) distinguish an
+  // intentional close from a genuine one at the WS layer.
+  it("disconnect(code, reason) passes both through to the socket's close call", () => {
+    const onMessage = vi.fn();
+    const { result } = renderHook(() => useWebSocket(onMessage));
+
+    act(() => result.current.connect());
+    const ws = MockWebSocket.instances[0];
+    act(() => ws.simulateOpen());
+
+    act(() => result.current.disconnect(4700, "dev seat switch"));
+    expect(ws.close).toHaveBeenCalledWith(4700, "dev seat switch");
+  });
+
   it("handles errors by closing the connection", () => {
     const onMessage = vi.fn();
     const { result } = renderHook(() => useWebSocket(onMessage));

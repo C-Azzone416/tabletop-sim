@@ -330,13 +330,13 @@ export async function buildApp() {
     // own reconnects (a reload, a seat switch) must not read as leaving.
     // The reconnect branch below cancels the timer the instant it
     // identifies the same player reconnecting.
-    socket.on('close', () => {
-      handleDisconnect(socket, app.log);
+    socket.on('close', (code: number) => {
+      handleDisconnect(socket, code, app.log);
     });
 
     socket.on('error', (err: Error) => {
       app.log.error(err, 'WebSocket error');
-      handleDisconnect(socket, app.log);
+      handleDisconnect(socket, undefined, app.log);
     });
 
     try {

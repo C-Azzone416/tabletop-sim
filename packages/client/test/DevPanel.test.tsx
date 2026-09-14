@@ -258,4 +258,37 @@ describe("DevPanel", () => {
     await user.click(screen.getByRole("button", { name: "Open dev tools" }));
     expect(screen.queryByText("Seat:")).not.toBeInTheDocument();
   });
+
+  // #462 — the AC requires this documented where a TESTER will see it, the
+  // dev panel itself, not just a code comment: a seat switch here parks a
+  // seat rather than dropping it, but a genuine disconnect elsewhere still
+  // goes through the real 20s grace window unchanged.
+  it("explains the seat-switch/disconnect distinction next to the seat switcher (#462)", async () => {
+    const user = userEvent.setup();
+    render(
+      <DevPanel
+        seatOptions={seats}
+        activeProfileId="p1"
+        onSwitchSeat={vi.fn()}
+        onRevealAllTokens={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Open dev tools" }));
+    expect(screen.getByText(/won't drop anyone/i)).toBeInTheDocument();
+    expect(screen.getByText(/20s with no reconnect/i)).toBeInTheDocument();
+  });
+
+  it("does not render the seat-switch note when seatOptions is empty (nothing to switch between)", async () => {
+    const user = userEvent.setup();
+    render(
+      <DevPanel
+        seatOptions={[]}
+        activeProfileId="p1"
+        onSwitchSeat={vi.fn()}
+        onRevealAllTokens={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Open dev tools" }));
+    expect(screen.queryByText(/won't drop anyone/i)).not.toBeInTheDocument();
+  });
 });

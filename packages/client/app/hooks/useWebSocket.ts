@@ -85,11 +85,15 @@ export function useWebSocket(
     connectRef.current = connect;
   }, [connect]);
 
-  const disconnect = useCallback(() => {
+  // #462 — `code`/`reason` let a caller distinguish an intentional close
+  // (the DevPanel seat switcher passes DEV_SEAT_SWITCH_CLOSE_CODE) from a
+  // genuine disconnect. Plain `disconnect()` with no args behaves exactly
+  // as before — this is additive, not a change to any existing call site.
+  const disconnect = useCallback((code?: number, reason?: string) => {
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     reconnectDelayRef.current = INITIAL_RECONNECT_DELAY;
     messageQueueRef.current = [];
-    wsRef.current?.close();
+    wsRef.current?.close(code, reason);
     wsRef.current = null;
     setStatus("disconnected");
   }, []);

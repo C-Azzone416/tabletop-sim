@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { WebSocket } from "ws";
-import { getGameById } from "@tabletop/shared";
+import { DEV_SEAT_SWITCH_CLOSE_CODE, getGameById } from "@tabletop/shared";
 import { makeGame, makePlayer, makeWire, makeTurn, resetIds } from "./fixtures.js";
 
 // Mock the engine and DB modules
@@ -1078,6 +1078,80 @@ describe("message-handler", () => {
       );
       // Not performed yet — that's the whole point of the window.
       expect(mockEngine.leaveGame).not.toHaveBeenCalled();
+    });
+
+    // #462 — a DevPanel seat switch closes the old seat's socket with
+    // DEV_SEAT_SWITCH_CLOSE_CODE right before opening a new one for a
+    // different seat: the old seat is parked, not leaving. Arming the
+    // normal grace timer for it silently dropped a seat left parked for
+    // more than DISCONNECT_GRACE_MS during a longer manual multi-seat
+    // session, with no leave_game ever sent — the root cause behind an
+    // apparent data-loss report on #460's below-floor Flip path.
+    describe("#462 — a DevPanel-initiated seat switch is exempt from the grace timer, dev-only", () => {
+      const originalEnableDevSeed = process.env.ENABLE_DEV_SEED;
+      const originalNodeEnv = process.env.NODE_ENV;
+
+      afterEach(() => {
+        if (originalEnableDevSeed === undefined) delete process.env.ENABLE_DEV_SEED;
+        else process.env.ENABLE_DEV_SEED = originalEnableDevSeed;
+        process.env.NODE_ENV = originalNodeEnv;
+      });
+
+      it("does not arm a grace timer for the dev-seat-switch close code when ENABLE_DEV_SEED is true", () => {
+        process.env.ENABLE_DEV_SEED = "true";
+        process.env.NODE_ENV = "development";
+        const ws = mockSocket();
+        mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+
+        handleDisconnect(ws, DEV_SEAT_SWITCH_CLOSE_CODE);
+
+        expect(mockConnManager.removeConnection).toHaveBeenCalledWith(ws);
+        expect(mockConnManager.schedulePendingLeave).not.toHaveBeenCalled();
+      });
+
+      it("still arms the grace timer for the dev-seat-switch close code when ENABLE_DEV_SEED is unset — dev tooling gate, not a bare code check", () => {
+        delete process.env.ENABLE_DEV_SEED;
+        const ws = mockSocket();
+        mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+
+        handleDisconnect(ws, DEV_SEAT_SWITCH_CLOSE_CODE);
+
+        expect(mockConnManager.schedulePendingLeave).toHaveBeenCalledWith(
+          "p1",
+          DISCONNECT_GRACE_MS,
+          expect.any(Function),
+        );
+      });
+
+      it("still arms the grace timer for the dev-seat-switch close code when NODE_ENV is production, even with ENABLE_DEV_SEED true — production behavior must not change", () => {
+        process.env.ENABLE_DEV_SEED = "true";
+        process.env.NODE_ENV = "production";
+        const ws = mockSocket();
+        mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+
+        handleDisconnect(ws, DEV_SEAT_SWITCH_CLOSE_CODE);
+
+        expect(mockConnManager.schedulePendingLeave).toHaveBeenCalledWith(
+          "p1",
+          DISCONNECT_GRACE_MS,
+          expect.any(Function),
+        );
+      });
+
+      it("a genuine disconnect (no close code) still arms the grace timer exactly as before, even with ENABLE_DEV_SEED true — a real drop during dev testing keeps its safety net", () => {
+        process.env.ENABLE_DEV_SEED = "true";
+        process.env.NODE_ENV = "development";
+        const ws = mockSocket();
+        mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p1", gameId: "g1", socket: ws });
+
+        handleDisconnect(ws);
+
+        expect(mockConnManager.schedulePendingLeave).toHaveBeenCalledWith(
+          "p1",
+          DISCONNECT_GRACE_MS,
+          expect.any(Function),
+        );
+      });
     });
 
     it("a host's grace window elapsing (no reconnect) produces the identical room_closed outcome as leave_game", async () => {

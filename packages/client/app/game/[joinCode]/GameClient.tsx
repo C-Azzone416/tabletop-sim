@@ -19,7 +19,7 @@ import { highestUnlockedMission } from "../../lib/missionUnlocks";
 import { readRoomGameType } from "../../lib/roomGameType";
 import { apiHeaders } from "../../lib/serverApi";
 import { actingPlayerId } from "../../components/flip/actingSeat";
-import type { ClientMessage } from "@tabletop/shared";
+import { DEV_SEAT_SWITCH_CLOSE_CODE, type ClientMessage } from "@tabletop/shared";
 
 /**
  * Flip's client->server actions (#383/#387). Cast rather than typed through
@@ -89,7 +89,13 @@ export function GameClient({
     // pre-switch identity.
     if (connectedSeatRef.current !== activeSeat.profileId) {
       connectedSeatRef.current = activeSeat.profileId;
-      disconnect();
+      // #462 — a DevPanel seat switch parks the old seat, it doesn't leave
+      // it: closing with this code tells the server's #446 grace-window
+      // logic not to arm a leave timer for it. Without this, a seat left
+      // parked (switched away from, not reconnected) for more than
+      // DISCONNECT_GRACE_MS during a longer manual multi-seat session was
+      // silently dropped from the room with no leave_game ever sent.
+      disconnect(DEV_SEAT_SWITCH_CLOSE_CODE, "dev seat switch");
       connect();
     }
   }, [activeSeat, connect, disconnect]);
