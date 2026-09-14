@@ -1,5 +1,6 @@
 "use client";
 
+import type { GameId } from "@tabletop/shared";
 import { MissionSelector } from "../MissionSelector";
 import { defineLobbyConfigSlot, type LobbyConfigPanelProps } from "./types";
 
@@ -11,13 +12,8 @@ import { defineLobbyConfigSlot, type LobbyConfigPanelProps } from "./types";
  * `Lobby.tsx`. Behaviour, markup and classes are unchanged.
  */
 
-/**
- * Matches the `wire-game` id in the shared game registry (#314/#322). Kept as
- * a local constant because that registry has not merged yet; once it has, this
- * should import `GameId` from `@tabletop/shared` instead of restating the
- * string.
- */
-export const WIRE_GAME_ID = "wire-game";
+/** Matches the `wire-game` id in the shared game registry (#314/#322). */
+export const WIRE_GAME_ID: GameId = "wire-game";
 
 export interface WireGameConfig {
   mission: number;

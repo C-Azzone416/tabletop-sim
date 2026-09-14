@@ -97,36 +97,41 @@ describe("Lobby", () => {
     });
   });
 
+  // #333 — these tests are about Start-button ready/count gating, not
+  // gameType resolution, so they now pass gameType explicitly rather than
+  // relying on the removed null -> Wire Game fallback that used to supply
+  // it incidentally. lobbyConfigSlot.test.tsx covers the resolution
+  // question (including the "not loaded yet" case) on its own.
   describe("Start button (captain only)", () => {
     it("does not render before the captain has readied up themselves", () => {
-      render(<Lobby {...defaultProps()} />);
+      render(<Lobby {...defaultProps()} gameType="wire-game" />);
       expect(screen.queryByRole("button", { name: /Start Mission/ })).not.toBeInTheDocument();
     });
 
     it("renders once the captain is ready, but stays disabled until everyone is ready", () => {
       const captain = makePlayer({ id: "p1", name: "Alice", ready: true });
       const player2 = makePlayer({ id: "p2", name: "Bob", ready: false });
-      const props = { ...defaultProps(), players: [captain, player2] };
+      const props = { ...defaultProps(), players: [captain, player2], gameType: "wire-game" };
       render(<Lobby {...props} />);
       expect(screen.getByRole("button", { name: /Start Mission/ })).toBeDisabled();
     });
 
     it("is enabled once every player is ready", () => {
-      const props = { ...defaultProps(), ...allReady() };
+      const props = { ...defaultProps(), ...allReady(), gameType: "wire-game" };
       render(<Lobby {...props} />);
       expect(screen.getByRole("button", { name: /Start Mission/ })).not.toBeDisabled();
     });
 
     it("calls onStartGame with the selected mission when clicked", async () => {
       const user = userEvent.setup();
-      const props = { ...defaultProps(), ...allReady() };
+      const props = { ...defaultProps(), ...allReady(), gameType: "wire-game" };
       render(<Lobby {...props} />);
       await user.click(screen.getByRole("button", { name: /Start Mission/ }));
       expect(props.onStartGame).toHaveBeenCalledWith(1);
     });
 
     it("never renders for a non-captain, ready or not", () => {
-      const props = { ...defaultProps(), ...allReady(), localPlayerId: "p2" };
+      const props = { ...defaultProps(), ...allReady(), localPlayerId: "p2", gameType: "wire-game" };
       render(<Lobby {...props} />);
       expect(screen.queryByRole("button", { name: /Start Mission/ })).not.toBeInTheDocument();
     });
@@ -157,6 +162,7 @@ describe("Lobby", () => {
         localPlayerId: players[0].id,
         captainId: players[0].id,
         maxPlayers: 5,
+        gameType: "wire-game",
       };
       render(<Lobby {...props} />);
       expect(screen.getByRole("button", { name: /Start Mission/ })).not.toBeDisabled();
@@ -170,6 +176,7 @@ describe("Lobby", () => {
         localPlayerId: players[0].id,
         captainId: players[0].id,
         maxPlayers: 4,
+        gameType: "wire-game",
       };
       render(<Lobby {...props} />);
       expect(screen.getByText("Players (5/4)")).toBeInTheDocument();
