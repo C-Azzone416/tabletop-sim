@@ -403,6 +403,7 @@ export function GameClient({
               sendFlipMessage({ type: "flip_choose_flip3_target", targetPlayerId: targetId })
             }
             onStartRound={() => sendFlipMessage({ type: "flip_start_round" })}
+            reconnectingIds={visibleReconnectingIds}
           />
         ) : (
           <p className="p-6 text-center text-sm text-ink-muted">Loading the table…</p>

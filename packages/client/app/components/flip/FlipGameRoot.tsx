@@ -37,6 +37,8 @@ export interface FlipGameRootProps {
   onChooseFreezeTarget: (targetId: string) => void;
   onChooseFlip3Target: (targetId: string) => void;
   onStartRound: () => void;
+  /** #448 — passed straight through to FlipTable/SeatRail; see SeatRail's own doc comment. */
+  reconnectingIds?: readonly string[];
 }
 
 // FlipTable/PendingActionPicker never read shoe/discard *contents* — only
@@ -87,6 +89,7 @@ export function FlipGameRoot({
   onChooseFreezeTarget,
   onChooseFlip3Target,
   onStartRound,
+  reconnectingIds,
 }: FlipGameRootProps) {
   // #422 — every bust gets an explicit, dismissed notice, not just the ones
   // that happen to fall inside a Freeze/Flip3 pending-action pause. Queued
@@ -177,6 +180,7 @@ export function FlipGameRoot({
         // prompt would hang forever even once turnDeadline exists.
         onChooseFreezeTarget={onChooseFreezeTarget}
         onChooseFlip3Target={onChooseFlip3Target}
+        reconnectingIds={reconnectingIds}
         pendingActionUi={
           <PendingActionPicker
             game={game}
