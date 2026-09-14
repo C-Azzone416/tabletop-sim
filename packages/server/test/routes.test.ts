@@ -852,7 +852,7 @@ describe("routes", () => {
             phase: string;
           };
 
-        it.each([2, 3, 4, 5])("deals the opening round at %i seats", async (playerCount) => {
+        it.each([3, 4, 5])("deals the opening round at %i seats", async (playerCount) => {
           mockFlipSeed();
 
           const res = await seedApp.inject({
@@ -997,7 +997,7 @@ describe("routes", () => {
         });
       });
 
-      it.each([2, 3, 4, 5])("seeds flip at %i players, every seat with a real profile", async (playerCount) => {
+      it.each([3, 4, 5])("seeds flip at %i players, every seat with a real profile", async (playerCount) => {
         mockFlipSeed();
 
         const res = await seedApp.inject({
@@ -1024,14 +1024,15 @@ describe("routes", () => {
         expect(res.json().players).toHaveLength(5);
       });
 
-      it.each([1, 6])("returns 400 for a flip playerCount of %i", async (playerCount) => {
+      // #436 — the floor moved from 2 to 3, so 2 joins 1 and 6 as rejected.
+      it.each([1, 2, 6])("returns 400 for a flip playerCount of %i", async (playerCount) => {
         const res = await seedApp.inject({
           method: "POST", url: "/dev/seed", payload: { gameType: "flip", playerCount },
         });
 
         expect(res.statusCode).toBe(400);
         expect(res.json()).toEqual({
-          error: "playerCount must be an integer between 2 and 5 for flip",
+          error: "playerCount must be an integer between 3 and 5 for flip",
         });
       });
 

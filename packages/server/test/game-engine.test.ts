@@ -156,6 +156,14 @@ describe("game-engine", () => {
         expect(mockGamesDb.createGame).not.toHaveBeenCalled();
       });
 
+      // #436 — Flip's floor moved from 2 to 3. A 2-player Flip room must be
+      // impossible to create directly, not just blocked by the UI's picker
+      // range — this is the actual security gate, not a client convenience.
+      it("a 2-player Flip room, below Flip's raised floor of 3 (#436)", async () => {
+        await expect(engine.createGame("Alice", "flip", 2)).rejects.toThrow("Invalid player count");
+        expect(mockGamesDb.createGame).not.toHaveBeenCalled();
+      });
+
       it("a non-integer", async () => {
         await expect(engine.createGame("Alice", "wire-game", 2.5)).rejects.toThrow("Invalid player count");
         expect(mockGamesDb.createGame).not.toHaveBeenCalled();
