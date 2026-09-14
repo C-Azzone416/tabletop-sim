@@ -78,7 +78,6 @@ describe('describeLastEvent', () => {
 
   it('explains each stop condition by the last logged event', () => {
     const cases: Array<[FlipResolutionEventView['effect'], RegExp]> = [
-      ['number-busted', /busted/i],
       ['freeze-drawn', /freeze.*resolves first/i],
       ['number-flip7', /flip 7/i],
       ['second-chance-gained', /gained a second chance/i],
@@ -89,6 +88,16 @@ describe('describeLastEvent', () => {
       const events: FlipResolutionEventView[] = [{ targetId: 'a', effect, context: 'flip3' }];
       expect(describeLastEvent(events, players)).toMatch(pattern);
     }
+  });
+
+  // #497 — BustNotice now owns bust narration everywhere, including mid-Flip-3
+  // pauses, with more detail (name, actual card) than this text line ever
+  // carried. Returning null here — rather than text PendingActionPicker
+  // would render alongside it — is what stops the same bust being narrated
+  // twice on screen at once.
+  it('returns null for a bust, so PendingActionPicker does not double-narrate what BustNotice already shows', () => {
+    const events: FlipResolutionEventView[] = [{ targetId: 'a', effect: 'number-busted', context: 'flip3' }];
+    expect(describeLastEvent(events, players)).toBeNull();
   });
 
   it('explains a Second Chance save as the deal continuing, not stopping', () => {
