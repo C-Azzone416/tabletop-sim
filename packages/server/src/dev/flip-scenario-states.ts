@@ -173,11 +173,21 @@ const builders: Record<FlipScenarioName, ScenarioBuilder> = {
     const hand = flipCards(['2']);
     const shoe = flipCards(['3', '4', '5']);
     const discard = stackedShoe([], [...hand, ...shoe]);
+    // #436 raised Flip's registry floor to 3, so a seed for this scenario
+    // now seats a 3rd player. This scenario is specifically about the
+    // exact 2-seat alternation that drains the shoe (seatAt(seats, 0) and
+    // 1) — any seat beyond that is frozen out of turn rotation rather than
+    // reworking the alternation itself for a table size the test isn't
+    // actually about.
+    const statuses = Object.fromEntries(
+      seats.slice(2).map((seat) => [seat.id, 'frozen' as const]),
+    );
     return buildFlipGameState({
       players: [...seats],
       hands: { [hero.id]: hand },
       shoe,
       discard,
+      statuses,
       turnPlayerId: hero.id,
     });
   },

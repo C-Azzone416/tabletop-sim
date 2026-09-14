@@ -18,6 +18,18 @@ describe("GameSelectionGrid", () => {
     expect(screen.getByText("2–4 players")).toBeInTheDocument();
   });
 
+  // #436 — Flip's floor moved from 2 to 3; asserted directly against the
+  // registry value (not a literal) so this doesn't go stale the next time
+  // the bound moves, the way the hardcoded server tests did.
+  it("shows Flip's registry range, not a hardcoded one", () => {
+    render(<GameSelectionGrid onSelect={vi.fn()} />);
+    const flip = GAME_REGISTRY.find((game) => game.id === "flip")!;
+    const flipCard = screen.getByText("Flip").closest("button")!;
+    expect(
+      within(flipCard).getByText(`${flip.minPlayers}–${flip.maxPlayers} players`),
+    ).toBeInTheDocument();
+  });
+
   // Scoped to each unavailable game's own card rather than a document-wide
   // text query: there is more than one unavailable game now (#361 added flip
   // alongside spades), and a global getByText would break again on the next

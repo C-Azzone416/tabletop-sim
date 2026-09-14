@@ -17,6 +17,17 @@ export function startFlipGame(options: StartFlipGameOptions): FlipGameState {
   const players = options.players;
   const random = options.random ?? Math.random;
 
+  // #436 — deliberately left at 2, not raised to match the platform
+  // registry's floor of 3. This package is a rules implementation: Flip's
+  // rules genuinely work at 2 players, which is a true property of the
+  // game. The registry's minimum of 3 is product policy, not a rule, and
+  // belongs at that layer (@tabletop/shared's game-registry.ts) — encoding
+  // it here would conflate the two. engine.createGame validates every
+  // create_game against the registry's [min,max] before a room ever
+  // reaches this function (both the WS handler and /dev/seed funnel
+  // through it), so there is no reachable path to a 2-player Flip room
+  // regardless of this being more permissive. Do not "fix" this to 3 in a
+  // future dead-code/consistency sweep.
   if (players.length < 2 || players.length > 5) {
     throw new RangeError('Flip requires between two and five players');
   }

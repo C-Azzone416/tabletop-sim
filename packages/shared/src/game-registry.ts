@@ -54,7 +54,11 @@ export const GAME_REGISTRY: readonly GameRegistryEntry[] = Object.freeze([
     id: 'flip',
     displayName: 'Flip',
     description: 'Press your luck: keep flipping cards for a bigger score, but a duplicate busts your hand.',
-    minPlayers: 2,
+    // #436 — raised from 2 to 3. 6 is #439, blocked: TableSeating's
+    // OPPONENT_POSITIONS only covers 1-4 opponents and silently drops a 5th
+    // opponent's hand via Math.min(...,4), so 6 seats would ship a game that
+    // omits a player with no error.
+    minPlayers: 3,
     maxPlayers: 5,
     available: true,
   }),

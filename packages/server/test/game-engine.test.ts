@@ -159,6 +159,14 @@ describe("game-engine", () => {
         expect(mockGamesDb.createGame).not.toHaveBeenCalled();
       });
 
+      // #436 — Flip's floor moved from 2 to 3. A 2-player Flip room must be
+      // impossible to create directly, not just blocked by the UI's picker
+      // range — this is the actual security gate, not a client convenience.
+      it("a 2-player Flip room, below Flip's raised floor of 3 (#436)", async () => {
+        await expect(engine.createGame("Alice", "flip", 2)).rejects.toThrow("Invalid player count");
+        expect(mockGamesDb.createGame).not.toHaveBeenCalled();
+      });
+
       it("a non-integer", async () => {
         await expect(engine.createGame("Alice", "wire-game", 2.5)).rejects.toThrow("Invalid player count");
         expect(mockGamesDb.createGame).not.toHaveBeenCalled();
@@ -338,12 +346,13 @@ describe("game-engine", () => {
     });
 
     // Bounds come from the registry, the same source the join gate uses.
-    it("rejects a solo lobby, below Flip's minimum of 2", async () => {
-      flipLobby({ players: 1 });
-      await expect(engine.startFlipRoom("g1", "p0")).rejects.toThrow("Need at least 2 players");
+    // #436 raised the floor from 2 to 3.
+    it("rejects a 2-player lobby, below Flip's minimum of 3", async () => {
+      flipLobby({ players: 2 });
+      await expect(engine.startFlipRoom("g1", "p0")).rejects.toThrow("Need at least 3 players");
     });
 
-    it.each([2, 3, 4, 5])("accepts a lobby of %i, within Flip's registry range", async (players) => {
+    it.each([3, 4, 5])("accepts a lobby of %i, within Flip's registry range", async (players) => {
       flipLobby({ players });
       await expect(engine.startFlipRoom("g1", "p0")).resolves.toBeDefined();
     });

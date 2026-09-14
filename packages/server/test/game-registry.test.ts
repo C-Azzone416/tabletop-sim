@@ -12,18 +12,19 @@ describe("game registry", () => {
     expect(spades).toMatchObject({ id: "spades", available: false });
   });
 
-  // #361 (epic #358). 2-5 players per the spec's table sizing. Registered
-  // ahead of being playable on purpose — the #311 ruling renders an
-  // unavailable game greyed as "Coming soon" rather than hiding it, so the
-  // entry has to exist for Flip to appear at all.
+  // #361 (epic #358). Registered ahead of being playable on purpose — the
+  // #311 ruling renders an unavailable game greyed as "Coming soon" rather
+  // than hiding it, so the entry has to exist for Flip to appear at all.
   // #402 — available since the real /play/host -> lobby -> start -> play walk
   // passed end to end in a clean production build. It was held at false
   // through all of #358's build-out, which caught #404, #406 and #407 — each
   // living in the real path a dev seed skips.
-  it("registers flip as available, for 2-5 players", () => {
+  // #436 — raised the floor from 2 to 3 players; 6 (the ceiling) is #439,
+  // blocked on TableSeating's opponent-position table.
+  it("registers flip as available, for 3-5 players", () => {
     expect(getGameById("flip")).toMatchObject({
       id: "flip",
-      minPlayers: 2,
+      minPlayers: 3,
       maxPlayers: 5,
       available: true,
     });

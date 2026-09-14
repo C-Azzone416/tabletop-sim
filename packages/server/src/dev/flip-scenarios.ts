@@ -60,6 +60,3 @@ const SCENARIO_NAMES: readonly string[] = FLIP_SCENARIOS.map((scenario) => scena
 export function isFlipScenarioName(value: unknown): value is FlipScenarioName {
   return typeof value === 'string' && SCENARIO_NAMES.includes(value);
 }
-
-export const FLIP_MIN_PLAYERS = 2;
-export const FLIP_MAX_PLAYERS = 5;
