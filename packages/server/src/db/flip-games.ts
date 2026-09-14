@@ -93,6 +93,22 @@ export async function recordFlipRoundScores(
   }
 }
 
+/**
+ * #434 — a departed Flip player's score is removed entirely, completed
+ * rounds included (Caroline: "flip player scores can be removed I think").
+ * Deletes every round-score row for this player in this game, not just
+ * future ones — the engine already excludes them from every round that
+ * finalizes after they leave (see game.ts's finalizeRound), so this is
+ * purely about scrubbing the history of rounds they completed before
+ * leaving.
+ */
+export async function deleteFlipRoundScoresByPlayer(gameId: string, playerId: string): Promise<void> {
+  await sql`
+    DELETE FROM flip_round_scores
+    WHERE game_id = ${gameId} AND player_id = ${playerId}
+  `;
+}
+
 export async function getFlipRoundScores(gameId: string): Promise<FlipRoundScoreRow[]> {
   const rows = await sql`
     SELECT * FROM flip_round_scores

@@ -1,6 +1,6 @@
 import { shuffleCards } from '@tabletop/shared';
 import { buildFlipDeck, drawFromShoe } from './deck';
-import { eligibleTargets, isDuplicateNumber, nextActiveSeatIndex, playerIndex } from './rules';
+import { eligibleTargets, isDuplicateNumber, nextActiveSeatIndex, nextSeatedIndex, playerIndex } from './rules';
 import { hasSecondChance, isFlip7, scoreHandBreakdown } from './scoring';
 import type {
   FlipCardEffect,
@@ -68,16 +68,23 @@ export function startRound(
     throw new Error("only the dealer can start the round");
   }
 
+  // #434 — a 'left' seat gets no opening card and never becomes turnPlayerId:
+  // filtered out of the deal order entirely, not just skipped once reached.
   const order: string[] = [];
   for (let step = 1; step <= state.players.length; step += 1) {
-    order.push(state.players[(state.dealerIndex + step) % state.players.length]!.id);
+    const candidate = state.players[(state.dealerIndex + step) % state.players.length]!;
+    if (candidate.status !== 'left') order.push(candidate.id);
   }
 
-  const resetPlayers = state.players.map((player) => ({
-    ...player,
-    status: 'active' as const,
-    hand: [] as FlipCardInstance[],
-  }));
+  // #434 — 'left' is the one status this reset must NOT touch: busted/frozen
+  // are round-scoped (everyone gets a clean 'active' start next round), but
+  // a departed player never plays again regardless of how many more rounds
+  // this game has.
+  const resetPlayers = state.players.map((player) =>
+    player.status === 'left'
+      ? player
+      : { ...player, status: 'active' as const, hand: [] as FlipCardInstance[] },
+  );
 
   return advance(
     {
@@ -157,6 +164,87 @@ export function chooseFlip3Target(
   if (next.dealQueue !== null) return advance(next, random);
   const flipperTurnId = next.turnPlayerId!;
   return finalizeLiveTurnIfSettled(advance(next, random), flipperTurnId);
+}
+
+/**
+ * #434 — removes a non-host player from an in-progress or between-rounds
+ * game without ending it (contrast with Wire Game's #432, which ends the
+ * mission). The departing seat is never deleted from `players` — indices
+ * and `dealerIndex` stay stable — it is marked 'left' instead, which
+ * {@link nextActiveSeatIndex}/{@link eligibleTargets} (status === 'active'
+ * only) already exclude from turns and targeting, and {@link
+ * nextSeatedIndex} (status !== 'left') excludes from ever becoming dealer
+ * again. Idempotent: leaving twice is a no-op, not an error, since a
+ * disconnect racing an explicit leave_game is a real possibility (#431).
+ *
+ * Mid-round rulings — Caroline's ruling gave the "confirm, remove, continue"
+ * shape; these are this issue's own engine decisions, made because the
+ * ruling didn't specify them:
+ *
+ * - It's their own live turn: treated exactly like a Freeze — the turn
+ *   passes to the next active seat. No card is drawn, no risk introduced on
+ *   their way out.
+ * - They hold a pending action of their own (a drawn Freeze/Flip 3 awaiting
+ *   THEIR target choice): the action is cancelled, not auto-resolved by a
+ *   self-target. Auto-resolving would deal a self-targeted Flip 3 three
+ *   more cards on their way out, risking a cascade (a nested Freeze/Flip 3,
+ *   even a Flip 7) for a departure that should be a clean stop. If they
+ *   also had an outer Flip 3 chain running (they were the original
+ *   flipper), that whole chain is abandoned too — every level's remaining
+ *   owed cards are forfeited, not dealt to anyone.
+ * - They are the target of an outstanding Flip 3 level someone ELSE is
+ *   running (a flip3Stack level with their id, not the flipper): only that
+ *   level is closed out — their remaining owed cards forfeited — the rest
+ *   of the chain and the flipper's own turn continue untouched.
+ * - They are merely an eligible target of someone else's PENDING (not yet
+ *   chosen) Freeze/Flip 3: no special handling needed. Once marked 'left'
+ *   they simply stop being an eligible target; the flipper — who remains a
+ *   legal self-target — always has at least one option.
+ *
+ * Scoring (#434's other engine substance): finalizeRound skips a 'left'
+ * player entirely — no entry in that round's scores/breakdowns, their
+ * totalScore never incremented again, and excluded from every win-condition
+ * check (crossing 200, tie-break). Their `hand` is cleared here so a round
+ * finalizing later never scores cards they can no longer act on. Removing
+ * their COMPLETED-round history is the server's job (the engine has no
+ * persistence) — see game-engine.ts's Flip dispatch.
+ */
+export function leaveGame(
+  state: FlipGameState,
+  playerId: string,
+  random: () => number = Math.random,
+): FlipGameState {
+  const index = playerIndex(state.players, playerId);
+  const player = state.players[index]!;
+  if (player.status === 'left') return state;
+
+  if (state.phase !== 'round-in-progress') {
+    const players = replacePlayer(state.players, index, { ...player, status: 'left', hand: [] });
+    const dealerIndex = state.dealerIndex === index ? nextSeatedIndex(players, index) : state.dealerIndex;
+    return { ...state, players, dealerIndex, resolutionLog: [] };
+  }
+
+  const isTurnPlayer = state.turnPlayerId === playerId;
+
+  const players = replacePlayer(state.players, index, { ...player, status: 'left', hand: [] });
+  const flip3Stack = isTurnPlayer
+    ? [] // the whole cascade was theirs to resolve — abandon it entirely,
+      // not just the level(s) that happened to target them
+    : state.flip3Stack.filter((level) => level.targetId !== playerId);
+  const pendingAction = isTurnPlayer ? null : state.pendingAction;
+  const dealQueue = state.dealQueue ? state.dealQueue.filter((id) => id !== playerId) : null;
+
+  const current: FlipGameState = { ...state, players, flip3Stack, pendingAction, dealQueue, resolutionLog: [] };
+
+  if (!isTurnPlayer) return current;
+
+  // It was their live turn, or their own pending target choice — either way
+  // that's cancelled/abandoned above. Resume exactly as the engine already
+  // knows how to: finish the opening deal if one is still running (skipping
+  // them, already filtered out of dealQueue), otherwise pass the turn on —
+  // which may itself end the round if nobody else is left to act.
+  if (current.dealQueue !== null) return advance(current, random);
+  return finalizeLiveTurnIfSettled(current, playerId);
 }
 
 // --- internals -------------------------------------------------------------
@@ -365,24 +453,37 @@ function finalizeRound(state: FlipGameState, flip7PlayerId: string | null): Flip
   // cleared. `scoreHandBreakdown` is the same computation `scoreHand`
   // delegates to, so `total` is the score of record by construction and the
   // two cannot disagree.
+  //
+  // #434 — a 'left' player is skipped entirely, not scored at 0: they get
+  // no entry in `scores`/`breakdowns` at all, so this round's history never
+  // mentions them (their hand is already [] from leaveGame, so scoring it
+  // would harmlessly total 0 anyway — the point is they must not appear in
+  // the round's record, not just score nothing).
   const scores: Record<string, number> = {};
   const breakdowns: Record<string, FlipScoreBreakdown> = {};
   for (const player of state.players) {
+    if (player.status === 'left') continue;
     const breakdown = scoreHandBreakdown(player.hand, player.status, player.id === flip7PlayerId);
     breakdowns[player.id] = breakdown;
     scores[player.id] = breakdown.total;
   }
 
   const discardAdditions = state.players.flatMap((player) => player.hand);
-  const scoredPlayers = state.players.map((player) => ({
-    ...player,
-    hand: [] as FlipCardInstance[],
-    status: 'active' as const,
-    totalScore: player.totalScore + scores[player.id]!,
-  }));
+  // #434 — a 'left' player is passed through untouched: no hand to clear
+  // (already [] since they left), no status reset (never 'active' again),
+  // no score added (they have no entry in `scores` to add).
+  const scoredPlayers = state.players.map((player) =>
+    player.status === 'left'
+      ? player
+      : { ...player, hand: [] as FlipCardInstance[], status: 'active' as const, totalScore: player.totalScore + scores[player.id]! },
+  );
 
   const roundResult: FlipRoundResult = { roundNumber: state.roundNumber, scores, flip7PlayerId, breakdowns };
-  const maxTotal = Math.max(...scoredPlayers.map((player) => player.totalScore));
+  // #434 — a departed player's stale totalScore must never win the game for
+  // them, or count toward whether ANYONE has crossed 200 — excluded from
+  // every win-condition computation below, not just from scoring.
+  const seated = scoredPlayers.filter((player) => player.status !== 'left');
+  const maxTotal = Math.max(...seated.map((player) => player.totalScore));
   const base: FlipGameState = {
     ...state,
     players: scoredPlayers,
@@ -397,13 +498,13 @@ function finalizeRound(state: FlipGameState, flip7PlayerId: string | null): Flip
   if (maxTotal < 200) {
     return {
       ...base,
-      dealerIndex: (state.dealerIndex + 1) % state.players.length,
+      dealerIndex: nextSeatedIndex(scoredPlayers, state.dealerIndex),
       phase: 'awaiting-round-start',
       winnerId: null,
     };
   }
 
-  const leaders = scoredPlayers.filter((player) => player.totalScore === maxTotal);
+  const leaders = seated.filter((player) => player.totalScore === maxTotal);
   const winner =
     leaders.length === 1
       ? leaders[0]!
@@ -420,7 +521,7 @@ function finalizeRound(state: FlipGameState, flip7PlayerId: string | null): Flip
   // Still tied even on the final round's score: play another full round.
   return {
     ...base,
-    dealerIndex: (state.dealerIndex + 1) % state.players.length,
+    dealerIndex: nextSeatedIndex(scoredPlayers, state.dealerIndex),
     phase: 'awaiting-round-start',
     winnerId: null,
   };

@@ -550,9 +550,13 @@ async function performLeave(gameId: string, playerId: string): Promise<void> {
   if (result.outcome === 'noop') return;
 
   if (result.outcome === 'room_closed') {
+    // #434 — the reason now varies by cause (a host leaving vs. a Flip
+    // departure taking the room below its player floor), decided by the
+    // engine rather than hardcoded here — see engine.leaveGame/
+    // dispatchFlipMidGameLeave for where each reason string is chosen.
     const notice: ServerMessage = {
       type: 'room_closed',
-      reason: 'The host left. The room has been closed.',
+      reason: result.reason,
     };
     connManager.broadcastToGame(gameId, notice);
 

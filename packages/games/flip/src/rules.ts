@@ -28,3 +28,20 @@ export function playerIndex(players: readonly FlipPlayerState[], playerId: strin
   return index;
 }
 
+/**
+ * #434 — next seat strictly after `fromIndex` that hasn't left the game,
+ * walking clockwise. Distinct from {@link nextActiveSeatIndex}: dealer
+ * rotation must skip a 'left' seat forever, but a 'busted'/'frozen' seat
+ * (still seated, just not live THIS round) is a perfectly legal next
+ * dealer — only the "gone for good" status is excluded here. Assumes at
+ * least one non-'left' seat exists; callers (the below-3 end condition is
+ * enforced by the server before this ever runs) guarantee that.
+ */
+export function nextSeatedIndex(players: readonly FlipPlayerState[], fromIndex: number): number {
+  for (let step = 1; step <= players.length; step += 1) {
+    const candidate = (fromIndex + step) % players.length;
+    if (players[candidate]!.status !== 'left') return candidate;
+  }
+  return fromIndex;
+}
+

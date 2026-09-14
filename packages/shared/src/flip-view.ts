@@ -22,7 +22,13 @@ export type FlipCardView =
   | { readonly kind: 'modifier'; readonly modifier: FlipModifierValue; readonly id: string }
   | { readonly kind: 'action'; readonly action: FlipActionKind; readonly id: string };
 
-export type FlipPlayerStatusView = 'active' | 'frozen' | 'busted';
+// #434 — 'left' added alongside the engine's own FlipPlayerStatus: a
+// departed non-host seat is real wire-visible state now (the client still
+// needs to render/gray it out), not something the server-side dispatch work
+// can leave off this DTO. The client-side handling of it is #434's deferred
+// half, held pending #454 same as #432 — this is just the type carrying the
+// value across, not new UI.
+export type FlipPlayerStatusView = 'active' | 'frozen' | 'busted' | 'left';
 
 export type FlipPhaseView =
   | 'awaiting-round-start'
