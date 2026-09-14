@@ -17,6 +17,7 @@ describe("Lobby", () => {
       captainId: "p1",
       onReady: vi.fn(),
       onStartGame: vi.fn(),
+      onLeave: vi.fn(),
       highestUnlocked: 8,
     };
   };
@@ -30,6 +31,26 @@ describe("Lobby", () => {
   it("displays the join code", () => {
     render(<Lobby {...defaultProps()} />);
     expect(screen.getByText("XYZ789")).toBeInTheDocument();
+  });
+
+  // #451/#430 — the lobby's only exit. Sends leave_game (via onLeave), not
+  // a plain navigation — leaving frees a seat, so GameClient's handler has
+  // to tell the server before it routes away.
+  describe("Leave affordance (#451/#430)", () => {
+    it("renders a Leave affordance meeting the 44px touch target", () => {
+      render(<Lobby {...defaultProps()} />);
+      const leave = screen.getByRole("button", { name: /leave/i });
+      expect(leave).toBeInTheDocument();
+      expect(leave.className).toContain("min-h-11");
+    });
+
+    it("calls onLeave when clicked", async () => {
+      const user = userEvent.setup();
+      const props = defaultProps();
+      render(<Lobby {...props} />);
+      await user.click(screen.getByRole("button", { name: /leave/i }));
+      expect(props.onLeave).toHaveBeenCalledOnce();
+    });
   });
 
   it("displays all players", () => {

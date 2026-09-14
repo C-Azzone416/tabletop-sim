@@ -190,6 +190,44 @@ describe("useGameState", () => {
     expect(result.current.state.error).toBe("Game not found");
   });
 
+  // #451 — a non-host departure. Filters the roster only; per-game
+  // consequences (stay in lobby, end the game, continue play) are
+  // #432/#433/#434's job, not this hook's.
+  it("handles player_left by removing the departed player from the roster", () => {
+    const { result } = renderHook(() => useGameState());
+    const game = makeGame({ id: "g1" });
+    const alice = makePlayer({ id: "p1", name: "Alice" });
+    const bob = makePlayer({ id: "p2", name: "Bob" });
+
+    act(() => { result.current.handleMessage({ type: "game_created", game, player: alice }); });
+    act(() => { result.current.handleMessage({ type: "player_joined", player: bob }); });
+    expect(result.current.state.players).toHaveLength(2);
+
+    act(() => {
+      result.current.handleMessage({ type: "player_left", playerId: "p2", playerName: "Bob" });
+    });
+
+    expect(result.current.state.players).toEqual([alice]);
+  });
+
+  // #451 — the host-departure case. Applies in every phase/game, so this
+  // hook only records the reason; GameClient decides what to render.
+  it("handles room_closed by setting roomClosedReason", () => {
+    const { result } = renderHook(() => useGameState());
+    expect(result.current.state.roomClosedReason).toBeNull();
+
+    act(() => {
+      result.current.handleMessage({
+        type: "room_closed",
+        reason: "The host left. The room has been closed.",
+      });
+    });
+
+    expect(result.current.state.roomClosedReason).toBe(
+      "The host left. The room has been closed.",
+    );
+  });
+
   it("setError and clearError work", () => {
     const { result } = renderHook(() => useGameState());
     act(() => result.current.setError("Something went wrong"));

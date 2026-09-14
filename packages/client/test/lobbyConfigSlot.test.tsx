@@ -120,6 +120,7 @@ describe("lobby config slot (#319)", () => {
       captainId: "p1",
       onReady: vi.fn(),
       onStartGame: vi.fn(),
+      onLeave: vi.fn(),
       highestUnlocked: 8,
       ...overrides,
     });

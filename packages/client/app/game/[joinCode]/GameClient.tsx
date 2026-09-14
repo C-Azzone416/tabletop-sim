@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import { useGameState } from "../../hooks/useGameState";
 import { useMissionOutcomes } from "../../hooks/useMissionOutcomes";
@@ -9,6 +10,7 @@ import { SetupPhase } from "../../components/SetupPhase";
 import { GameBoard } from "../../components/GameBoard";
 import { FlipGameRoot } from "../../components/flip/FlipGameRoot";
 import { GameOverOverlay } from "../../components/GameOverOverlay";
+import { RoomClosedNotice } from "../../components/RoomClosedNotice";
 import { DevPanel } from "../../components/DevPanel";
 import { ErrorToast } from "../../components/ErrorToast";
 import { JoinCodeBadge } from "../../components/JoinCodeBadge";
@@ -54,6 +56,7 @@ export function GameClient({
   seatOptions = [],
   initialFollowActingSeat,
 }: GameClientProps) {
+  const router = useRouter();
   const { state, handleMessage, clearError } = useGameState();
   const [activeSeat, setActiveSeat] = useState<DevSeatOption>({ profileId, name: playerName });
   const { status, connect, disconnect, send } = useWebSocket(
@@ -62,6 +65,15 @@ export function GameClient({
     activeSeat.name,
   );
   const sendFlipMessage = (message: FlipClientMessage) => send(message as unknown as ClientMessage);
+
+  // #451/#430 — the lobby's only exit. A leaving client is deregistered
+  // server-side before player_left/room_closed broadcast, so it never
+  // hears back about its own departure (see useGameState's roomClosedReason
+  // doc comment) — navigate immediately rather than waiting on a response.
+  const handleLeave = () => {
+    send({ type: "leave_game" });
+    router.push("/play");
+  };
   const hasConnected = useRef(false);
   const connectedSeatRef = useRef(activeSeat.profileId);
 
@@ -225,6 +237,13 @@ export function GameClient({
     );
   }
 
+  // #451 — the host left/disconnected; the room no longer exists
+  // server-side. Checked ahead of every phase branch below: this applies
+  // in every phase and every game, unlike player_left's per-game handling.
+  if (state.roomClosedReason) {
+    return <RoomClosedNotice reason={state.roomClosedReason} />;
+  }
+
   // Waiting / Lobby
   if (!state.game || gameStatus === "waiting") {
     return (
@@ -235,6 +254,7 @@ export function GameClient({
           localPlayerId={state.localPlayer?.id ?? ""}
           captainId={state.game?.captainId ?? null}
           onReady={() => send({ type: "player_ready" })}
+          onLeave={handleLeave}
           onStartGame={(startArg) =>
             // #319: Wire Game's config slot returns its mission as a number,
             // which is the existing start_game shape — unchanged by the slot

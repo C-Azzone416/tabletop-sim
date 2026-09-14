@@ -975,4 +975,126 @@ describe("GameClient — full game flow integration", () => {
       expect(toggleAfter.textContent).toContain("Viewing: Carol");
     });
   });
+
+  // #451 — the lobby's Leave affordance, room_closed (host departure, every
+  // phase), and player_left (roster updates, no ghost entries).
+  describe("leave / room_closed / player_left (#451, #430)", () => {
+    it("sends leave_game and routes to /play when Leave is clicked in the lobby", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: /leave/i }));
+
+      expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: "leave_game" }));
+      expect(mockPush).toHaveBeenCalledWith("/play");
+    });
+
+    it("removes a departed player from the lobby roster, no ghost entry", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+      act(() => {
+        ws.simulateMessage({ type: "player_joined", player: makePlayer({ id: "p2", name: "Bob" }) });
+      });
+      expect(screen.getByText("Bob")).toBeInTheDocument();
+
+      act(() => {
+        ws.simulateMessage({ type: "player_left", playerId: "p2", playerName: "Bob" });
+      });
+
+      expect(screen.queryByText("Bob")).not.toBeInTheDocument();
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    it("shows a notice and an explicit way to /play when the host closes the room from the lobby", () => {
+      render(<GameClient joinCode="ABC123" profileId="p2" playerName="Bob" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "joined_game",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p2", name: "Bob" }),
+          players: [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })],
+        });
+      });
+      expect(screen.getByText("Game Lobby")).toBeInTheDocument();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "room_closed",
+          reason: "The host left. The room has been closed.",
+        });
+      });
+
+      expect(screen.getByText("Room Closed")).toBeInTheDocument();
+      expect(screen.getByText("The host left. The room has been closed.")).toBeInTheDocument();
+      expect(screen.queryByText("Game Lobby")).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Back to Play" }));
+      expect(mockPush).toHaveBeenCalledWith("/play");
+    });
+
+    // Not per-game (#432/#434 own the per-game consequences of a non-host
+    // leaving) — room_closed pre-empts every phase branch, including active
+    // play, which this test exercises to prove the "every phase" claim.
+    it("shows the same notice when the host closes the room mid-game", () => {
+      render(<GameClient joinCode="ABC123" profileId="p2" playerName="Bob" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      const activeGame = makeGame({
+        id: "g1",
+        status: "active",
+        captainId: "p1",
+        currentTurnPlayerId: "p2",
+      });
+      const players = [
+        makePlayer({ id: "p1", name: "Alice" }),
+        makePlayer({ id: "p2", name: "Bob" }),
+      ];
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_state",
+          candidates: [],
+          game: activeGame,
+          players,
+          wires: [],
+          infoTokens: [],
+          validationTokens: [],
+          localPlayerId: "p2",
+        });
+      });
+      expect(screen.getByText("Your turn — choose an action")).toBeInTheDocument();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "room_closed",
+          reason: "The host left. The room has been closed.",
+        });
+      });
+
+      expect(screen.getByText("Room Closed")).toBeInTheDocument();
+      expect(screen.queryByText("Your turn — choose an action")).not.toBeInTheDocument();
+    });
+  });
 });

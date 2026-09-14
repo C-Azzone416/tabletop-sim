@@ -203,6 +203,85 @@ test.describe("host-chosen player count is enforced on join (#437)", () => {
   });
 });
 
+test.describe("leaving a room (#451, #430)", () => {
+  test("a non-host leaving the lobby updates the other player's roster, no ghost entry", async ({
+    page,
+    browser,
+  }) => {
+    await signInAsNewPlayer(page, "Host");
+    await page.getByRole("button", { name: "Play" }).click();
+    await page.getByRole("link", { name: "Host New Game" }).click();
+    await page.getByText("Wire Game").click();
+    await page.getByRole("button", { name: "4" }).click();
+    await page.getByRole("button", { name: "Create Room" }).click();
+    await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
+    const joinCode = joinCodeFromUrl(page);
+
+    const joinerContext = await browser.newContext();
+    const joinerPage = await joinerContext.newPage();
+
+    try {
+      const joinerName = await signInAsNewPlayer(joinerPage, "Joiner");
+      await joinerPage.getByRole("button", { name: "Play" }).click();
+      await joinerPage.getByRole("link", { name: "Join Game" }).click();
+      await joinerPage.getByPlaceholder("Enter code").fill(joinCode);
+      await joinerPage.getByRole("button", { name: "Join" }).click();
+      await expect(joinerPage).toHaveURL(new RegExp(`/game/${joinCode}$`), { timeout: 10_000 });
+      await expectPlayerCountEventually(page, "Players (2/4)");
+
+      await joinerPage.getByRole("button", { name: /leave/i }).click();
+      await expect(joinerPage).toHaveURL(/\/play$/, { timeout: 10_000 });
+
+      // The remaining (host) client's roster drops the departed player —
+      // no ghost entry left behind.
+      await expectPlayerCountEventually(page, "Players (1/4)");
+      await expect(page.getByText(joinerName)).not.toBeVisible();
+    } finally {
+      await joinerContext.close();
+      await cleanupGame(joinCode);
+    }
+  });
+
+  test("the host leaving closes the room and routes the remaining player to /play", async ({
+    page,
+    browser,
+  }) => {
+    await signInAsNewPlayer(page, "Host");
+    await page.getByRole("button", { name: "Play" }).click();
+    await page.getByRole("link", { name: "Host New Game" }).click();
+    await page.getByText("Wire Game").click();
+    await page.getByRole("button", { name: "4" }).click();
+    await page.getByRole("button", { name: "Create Room" }).click();
+    await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
+    const joinCode = joinCodeFromUrl(page);
+
+    const joinerContext = await browser.newContext();
+    const joinerPage = await joinerContext.newPage();
+
+    try {
+      await signInAsNewPlayer(joinerPage, "Joiner");
+      await joinerPage.getByRole("button", { name: "Play" }).click();
+      await joinerPage.getByRole("link", { name: "Join Game" }).click();
+      await joinerPage.getByPlaceholder("Enter code").fill(joinCode);
+      await joinerPage.getByRole("button", { name: "Join" }).click();
+      await expect(joinerPage).toHaveURL(new RegExp(`/game/${joinCode}$`), { timeout: 10_000 });
+      await expect(joinerPage.getByText("Game Lobby")).toBeVisible();
+
+      await page.getByRole("button", { name: /leave/i }).click();
+
+      // The remaining player sees an explicit notice, not a stale lobby —
+      // this is exactly the case #451 was filed over: without it, this
+      // client sits on a room that no longer exists, indefinitely.
+      await expect(joinerPage.getByText("Room Closed")).toBeVisible({ timeout: 10_000 });
+      await joinerPage.getByRole("button", { name: "Back to Play" }).click();
+      await expect(joinerPage).toHaveURL(/\/play$/, { timeout: 10_000 });
+    } finally {
+      await joinerContext.close();
+      await cleanupGame(joinCode);
+    }
+  });
+});
+
 test.describe("join path: error states", () => {
   test("joining a well-formed but nonexistent code shows an error instead of hanging", async ({
     page,
