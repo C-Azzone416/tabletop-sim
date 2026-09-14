@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { getGameById } from "@tabletop/shared";
 import type { Player } from "@tabletop/shared";
 import { resolveLobbyConfigSlot } from "./lobbyConfig/registry";
 import type { LobbyStartArg } from "./lobbyConfig/types";
 import { BackAffordance } from "./BackAffordance";
+import { PlayerCountPicker } from "./PlayerCountPicker";
 
 interface LobbyProps {
   joinCode: string;
@@ -19,6 +21,13 @@ interface LobbyProps {
    * pre-game view #430's audit found with no exit at all.
    */
   onLeave: () => void;
+  /**
+   * #438 — the host resizing the room's player count from the lobby, before
+   * everyone is ready. Server-enforced (host-only, lobby-only, registry
+   * bounds, refuses below current occupancy) — this is the friendly UI on
+   * top of that, not the actual gate.
+   */
+  onChangePlayerCount: (count: number) => void;
   // #179: {1..highestUnlocked} are pickable for the captain.
   highestUnlocked: number;
   /**
@@ -45,6 +54,7 @@ export function Lobby({
   onReady,
   onStartGame,
   onLeave,
+  onChangePlayerCount,
   highestUnlocked,
   gameType = null,
   maxPlayers: roomMaxPlayers = null,
@@ -61,6 +71,14 @@ export function Lobby({
   const maxPlayers = roomMaxPlayers ?? 4;
   const canStart = players.length >= 1 && players.length <= maxPlayers && allPlayersReady;
   const [isStarting, setIsStarting] = useState(false);
+
+  // #438 — same "degrade to Wire Game" default as resolveLobbyConfigSlot
+  // above, for the same brief pre-load window. A fixed-size game (Spades)
+  // has minPlayers === maxPlayers, which PlayerCountPicker already renders
+  // as a statement rather than a control — no separate "offers no control"
+  // branch needed here.
+  const registryEntry = getGameById(gameType ?? "wire-game");
+  const playerCountLocked = allPlayersReady;
 
   // #319: the lobby holds the config value but never interprets it — the slot
   // for the room's game type owns its shape, its panel, its start label and
@@ -144,6 +162,44 @@ export function Lobby({
           ))}
         </ul>
       </div>
+
+      {/*
+        #438 — host-only, and only while the room can still take the change:
+        registry bounds mean a fixed-size game (Spades) offers no control at
+        all — the issue's own words — so the whole section is absent, not
+        just the picker's buttons; PlayerCountPicker's statement branch
+        exists for other callers (e.g. #437's host-selection screen) but
+        would be a pointless "4 players" label with nothing to do here. The
+        count also locks once everyone seated is ready — readiness needs an
+        actual consequence. Server-enforced independently of this UI
+        (host-only, lobby-only, bounds, refuses-below-occupancy all live in
+        engine.updatePlayerCount); this is the friendly version, not the gate.
+      */}
+      {isCaptain && registryEntry && registryEntry.minPlayers !== registryEntry.maxPlayers && (
+        <div className="w-full max-w-sm">
+          <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-muted">
+            Player Count
+          </h3>
+          <PlayerCountPicker
+            game={registryEntry}
+            value={maxPlayers}
+            onChange={onChangePlayerCount}
+            disabled={playerCountLocked}
+            minSelectable={players.length}
+          />
+          {playerCountLocked ? (
+            <p className="mt-2 text-xs text-ink-muted">
+              Locked — everyone is ready.
+            </p>
+          ) : (
+            players.length > registryEntry.minPlayers && (
+              <p className="mt-2 text-xs text-ink-muted">
+                Can&apos;t go below {players.length} — that many players are already in the lobby.
+              </p>
+            )
+          )}
+        </div>
+      )}
 
       {/*
         Captain-only, exactly as before #319. The config value is local to the

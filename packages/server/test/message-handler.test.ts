@@ -24,6 +24,7 @@ vi.mock("../src/engine/game-engine.js", () => ({
   executeNextTurn: vi.fn(),
   executeNextMission: vi.fn(),
   leaveGame: vi.fn(),
+  updatePlayerCount: vi.fn(),
 }));
 
 vi.mock("../src/db/games.js", () => ({
@@ -969,6 +970,77 @@ describe("message-handler", () => {
       // Lobby view (once #454 lands) comes from this broadcast, same path
       // as any other game_state push, not a separate mechanism.
       expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", resetGame);
+    });
+  });
+
+  describe("update_player_count (#438)", () => {
+    it("rejects a non-numeric maxPlayers without reaching the engine", async () => {
+      const ws = mockSocket();
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+      await handleMessage(ws, JSON.stringify({ type: "update_player_count", maxPlayers: "4" }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockEngine.updatePlayerCount).not.toHaveBeenCalled();
+    });
+
+    it("rejects a non-integer maxPlayers without reaching the engine", async () => {
+      const ws = mockSocket();
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+      await handleMessage(ws, JSON.stringify({ type: "update_player_count", maxPlayers: 2.5 }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockEngine.updatePlayerCount).not.toHaveBeenCalled();
+    });
+
+    it("rejects when there is no connection info", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue(undefined);
+
+      await handleMessage(ws, JSON.stringify({ type: "update_player_count", maxPlayers: 4 }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Not connected to a game" });
+      expect(mockEngine.updatePlayerCount).not.toHaveBeenCalled();
+    });
+
+    it("calls the engine with the connection's gameId/playerId and the requested count", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", maxPlayers: 4 });
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "host", gameId: "g1", socket: ws });
+      mockEngine.updatePlayerCount.mockResolvedValue({ game });
+
+      await handleMessage(ws, JSON.stringify({ type: "update_player_count", maxPlayers: 4 }));
+
+      expect(mockEngine.updatePlayerCount).toHaveBeenCalledWith("g1", "host", 4);
+    });
+
+    // The whole point: every player in the lobby sees the change without a
+    // refresh, via the same broadcast path every other lobby mutation uses.
+    it("broadcasts the updated game state on success", async () => {
+      const ws = mockSocket();
+      const game = makeGame({ id: "g1", maxPlayers: 4 });
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "host", gameId: "g1", socket: ws });
+      mockEngine.updatePlayerCount.mockResolvedValue({ game });
+
+      await handleMessage(ws, JSON.stringify({ type: "update_player_count", maxPlayers: 4 }));
+
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game);
+    });
+
+    // Every engine rejection (#438's gates) must reach the requesting
+    // client verbatim, not as a generic "Internal error" — the UI has to
+    // be able to say WHY.
+    it.each([
+      "Only the host can change the player count",
+      "Player count can only change in the lobby",
+      "Player count is locked once everyone is ready",
+      "Invalid player count",
+      "Cannot lower below the players already in the lobby",
+    ])("surfaces the engine's rejection reason verbatim: %s", async (reason) => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
+      mockEngine.updatePlayerCount.mockRejectedValue(new Error(reason));
+
+      await handleMessage(ws, JSON.stringify({ type: "update_player_count", maxPlayers: 3 }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: reason });
     });
   });
 

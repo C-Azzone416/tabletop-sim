@@ -13,6 +13,7 @@ vi.mock("../src/db/games.js", () => ({
   updateDetonator: vi.fn(),
   updateDetonatorMax: vi.fn(),
   updateMission: vi.fn(),
+  updateMaxPlayers: vi.fn(),
   setPendingInterrogation: vi.fn(),
   clearPendingInterrogation: vi.fn(),
   setPendingDualCut: vi.fn(),
@@ -268,6 +269,130 @@ describe("game-engine", () => {
         seatedGame("flip", 3, 3);
         await expect(engine.joinGame("ABC123", "Dana")).rejects.toThrow("Game is full");
       });
+    });
+  });
+
+  // #438 — the host resizing the room's player count from the lobby.
+  describe("updatePlayerCount", () => {
+    const setup = (overrides: {
+      game?: Partial<ReturnType<typeof makeGame>>;
+      players?: ReturnType<typeof makePlayer>[];
+    } = {}) => {
+      const game = makeGame({
+        id: "g1",
+        gameType: "wire-game",
+        status: "waiting",
+        captainId: "host",
+        maxPlayers: 2,
+        ...overrides.game,
+      });
+      const players = overrides.players ?? [makePlayer({ id: "host", gameId: "g1", ready: false })];
+      mockGamesDb.getGameById.mockResolvedValue(game);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
+      mockGamesDb.updateMaxPlayers.mockImplementation(async (id, maxPlayers) => ({ ...game, id, maxPlayers }));
+      return { game, players };
+    };
+
+    it("rejects an unknown game", async () => {
+      mockGamesDb.getGameById.mockResolvedValue(null);
+      await expect(engine.updatePlayerCount("nope", "host", 3)).rejects.toThrow("Game not found");
+    });
+
+    // Non-host enforcement is the actual security gate — the client hiding
+    // the control is just the friendly version of this.
+    it("rejects a non-host requester", async () => {
+      setup();
+      await expect(engine.updatePlayerCount("g1", "not-the-host", 3)).rejects.toThrow(
+        "Only the host can change the player count",
+      );
+    });
+
+    it("rejects once the game has left the lobby", async () => {
+      setup({ game: { status: "active" } });
+      await expect(engine.updatePlayerCount("g1", "host", 3)).rejects.toThrow(
+        "Player count can only change in the lobby",
+      );
+    });
+
+    // "before everyone says they are ready" gives readiness an actual
+    // consequence: once every seated player is ready, the count locks.
+    it("rejects once every seated player is ready", async () => {
+      setup({
+        players: [
+          makePlayer({ id: "host", gameId: "g1", ready: true }),
+          makePlayer({ id: "p2", gameId: "g1", ready: true }),
+        ],
+      });
+      await expect(engine.updatePlayerCount("g1", "host", 4)).rejects.toThrow(
+        "Player count is locked once everyone is ready",
+      );
+    });
+
+    it("allows a change while any seated player is still not ready, even the host", async () => {
+      setup({
+        players: [
+          makePlayer({ id: "host", gameId: "g1", ready: false }),
+          makePlayer({ id: "p2", gameId: "g1", ready: true }),
+        ],
+      });
+      const result = await engine.updatePlayerCount("g1", "host", 4);
+      expect(result.game.maxPlayers).toBe(4);
+    });
+
+    it("rejects a value outside the game's registry bounds", async () => {
+      setup(); // wire-game: 2-4
+      await expect(engine.updatePlayerCount("g1", "host", 5)).rejects.toThrow("Invalid player count");
+    });
+
+    it("rejects a non-integer value", async () => {
+      setup();
+      await expect(engine.updatePlayerCount("g1", "host", 2.5)).rejects.toThrow("Invalid player count");
+    });
+
+    // Spades is fixed at 4-4 — no valid value to move to, so any call is
+    // refused, matching the issue's "offers no control at all".
+    it("rejects any change for a fixed-size game", async () => {
+      setup({ game: { gameType: "spades", maxPlayers: 4 } });
+      await expect(engine.updatePlayerCount("g1", "host", 4)).rejects.toThrow("Invalid player count");
+    });
+
+    // Caroline's ruling: refuse, don't eject.
+    it("rejects lowering below current occupancy rather than ejecting anyone", async () => {
+      setup({
+        game: { gameType: "flip", maxPlayers: 5 },
+        players: [
+          makePlayer({ id: "host", gameId: "g1", ready: false }),
+          makePlayer({ id: "p2", gameId: "g1", ready: false }),
+          makePlayer({ id: "p3", gameId: "g1", ready: false }),
+          makePlayer({ id: "p4", gameId: "g1", ready: false }),
+        ],
+      });
+      // 3 is within Flip's registry bounds (3-5) but below the 4 already
+      // seated — must be refused by the occupancy rule specifically, not
+      // the bounds check, so this has to stay a legal registry value.
+      await expect(engine.updatePlayerCount("g1", "host", 3)).rejects.toThrow(
+        "Cannot lower below the players already in the lobby",
+      );
+    });
+
+    it("allows lowering to exactly current occupancy", async () => {
+      setup({
+        game: { gameType: "flip", maxPlayers: 5 },
+        players: [
+          makePlayer({ id: "host", gameId: "g1", ready: false }),
+          makePlayer({ id: "p2", gameId: "g1", ready: false }),
+          makePlayer({ id: "p3", gameId: "g1", ready: false }),
+          makePlayer({ id: "p4", gameId: "g1", ready: false }),
+        ],
+      });
+      const result = await engine.updatePlayerCount("g1", "host", 4);
+      expect(result.game.maxPlayers).toBe(4);
+    });
+
+    it("persists the new count via gamesDb.updateMaxPlayers", async () => {
+      setup();
+      await engine.updatePlayerCount("g1", "host", 3);
+      expect(mockGamesDb.updateMaxPlayers).toHaveBeenCalledWith("g1", 3);
     });
   });
 

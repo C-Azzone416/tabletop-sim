@@ -1097,4 +1097,28 @@ describe("GameClient — full game flow integration", () => {
       expect(screen.queryByText("Your turn — choose an action")).not.toBeInTheDocument();
     });
   });
+
+  // #438 — the host resizing the room's player count from the lobby. The
+  // engine gates (host-only, lobby-only, bounds, occupancy) are covered in
+  // game-engine.test.ts; this only checks GameClient wires Lobby's picker to
+  // the right outbound message.
+  describe("player count control (#438)", () => {
+    it("sends update_player_count with the picked value when the picker is used", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1", maxPlayers: 4 }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "3" }));
+
+      expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: "update_player_count", maxPlayers: 3 }));
+    });
+  });
 });
