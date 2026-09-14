@@ -48,6 +48,17 @@ export interface GameState {
    * rather than routing anywhere.
    */
   missionEndedReason: string | null;
+  /**
+   * #448 — player ids the server has told us are inside #446's disconnect
+   * grace window right now (armed by `player_reconnecting`, cleared by
+   * `player_reconnected`). They have NOT left — this is purely "give them
+   * a moment" information, not a correctness signal; nothing about turns,
+   * scoring, or the roster depends on it. GameClient/SeatRail/PlayerRack
+   * decide whether and when to actually SHOW an indicator for an id in
+   * here (see the separate display-delay hook) — this set is the raw,
+   * undelayed truth.
+   */
+  reconnectingPlayerIds: readonly string[];
 }
 
 const initialState: GameState = {
@@ -65,6 +76,7 @@ const initialState: GameState = {
   error: null,
   roomClosedReason: null,
   missionEndedReason: null,
+  reconnectingPlayerIds: [],
 };
 
 type Action =
@@ -245,12 +257,33 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
         missionEndedReason: msg.gameEnded
           ? `${msg.playerName} left. The mission has ended.`
           : state.missionEndedReason,
+        // #448 — belt and suspenders: the grace window elapsing (this
+        // message) should already have been preceded by nothing further to
+        // clear, but a genuinely departed player must never be left marked
+        // "reconnecting" by a stray race.
+        reconnectingPlayerIds: state.reconnectingPlayerIds.filter((id) => id !== msg.playerId),
       };
 
     // #451 — the host left or disconnected. Every remaining client, in
     // every phase, routes to /play — see roomClosedReason's doc comment.
     case "room_closed":
       return { ...state, roomClosedReason: msg.reason };
+
+    // #448 — purely informational (see reconnectingPlayerIds' own doc
+    // comment): a disconnect just armed #446's grace timer for this
+    // player. De-duplicated rather than pushed blindly — a flaky
+    // connection could in principle disconnect more than once before
+    // reconnecting, and this is a set of "who's currently out", not a log.
+    case "player_reconnecting":
+      return state.reconnectingPlayerIds.includes(msg.playerId)
+        ? state
+        : { ...state, reconnectingPlayerIds: [...state.reconnectingPlayerIds, msg.playerId] };
+
+    case "player_reconnected":
+      return {
+        ...state,
+        reconnectingPlayerIds: state.reconnectingPlayerIds.filter((id) => id !== msg.playerId),
+      };
 
     case "error":
       return { ...state, error: msg.message };

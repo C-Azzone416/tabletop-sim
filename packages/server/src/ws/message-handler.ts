@@ -706,6 +706,12 @@ export function handleDisconnect(socket: WebSocket, closeCode?: number, log?: Ac
       log?.info({ gameId: info.gameId, playerId: info.playerId, err }, '[ws] leave-on-disconnect failed');
     });
   });
+
+  // #448 — purely informational: they have not left (that only becomes
+  // true if the grace window above actually elapses), so remaining clients
+  // can show a "give them a moment" indicator rather than nothing at all.
+  const reconnectingNotice: ServerMessage = { type: 'player_reconnecting', playerId: info.playerId };
+  connManager.broadcastToGame(info.gameId, reconnectingNotice);
 }
 
 function sendError(socket: WebSocket, message: string): void {

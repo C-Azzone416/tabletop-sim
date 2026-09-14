@@ -240,4 +240,30 @@ export type ServerMessage =
   // and every game (Caroline's ruling — captaincy does not reassign). Every
   // remaining client routes to /play; the join code no longer resolves.
   | { type: 'room_closed'; reason: string }
+  // #448 — a genuine WS disconnect just armed #446's grace-window timer for
+  // this player: they have NOT left (that only becomes true if the window
+  // elapses, at which point the existing `player_left` fires instead), so
+  // this is purely informational — "give them a moment." Never sent for the
+  // #462 dev-seat-switch exemption, since that path never arms the timer
+  // in the first place. `player_reconnected` fires if they reconnect before
+  // the window elapses; `player_left` (or `room_closed`, if they were the
+  // captain) covers the window actually elapsing — a client only ever needs
+  // to clear its own local "reconnecting" flag on whichever of the three
+  // arrives, not specifically wait for `player_reconnected`.
+  | { type: 'player_reconnecting'; playerId: string }
+  | { type: 'player_reconnected'; playerId: string }
   | { type: 'error'; message: string };
+
+/**
+ * #448 — how long a client waits after `player_reconnecting` before it
+ * actually shows a reconnecting indicator, deliberately separate from
+ * #446's DISCONNECT_GRACE_MS (20s, server-side — how long a disconnect is
+ * tolerated before being treated as a leave). This one is purely a display
+ * threshold: most disconnects this platform itself produces (a reload, a
+ * seat switch, a brief network blip) resolve in well under a second, and
+ * flashing "Reconnecting…" on every other client for one of those would
+ * read as an error where none occurred — worse than showing nothing. Long
+ * enough to skip that flash, short enough that a real, longer gap is still
+ * visible well before DISCONNECT_GRACE_MS would end it.
+ */
+export const RECONNECT_INDICATOR_DELAY_MS = 2_000;
