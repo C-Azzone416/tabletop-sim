@@ -31,6 +31,7 @@ vi.mock("../src/db/players.js", () => ({
   resetDoubleDetectorForGame: vi.fn(),
   deletePlayer: vi.fn(),
   renumberSeats: vi.fn(),
+  resetReadyAndSetupForGame: vi.fn(),
 }));
 
 vi.mock("../src/db/wires.js", () => ({
@@ -86,6 +87,7 @@ import * as playersDb from "../src/db/players.js";
 import * as wiresDb from "../src/db/wires.js";
 import * as tokensDb from "../src/db/tokens.js";
 import * as turnsDb from "../src/db/turns.js";
+import * as candidatesDb from "../src/db/candidates.js";
 import * as outcomesDb from "../src/db/outcomes.js";
 import * as engine from "../src/engine/game-engine.js";
 
@@ -94,6 +96,7 @@ const mockPlayersDb = vi.mocked(playersDb);
 const mockWiresDb = vi.mocked(wiresDb);
 const mockTokensDb = vi.mocked(tokensDb);
 const mockTurnsDb = vi.mocked(turnsDb);
+const mockCandidatesDb = vi.mocked(candidatesDb);
 const mockOutcomesDb = vi.mocked(outcomesDb);
 const mockFlipGamesDb = vi.mocked(flipGamesDb);
 
@@ -2174,11 +2177,16 @@ describe("game-engine", () => {
       expect(mockPlayersDb.deletePlayer).toHaveBeenCalledWith("p2");
       expect(mockPlayersDb.renumberSeats).toHaveBeenCalledWith("g1");
       expect(mockGamesDb.deleteGame).not.toHaveBeenCalled();
-      expect(result).toEqual({ outcome: "left", leftPlayer: leaver, players: remaining });
+      expect(result).toEqual({ outcome: "left", leftPlayer: leaver, players: remaining, gameEnded: false });
     });
 
-    it("removes a non-host player mid-game without ending the game (documented dispatch default)", async () => {
-      const game = makeGame({ id: "g1", status: "active", captainId: "p1", gameType: "wire-game" });
+    it("removes a non-host player mid-game without ending the game, for a game type with no decided branch yet (documented dispatch default)", async () => {
+      // #434 (Flip's non-host mid-game leave) isn't built yet — this is the
+      // dispatch point's documented no-op default, still exercised here now
+      // that wire-game has its own real branch (see the #432 describe block
+      // below). Using 'flip' rather than 'wire-game' keeps this test
+      // honestly testing the undecided-branch default.
+      const game = makeGame({ id: "g1", status: "active", captainId: "p1", gameType: "flip" });
       const leaver = makePlayer({ id: "p2", gameId: "g1", seatOrder: 1 });
       const remaining = [makePlayer({ id: "p1", gameId: "g1", seatOrder: 0 })];
 
@@ -2188,11 +2196,8 @@ describe("game-engine", () => {
 
       const result = await engine.leaveGame("g1", "p2");
 
-      // #431's dispatch point exists (branches on game_type) but every
-      // branch is undecided until #432/#433/#434 land — the game itself is
-      // untouched here (no status/turn change), only the seat is freed.
       expect(mockGamesDb.updateGameStatus).not.toHaveBeenCalled();
-      expect(result).toEqual({ outcome: "left", leftPlayer: leaver, players: remaining });
+      expect(result).toEqual({ outcome: "left", leftPlayer: leaver, players: remaining, gameEnded: false });
     });
 
     it("is a no-op when the game no longer exists (double leave / raced room close)", async () => {
@@ -2225,6 +2230,97 @@ describe("game-engine", () => {
 
       expect(result).toEqual({ outcome: "noop" });
       expect(mockPlayersDb.deletePlayer).not.toHaveBeenCalled();
+    });
+
+    // #432 — Wire Game's non-host mid-game leave: the mission ends but the
+    // room survives (contrast with the host case above, which deletes the
+    // room). Every mid-game phase (setup/active/won/lost) should end the
+    // mission the same way; the host-leave describe block above already
+    // covers the analogous "every phase" requirement for room_closed.
+    describe("#432 — Wire Game non-host mid-game leave ends the mission, room survives", () => {
+      for (const status of ["setup", "active", "won", "lost"] as const) {
+        it(`ends the mission and resets the room to waiting from '${status}'`, async () => {
+          const game = makeGame({ id: "g1", status, captainId: "p1", gameType: "wire-game" });
+          const leaver = makePlayer({ id: "p2", gameId: "g1", name: "Bob", seatOrder: 1 });
+          const remaining = [makePlayer({ id: "p1", gameId: "g1", seatOrder: 0 })];
+
+          mockGamesDb.getGameById.mockResolvedValue(game);
+          mockPlayersDb.getPlayerById.mockResolvedValue(leaver);
+          mockPlayersDb.getPlayersByGameId.mockResolvedValue(remaining);
+
+          const result = await engine.leaveGame("g1", "p2");
+
+          expect(result).toEqual({ outcome: "left", leftPlayer: leaver, players: remaining, gameEnded: true });
+
+          // The room is NOT destroyed — contrast with the host case.
+          expect(mockGamesDb.deleteGame).not.toHaveBeenCalled();
+
+          // The leaver's seat actually frees and is re-joinable.
+          expect(mockPlayersDb.deletePlayer).toHaveBeenCalledWith("p2");
+          expect(mockPlayersDb.renumberSeats).toHaveBeenCalledWith("g1");
+
+          // This mission's state is genuinely torn down, not hidden —
+          // same cleanup executeNextMission does before dealing again.
+          expect(mockTurnsDb.deleteByGameId).toHaveBeenCalledWith("g1");
+          expect(mockWiresDb.deleteByGameId).toHaveBeenCalledWith("g1");
+          expect(mockCandidatesDb.deleteByGameId).toHaveBeenCalledWith("g1");
+          expect(mockTokensDb.deleteValidationTokensByGameId).toHaveBeenCalledWith("g1");
+          expect(mockPlayersDb.resetDoubleDetectorForGame).toHaveBeenCalledWith("g1");
+          expect(mockPlayersDb.resetReadyAndSetupForGame).toHaveBeenCalledWith("g1");
+          expect(mockGamesDb.clearPendingDualCut).toHaveBeenCalledWith("g1");
+          expect(mockGamesDb.clearPendingInterrogation).toHaveBeenCalledWith("g1");
+
+          // The room reaches a genuine, restartable 'waiting' state — no
+          // pending turn or detonator progress bleeding into the next deal.
+          expect(mockGamesDb.updateDetonator).toHaveBeenCalledWith("g1", 0);
+          expect(mockGamesDb.updateCurrentTurn).toHaveBeenCalledWith("g1", null);
+          expect(mockGamesDb.updateGameStatus).toHaveBeenCalledWith("g1", "waiting");
+        });
+      }
+
+      it("leaves the room restartable: a subsequent startGame deals fresh rather than rejecting or resuming", async () => {
+        // Not just "status flipped" — actually drive the reset room through
+        // startGame's own captain-only/waiting-only guards and confirm it
+        // deals a brand new wire set, proving the reset didn't leave
+        // anything (a stale status, a stale wire) behind to bleed through
+        // or block the restart.
+        const midGame = makeGame({ id: "g1", status: "active", captainId: "p1", gameType: "wire-game" });
+        const leaver = makePlayer({ id: "p2", gameId: "g1", seatOrder: 1 });
+        const remainingAfterLeave = [
+          makePlayer({ id: "p1", gameId: "g1", seatOrder: 0, ready: false }),
+        ];
+
+        mockGamesDb.getGameById.mockResolvedValue(midGame);
+        mockPlayersDb.getPlayerById.mockResolvedValue(leaver);
+        mockPlayersDb.getPlayersByGameId.mockResolvedValue(remainingAfterLeave);
+
+        const leaveResult = await engine.leaveGame("g1", "p2");
+        expect(leaveResult).toMatchObject({ outcome: "left", gameEnded: true });
+        expect(mockGamesDb.updateGameStatus).toHaveBeenCalledWith("g1", "waiting");
+
+        // Now simulate the room as the reset left it: 'waiting', captain
+        // still seated, the sole remaining player re-readies.
+        const resetGame = { ...midGame, status: "waiting" as const };
+        const readyPlayer = { ...remainingAfterLeave[0]!, ready: true };
+        mockGamesDb.getGameById.mockResolvedValue(resetGame);
+        mockPlayersDb.getPlayersByGameId.mockResolvedValue([readyPlayer]);
+        mockGamesDb.updateMission.mockResolvedValue(resetGame);
+        mockGamesDb.updateDetonator.mockResolvedValue(resetGame);
+        mockGamesDb.updateGameStatus.mockResolvedValue({ ...resetGame, status: "setup" });
+        mockGamesDb.updateCurrentTurn.mockResolvedValue(resetGame);
+        mockGamesDb.updateDetonatorMax.mockResolvedValue(resetGame);
+        mockWiresDb.createWire.mockImplementation(async (gameId, playerId, value, color, rackPosition) =>
+          makeWire({ id: `fresh-${rackPosition}`, gameId, playerId, value, color, rackPosition }),
+        );
+
+        const startResult = await engine.startGame("g1", "p1", 1);
+
+        // Didn't throw "Game already started" (would have, had status not
+        // actually reset) — dealt an entirely new wire set instead of
+        // resuming/reusing anything from the abandoned mission.
+        expect(startResult.wires.length).toBeGreaterThan(0);
+        expect(startResult.wires.every((w) => w.id.startsWith("fresh-"))).toBe(true);
+      });
     });
   });
 });

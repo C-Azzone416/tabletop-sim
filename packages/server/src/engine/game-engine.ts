@@ -174,22 +174,46 @@ export async function startFlipRoom(
 export type LeaveGameResult =
   | { outcome: 'noop' }
   | { outcome: 'room_closed' }
-  | { outcome: 'left'; leftPlayer: Player; players: Player[] };
+  | { outcome: 'left'; leftPlayer: Player; players: Player[]; gameEnded: boolean };
+
+// #432 — a non-host mid-game leave in Wire Game ends the mission, but
+// unlike the host case (#431) the ROOM SURVIVES: everyone lands back in
+// the lobby of the same room, not /play (Caroline: "this will help games
+// restart faster ... instead of having to create a new lobby"). Tears down
+// this mission's state exactly like executeNextMission's cleanup
+// (wires/tokens/turns/candidates, double-detector usage) so a restart
+// deals fresh rather than resuming the abandoned mission, then resets the
+// game row to a genuine 'waiting' state and every remaining player's
+// ready/setup_done flags — the host resizes (#438) and hits Start again,
+// same as any other fresh lobby.
+async function endWireGameToLobby(gameId: string): Promise<void> {
+  await turnsDb.deleteByGameId(gameId);
+  await wiresDb.deleteByGameId(gameId);
+  await candidatesDb.deleteByGameId(gameId);
+  await tokensDb.deleteValidationTokensByGameId(gameId);
+  await playersDb.resetDoubleDetectorForGame(gameId);
+  await playersDb.resetReadyAndSetupForGame(gameId);
+  await gamesDb.clearPendingDualCut(gameId);
+  await gamesDb.clearPendingInterrogation(gameId);
+  await gamesDb.updateDetonator(gameId, 0);
+  await gamesDb.updateCurrentTurn(gameId, null);
+  await gamesDb.updateGameStatus(gameId, 'waiting');
+}
 
 // #431 — the per-game dispatch point for a *non-host* mid-game leave.
-// Wire Game and Spades end the round and return everyone to the lobby
-// (#432/#433); Flip drops the seat and continues if 3+ players remain
-// (#434). None of that branch logic exists yet — the player's row is
-// already removed by the time this runs (see leaveGame below), so every
-// case falls through to that documented default (a plain seat departure,
-// game otherwise untouched) until its sibling issue lands.
-async function dispatchNonHostMidGameLeave(game: Game, _leftPlayer: Player): Promise<void> {
+// Wire Game ends the mission and returns everyone to the lobby (#432);
+// Spades will do the same once it exists (#433, parked); Flip drops the
+// seat and continues if 3+ players remain (#434, not built yet — falls
+// through to the documented no-op default below until it lands).
+async function dispatchNonHostMidGameLeave(game: Game, _leftPlayer: Player): Promise<{ gameEnded: boolean }> {
   switch (game.gameType) {
     case 'wire-game':
+      await endWireGameToLobby(game.id);
+      return { gameEnded: true };
     case 'spades':
     case 'flip':
     default:
-      return;
+      return { gameEnded: false };
   }
 }
 
@@ -224,11 +248,12 @@ export async function leaveGame(gameId: string, playerId: string): Promise<Leave
   await playersDb.renumberSeats(gameId);
   const players = await playersDb.getPlayersByGameId(gameId);
 
+  let gameEnded = false;
   if (game.status !== 'waiting') {
-    await dispatchNonHostMidGameLeave(game, player);
+    ({ gameEnded } = await dispatchNonHostMidGameLeave(game, player));
   }
 
-  return { outcome: 'left', leftPlayer: player, players };
+  return { outcome: 'left', leftPlayer: player, players, gameEnded };
 }
 
 export async function startGame(gameId: string, requestingPlayerId: string, mission: number = 1): Promise<{ game: Game; players: Player[]; wires: Wire[]; candidates: WireCandidate[] }> {

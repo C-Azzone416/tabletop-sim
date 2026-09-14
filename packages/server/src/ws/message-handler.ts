@@ -569,10 +569,18 @@ async function performLeave(gameId: string, playerId: string): Promise<void> {
     return;
   }
 
+  // #432 — gameEnded is only ever true for a mid-game departure the
+  // per-game dispatch point (engine.leaveGame) decided ends the mission
+  // (Wire Game today). Shared by both the explicit leave_game path and the
+  // disconnect-grace-window path below — they both funnel through
+  // performLeave/engine.leaveGame, so a non-host disconnecting mid-game
+  // produces the identical notice a deliberate leave does, just without a
+  // client-side warning (there's nothing left connected to warn).
   const notice: ServerMessage = {
     type: 'player_left',
     playerId: result.leftPlayer.id,
     playerName: result.leftPlayer.name,
+    gameEnded: result.gameEnded,
   };
   connManager.broadcastToGame(gameId, notice);
 
