@@ -175,4 +175,39 @@ describe("FlipTable", () => {
       expect(screen.getByTestId("timeout-announcement")).toHaveTextContent("Bea's gone quiet");
     });
   });
+
+  // #434 — the opposite call from SeatRail's "shown as departed, keep the
+  // seat": TableSeating has no hand to show for a departed player and
+  // nothing left to do at the table, so it's dropped from the physical
+  // layout entirely, freeing the position for everyone still seated.
+  describe("a departed ('left') seat (#434)", () => {
+    function makeGameWithLeftPlayer(): FlipGameState {
+      return makeGame({
+        players: [
+          { id: "p1", name: "Alice", status: "active", hand: [{ id: "c1", kind: "number", value: 5 }], totalScore: 0 },
+          { id: "p2", name: "Bea", status: "left", hand: [], totalScore: 10 },
+          { id: "p3", name: "Cara", status: "active", hand: [], totalScore: 0 },
+        ],
+      });
+    }
+
+    it("keeps the departed seat in the seat rail, marked Left", () => {
+      render(
+        <FlipTable game={makeGameWithLeftPlayer()} localPlayerId="p1" onHit={vi.fn()} onFreeze={vi.fn()} />,
+      );
+      const rail = screen.getByTestId("seat-rail");
+      expect(rail.querySelector('[data-testid="seat-p2"]')).toBeInTheDocument();
+      expect(rail).toHaveTextContent("Left");
+    });
+
+    it("drops the departed seat from the physical table — no hand to show", () => {
+      render(
+        <FlipTable game={makeGameWithLeftPlayer()} localPlayerId="p1" onHit={vi.fn()} onFreeze={vi.fn()} />,
+      );
+      const table = screen.getByTestId("table-seating");
+      expect(table.querySelector('[data-testid="seat-p2"]')).not.toBeInTheDocument();
+      expect(table.querySelector('[data-testid="seat-p1"]')).toBeInTheDocument();
+      expect(table.querySelector('[data-testid="seat-p3"]')).toBeInTheDocument();
+    });
+  });
 });

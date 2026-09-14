@@ -32,7 +32,7 @@ export function SeatRail({ seats }: SeatRailProps) {
             seat.isActive
               ? "border-outline ring-[3px] ring-warning"
               : "border-outline"
-          } ${seat.isBusted ? "opacity-60" : ""}`}
+          } ${seat.isBusted || seat.isLeft ? "opacity-60" : ""}`}
         >
           {/* Pawn — always survives truncation per seat chip rules. */}
           <span
@@ -65,6 +65,22 @@ export function SeatRail({ seats }: SeatRailProps) {
               className="shrink-0 rounded-cab bg-danger/15 px-1.5 py-0.5 text-xs font-medium text-danger"
             >
               Busted
+            </span>
+          )}
+
+          {/*
+            #434 — shown as departed, not made to disappear (this seat's own
+            doc comment in types.ts explains why the rail keeps the entry).
+            Neutral/muted, deliberately distinct from Frozen's info-blue and
+            Busted's danger-red: this isn't a round outcome, it's a
+            permanent fact about the seat.
+          */}
+          {seat.isLeft && (
+            <span
+              title="Left the game — no longer playing"
+              className="shrink-0 rounded-cab bg-ink/10 px-1.5 py-0.5 text-xs font-medium text-ink-muted"
+            >
+              Left
             </span>
           )}
 

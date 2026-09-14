@@ -18,6 +18,18 @@ export interface FlipSeat {
   isDealer: boolean;
   isFrozen: boolean;
   isBusted: boolean;
+  /**
+   * #434 — a non-host who left mid-game. Terminal, distinct from
+   * isFrozen/isBusted (both round-scoped and reset every round): the seat
+   * STAYS in the rail — never filtered out — because turn order and
+   * dealer rotation are positional (#423) and the engine's own player
+   * array never shrinks either, so removing it here would desync the
+   * rail's indices from what isDealer/isActive actually mean. Shown as
+   * departed, not made to disappear; see TableSeating's own handling
+   * (adapters.ts/FlipTable.tsx) for the opposite call at the physical
+   * table, where an empty seat has nothing left to show.
+   */
+  isLeft: boolean;
   /** Cards currently in hand. The "count" that must survive truncation per DESIGN-APPENDIX §8 seat chip rules. */
   cardCount: number;
 }

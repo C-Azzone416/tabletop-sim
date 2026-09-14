@@ -50,4 +50,22 @@ describe("toSeats", () => {
     const seats = toSeats(makeGame());
     expect(seats.find((s) => s.id === "p2")?.cardCount).toBe(1);
   });
+
+  // #434 — a departed seat's status is terminal and distinct from
+  // isFrozen/isBusted (both round-scoped).
+  it("maps a 'left' status to isLeft, not isFrozen/isBusted", () => {
+    const seats = toSeats(
+      makeGame({
+        players: [
+          { id: "p1", name: "Alice", status: "active", hand: [], totalScore: 0 },
+          { id: "p2", name: "Bea", status: "left", hand: [], totalScore: 10 },
+        ],
+      }),
+    );
+    const left = seats.find((s) => s.id === "p2");
+    expect(left?.isLeft).toBe(true);
+    expect(left?.isFrozen).toBe(false);
+    expect(left?.isBusted).toBe(false);
+    expect(seats.find((s) => s.id === "p1")?.isLeft).toBe(false);
+  });
 });

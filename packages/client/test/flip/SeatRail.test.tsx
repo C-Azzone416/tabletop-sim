@@ -12,6 +12,7 @@ function makeSeat(overrides: Partial<FlipSeat> = {}): FlipSeat {
     isDealer: false,
     isFrozen: false,
     isBusted: false,
+    isLeft: false,
     cardCount: 3,
     ...overrides,
   };
@@ -68,5 +69,21 @@ describe("SeatRail", () => {
   it("always renders the card count, even for a truncated long name", () => {
     render(<SeatRail seats={[makeSeat({ name: "A Very Long Player Name Indeed", cardCount: 7 })]} />);
     expect(screen.getByText("7")).toBeInTheDocument();
+  });
+
+  // #434 — shown as departed, not made to disappear (the seat rail keeps
+  // every seat ever seated, since turn order/dealer rotation are
+  // positional). Kept visually distinct from Frozen/Busted: this isn't a
+  // round outcome.
+  it("shows a Left indicator for a departed seat, not Frozen or Busted", () => {
+    render(<SeatRail seats={[makeSeat({ isLeft: true })]} />);
+    expect(screen.getByText("Left")).toBeInTheDocument();
+    expect(screen.queryByText(/Frozen/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Busted/)).not.toBeInTheDocument();
+  });
+
+  it("does not show a Left indicator for a seated player", () => {
+    render(<SeatRail seats={[makeSeat({ isLeft: false })]} />);
+    expect(screen.queryByText("Left")).not.toBeInTheDocument();
   });
 });

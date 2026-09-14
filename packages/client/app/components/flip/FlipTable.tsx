@@ -70,7 +70,14 @@ export function FlipTable({
   const [timeoutMessage, setTimeoutMessage] = useState<string | null>(null);
   const seats = toSeats(game);
   const isMyTurn = game.turnPlayerId === localPlayerId;
-  const seatCount = game.players.length as SeatCount;
+  // #434 — the opposite call from SeatRail's (types.ts's FlipSeat.isLeft
+  // doc comment): a departed seat has no hand to show and nothing left to
+  // do at the table, so it's dropped from the physical layout rather than
+  // rendered empty. seatCount is derived from the same filtered list so
+  // TableSeating's OPPONENT_POSITIONS sizing and PlaySurface's flatten
+  // layout both track who's actually still seated, not the original count.
+  const seatedPlayers = game.players.filter((player) => player.status !== "left");
+  const seatCount = seatedPlayers.length as SeatCount;
 
   // A new prompt supersedes the last one's announcement. Adjusted during
   // render (React's endorsed pattern for resetting state on a prop change)
@@ -137,7 +144,7 @@ export function FlipTable({
         onToggleFlatten={() => setFlattened((f) => !f)}
         turnInProgress={game.phase === "round-in-progress" && isMyTurn}
       >
-        <TableSeating players={game.players} localPlayerId={localPlayerId} />
+        <TableSeating players={seatedPlayers} localPlayerId={localPlayerId} />
       </PlaySurface>
 
       <CardsRemaining count={game.shoe.length} />
