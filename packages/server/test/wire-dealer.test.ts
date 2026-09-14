@@ -76,13 +76,27 @@ describe("wire-dealer", () => {
       );
     });
 
-    it("shuffles — two deals are unlikely identical", () => {
-      const { wires: deal1 } = dealWires(["p1", "p2"], "p1");
-      const { wires: deal2 } = dealWires(["p1", "p2"], "p1");
-      // Compare the value sequences — vanishingly unlikely to be the same
-      const vals1 = deal1.map((w) => w.value).join(",");
-      const vals2 = deal2.map((w) => w.value).join(",");
-      expect(vals1 === vals2).toBe(false);
+    // #473 — the two-deal version of this test compared SORTED rack value
+    // sequences (racks are sorted ascending, #190 Phase A), which discards
+    // the shuffle's entropy rather than measuring it: Mission 1 has only
+    // 1,751 distinct sorted 12-card multisets drawable from its pool, so
+    // two independent deals collide roughly 1-in-1,000, not "vanishingly
+    // unlikely" as the old comment claimed — and this suite runs often
+    // enough that a 1-in-1,000 flake is a when, not an if.
+    //
+    // dealWires only ever returns the sorted rack (deal order isn't part
+    // of its public surface, and shouldn't be added just for this test),
+    // so the fix is volume rather than looking earlier in the pipeline:
+    // over N independent deals, ALL N landing on the same sorted multiset
+    // is (1/1751)^(N-1) — negligible well before N reaches double digits.
+    it("shuffles — repeated deals are not all identical", () => {
+      const dealCount = 20;
+      const distinctDeals = new Set<string>();
+      for (let i = 0; i < dealCount; i++) {
+        const { wires } = dealWires(["p1", "p2"], "p1");
+        distinctDeals.add(wires.map((w) => w.value).join(","));
+      }
+      expect(distinctDeals.size).toBeGreaterThan(1);
     });
   });
 
