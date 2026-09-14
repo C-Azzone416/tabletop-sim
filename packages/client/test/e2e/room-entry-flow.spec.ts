@@ -118,63 +118,56 @@ test.describe("host-chosen player count is enforced on join (#437)", () => {
     await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
     const joinCode = joinCodeFromUrl(page);
 
+    // #443 (leave_game, in flight): closing a browser context is a real
+    // leave — the WS close deletes that player's row and renumbers seats.
+    // So every joiner's context stays open for the whole test, same as the
+    // two-player join test above; closing one early would make the room
+    // drop below its cap and invert this test's own assertion.
+    const secondContext = await browser.newContext();
+    const thirdContext = await browser.newContext();
+    const fourthContext = await browser.newContext();
+
     try {
       await expect(page.getByText("Players (1/3)")).toBeVisible();
 
-      // Fills the room to the host's chosen 3 (registry max for Wire Game is
-      // 4). Each joiner's context is closed as soon as it's done with —
-      // only one extra context is ever open at a time, same footprint as
-      // the two-player join test above, to keep this from being flakier
-      // under load than it needs to be.
-      const secondContext = await browser.newContext();
-      try {
-        const secondPage = await secondContext.newPage();
-        await signInAsNewPlayer(secondPage, "Second");
-        await secondPage.getByRole("button", { name: "Play" }).click();
-        await secondPage.getByRole("link", { name: "Join Game" }).click();
-        await secondPage.getByPlaceholder("Enter code").fill(joinCode);
-        await secondPage.getByRole("button", { name: "Join" }).click();
-        await expect(secondPage).toHaveURL(new RegExp(`/game/${joinCode}$`), {
-          timeout: 10_000,
-        });
-        await expect(page.getByText("Players (2/3)")).toBeVisible({ timeout: 15_000 });
-      } finally {
-        await secondContext.close();
-      }
+      // Fills the room to the host's chosen 3 (registry max for Wire Game is 4).
+      const secondPage = await secondContext.newPage();
+      await signInAsNewPlayer(secondPage, "Second");
+      await secondPage.getByRole("button", { name: "Play" }).click();
+      await secondPage.getByRole("link", { name: "Join Game" }).click();
+      await secondPage.getByPlaceholder("Enter code").fill(joinCode);
+      await secondPage.getByRole("button", { name: "Join" }).click();
+      await expect(secondPage).toHaveURL(new RegExp(`/game/${joinCode}$`), {
+        timeout: 10_000,
+      });
+      await expect(page.getByText("Players (2/3)")).toBeVisible({ timeout: 15_000 });
 
       // This is the case #437 exists to close: a registry ceiling of 4 must
       // not open a 4th seat once the room's persisted choice (3) is full.
-      const thirdContext = await browser.newContext();
-      try {
-        const thirdPage = await thirdContext.newPage();
-        await signInAsNewPlayer(thirdPage, "Third");
-        await thirdPage.getByRole("button", { name: "Play" }).click();
-        await thirdPage.getByRole("link", { name: "Join Game" }).click();
-        await thirdPage.getByPlaceholder("Enter code").fill(joinCode);
-        await thirdPage.getByRole("button", { name: "Join" }).click();
-        await expect(thirdPage).toHaveURL(new RegExp(`/game/${joinCode}$`), {
-          timeout: 10_000,
-        });
-        await expect(page.getByText("Players (3/3)")).toBeVisible({ timeout: 15_000 });
-      } finally {
-        await thirdContext.close();
-      }
+      const thirdPage = await thirdContext.newPage();
+      await signInAsNewPlayer(thirdPage, "Third");
+      await thirdPage.getByRole("button", { name: "Play" }).click();
+      await thirdPage.getByRole("link", { name: "Join Game" }).click();
+      await thirdPage.getByPlaceholder("Enter code").fill(joinCode);
+      await thirdPage.getByRole("button", { name: "Join" }).click();
+      await expect(thirdPage).toHaveURL(new RegExp(`/game/${joinCode}$`), {
+        timeout: 10_000,
+      });
+      await expect(page.getByText("Players (3/3)")).toBeVisible({ timeout: 15_000 });
 
-      const fourthContext = await browser.newContext();
-      try {
-        const fourthPage = await fourthContext.newPage();
-        await signInAsNewPlayer(fourthPage, "Fourth");
-        await fourthPage.getByRole("button", { name: "Play" }).click();
-        await fourthPage.getByRole("link", { name: "Join Game" }).click();
-        await fourthPage.getByPlaceholder("Enter code").fill(joinCode);
-        await fourthPage.getByRole("button", { name: "Join" }).click();
+      const fourthPage = await fourthContext.newPage();
+      await signInAsNewPlayer(fourthPage, "Fourth");
+      await fourthPage.getByRole("button", { name: "Play" }).click();
+      await fourthPage.getByRole("link", { name: "Join Game" }).click();
+      await fourthPage.getByPlaceholder("Enter code").fill(joinCode);
+      await fourthPage.getByRole("button", { name: "Join" }).click();
 
-        await expect(fourthPage.getByText("Game is full")).toBeVisible({ timeout: 10_000 });
-        await expect(fourthPage).toHaveURL(/\/play\/join$/);
-      } finally {
-        await fourthContext.close();
-      }
+      await expect(fourthPage.getByText("Game is full")).toBeVisible({ timeout: 10_000 });
+      await expect(fourthPage).toHaveURL(/\/play\/join$/);
     } finally {
+      await secondContext.close();
+      await thirdContext.close();
+      await fourthContext.close();
       await cleanupGame(joinCode);
     }
   });
