@@ -282,6 +282,76 @@ describe("useGameState", () => {
     );
   });
 
+  // #448 — purely informational (see useGameState.ts's own doc comment on
+  // reconnectingPlayerIds): a disconnect just armed #446's grace timer.
+  describe("reconnecting indicator (#448)", () => {
+    it("handles player_reconnecting by adding the id", () => {
+      const { result } = renderHook(() => useGameState());
+      expect(result.current.state.reconnectingPlayerIds).toEqual([]);
+
+      act(() => {
+        result.current.handleMessage({ type: "player_reconnecting", playerId: "p2" });
+      });
+
+      expect(result.current.state.reconnectingPlayerIds).toEqual(["p2"]);
+    });
+
+    it("does not duplicate an id already marked reconnecting", () => {
+      const { result } = renderHook(() => useGameState());
+      act(() => {
+        result.current.handleMessage({ type: "player_reconnecting", playerId: "p2" });
+      });
+      act(() => {
+        result.current.handleMessage({ type: "player_reconnecting", playerId: "p2" });
+      });
+
+      expect(result.current.state.reconnectingPlayerIds).toEqual(["p2"]);
+    });
+
+    it("handles player_reconnected by removing the id", () => {
+      const { result } = renderHook(() => useGameState());
+      act(() => {
+        result.current.handleMessage({ type: "player_reconnecting", playerId: "p2" });
+      });
+      expect(result.current.state.reconnectingPlayerIds).toEqual(["p2"]);
+
+      act(() => {
+        result.current.handleMessage({ type: "player_reconnected", playerId: "p2" });
+      });
+
+      expect(result.current.state.reconnectingPlayerIds).toEqual([]);
+    });
+
+    it("clears a departed player's reconnecting flag when player_left arrives, even without a prior player_reconnected", () => {
+      const { result } = renderHook(() => useGameState());
+      act(() => {
+        result.current.handleMessage({ type: "player_reconnecting", playerId: "p2" });
+      });
+
+      act(() => {
+        result.current.handleMessage({ type: "player_left", playerId: "p2", playerName: "Bob" });
+      });
+
+      expect(result.current.state.reconnectingPlayerIds).toEqual([]);
+    });
+
+    it("tracks multiple reconnecting players independently", () => {
+      const { result } = renderHook(() => useGameState());
+      act(() => {
+        result.current.handleMessage({ type: "player_reconnecting", playerId: "p2" });
+      });
+      act(() => {
+        result.current.handleMessage({ type: "player_reconnecting", playerId: "p3" });
+      });
+      expect(result.current.state.reconnectingPlayerIds).toEqual(["p2", "p3"]);
+
+      act(() => {
+        result.current.handleMessage({ type: "player_reconnected", playerId: "p2" });
+      });
+      expect(result.current.state.reconnectingPlayerIds).toEqual(["p3"]);
+    });
+  });
+
   it("setError and clearError work", () => {
     const { result } = renderHook(() => useGameState());
     act(() => result.current.setError("Something went wrong"));
