@@ -368,12 +368,41 @@ function drawCardTo(
  * Resolves everything automatic: dealing the opening card queue and
  * processing outstanding Flip 3 levels. Stops (returns) as soon as the round
  * ends, a target choice is needed, or nothing automatic is left to do.
+ *
+ * #507 — the server's turn-deadline signature (#502/#394) keys on
+ * `resolutionLog`'s TRAILING entry to identify the draw behind whatever is
+ * currently being timed. That's only correct because every one of this
+ * function's six callers resets `resolutionLog` to `[]` (and nulls
+ * `pendingAction`) immediately before calling in — a convention enforced by
+ * discipline, not by this function. The two asserts below turn a violation
+ * of that convention into a loud failure on entry, instead of a silent
+ * stale-signature bug that would only surface later as a mistimed/skipped
+ * turn timeout. `pendingAction` truthy on entry and `resolutionLog`
+ * non-empty on entry are deliberately checked as two separate cases: a
+ * future caller could null one without resetting the other, and either
+ * alone reproduces the exact collision #502 fixed.
  */
 function advance(state: FlipGameState, random: () => number): FlipGameState {
+  if (state.pendingAction) {
+    throw new Error(
+      'advance() called with a pendingAction already set — the caller must resolve or null it before invoking advance()',
+    );
+  }
+  if (state.resolutionLog.length > 0) {
+    throw new Error(
+      'advance() called without resetting resolutionLog first — its trailing entry must identify the draw this call performs, not a prior action’s',
+    );
+  }
+
   let current = state;
 
   while (current.phase === 'round-in-progress') {
-    if (current.pendingAction) return current;
+    // #507 — no longer a live loop check: pendingAction can only be
+    // non-null here as a result of the entry assertion above (every
+    // internal branch that sets pendingAction returns immediately rather
+    // than looping back — see the flip3Stack and dealQueue branches below).
+    // Asserted once on entry instead of guarded-and-silently-returned on
+    // every iteration; see this function's doc comment.
 
     if (current.flip3Stack.length > 0) {
       const level = current.flip3Stack[current.flip3Stack.length - 1]!;
