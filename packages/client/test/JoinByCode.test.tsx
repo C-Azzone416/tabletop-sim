@@ -208,6 +208,23 @@ describe("JoinByCode (app/play/join/page.tsx)", () => {
       expect(screen.getByText("Connecting to server...")).toBeInTheDocument();
     });
 
+    // #336 — the positive test above only proves the indicator CAN render;
+    // nothing previously proved it does not render outside "connecting".
+    // Confirmed via mutation: replacing the condition with `true` (so the
+    // indicator renders permanently, in every status) left the whole file
+    // passing beforehand. These pin the other two statuses explicitly.
+    it("does not show the connecting indicator when disconnected (#336)", () => {
+      mockWsStatus = "disconnected";
+      render(<JoinByCode />);
+      expect(screen.queryByText("Connecting to server...")).not.toBeInTheDocument();
+    });
+
+    it("does not show the connecting indicator once connected (#336)", () => {
+      mockWsStatus = "connected";
+      render(<JoinByCode />);
+      expect(screen.queryByText("Connecting to server...")).not.toBeInTheDocument();
+    });
+
     it("offers ← Back to /play (#335/#355: adopted PlayScreen chrome)", () => {
       render(<JoinByCode />);
       expect(screen.getByRole("link", { name: /← Back/ })).toHaveAttribute("href", "/play");
