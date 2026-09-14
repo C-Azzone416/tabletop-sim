@@ -188,6 +188,18 @@ export function useWebSocket(
       // timer could fire after unmount and open a zombie socket nothing is
       // using.
       if (wsRef.current) {
+        // #490 — react-hooks' generic "ref may have changed by cleanup
+        // time" warning is written for DOM-node refs, which can legitimately
+        // go stale between an effect running and its cleanup firing.
+        // suppressReconnectSockets is a different shape of ref: a stable
+        // WeakSet created once by useRef above and never reassigned
+        // anywhere in this file (only ever .add()/.has()/.delete()'d), so
+        // `.current` here is the exact same object it would be if captured
+        // in a local variable at effect-setup time — copying it to a local
+        // (the lint message's own suggested fix) would be a no-op that adds
+        // indirection without addressing anything, since there is no
+        // staleness this ref can actually suffer from.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         suppressReconnectSockets.current.add(wsRef.current);
         wsRef.current.close();
       }
