@@ -38,8 +38,14 @@ export const GAME_REGISTRY: readonly GameRegistryEntry[] = Object.freeze([
     id: 'wire-game',
     displayName: 'Wire Game',
     description: 'Cut the right wires as a team before the detonator runs out.',
-    minPlayers: 2,
-    maxPlayers: 4,
+    // #435 — raised from 2-4 to 3-5. The 2-player path is deliberately kept
+    // (not deleted, per the dead-code policy's own exception for a
+    // Caroline-parked case) — it's just no longer offered as a selectable
+    // host count. Raised last, only after a real 5-player game was played
+    // host -> lobby -> start (not /dev/seed) — the same gate that caught
+    // #404, #406 and #407.
+    minPlayers: 3,
+    maxPlayers: 5,
     available: true,
   }),
   Object.freeze({

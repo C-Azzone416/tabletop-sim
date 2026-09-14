@@ -626,7 +626,7 @@ describe("routes", () => {
           { name: "Carol", profileId: "prof-carol" },
         ],
       });
-      expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "wire-game", 4, "prof-dev", "dev_seed");
+      expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "wire-game", 5, "prof-dev", "dev_seed");
       expect(mockEngine.joinGame).toHaveBeenCalledTimes(3);
       expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Alice", "prof-alice");
       expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Bob", "prof-bob");
@@ -701,37 +701,13 @@ describe("routes", () => {
     // #270 — /dev/seed used to always create all 4 (Dev/Alice/Bob/Carol),
     // so 2p/3p rules (stand allocation, detonator max) were unverifiable by
     // hand. playerCount seeds only the first N of DEV_SEED_NAMES.
-    it("with playerCount: 2, seeds only Dev and Alice", async () => {
-      const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
-      const player = makePlayer({ id: "p1", gameId: "g1", name: "Dev" });
-      const startedGame = { ...game, status: "setup" as const };
-
-      mockProfilesDb.getProfileByName.mockResolvedValue(null);
-      mockProfilesDb.createProfile.mockImplementation(async (name: string) =>
-        makeProfile({ id: `prof-${name.toLowerCase()}`, name }));
-      mockEngine.createGame.mockResolvedValue({ game, player });
-      mockEngine.joinGame.mockResolvedValue({ game, player, players: [player] });
-      mockEngine.startGame.mockResolvedValue({ game: startedGame, players: [player], wires: [] });
-
-      const res = await seedApp.inject({ method: "POST", url: "/dev/seed", payload: { playerCount: 2 } });
-
-      expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({
-        joinCode: "DEVGAME",
-        profileId: "prof-dev",
-        playerName: "Dev",
-        mission: 1,
-        players: [
-          { name: "Dev", profileId: "prof-dev" },
-          { name: "Alice", profileId: "prof-alice" },
-        ],
-      });
-      expect(mockEngine.joinGame).toHaveBeenCalledTimes(1);
-      expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Alice", "prof-alice");
-      expect(mockEngine.joinGame).not.toHaveBeenCalledWith("DEVGAME", "Bob", expect.anything());
-      expect(mockEngine.joinGame).not.toHaveBeenCalledWith("DEVGAME", "Carol", expect.anything());
-    });
-
+    //
+    // #435 — the dedicated playerCount:2 case that used to live here is
+    // gone: wire-game's registry floor is now 3 (2-player path parked, not
+    // deleted — see game-registry.ts), so playerCount:2 is a rejected
+    // below-range value now, covered by the invalid-playerCount table
+    // below rather than a seeds-successfully case. playerCount:3 (next)
+    // demonstrates "seeds only the first N" at the new floor instead.
     it("with playerCount: 3, seeds Dev, Alice, and Bob", async () => {
       const game = makeGame({ id: "g1", joinCode: "DEVGAME" });
       const player = makePlayer({ id: "p1", gameId: "g1", name: "Dev" });
@@ -758,19 +734,19 @@ describe("routes", () => {
       expect(mockEngine.joinGame).not.toHaveBeenCalledWith("DEVGAME", "Carol", expect.anything());
     });
 
-    // #370 — the bound is now read off the registry per game type rather than
-    // DEV_SEED_NAMES.length, so wire-game still caps at 4 even though a fifth
-    // dev seat name exists for Flip. `playerCount: 5` staying rejected here is
-    // the assertion that adding Flip's seat did not raise Wire Game's ceiling.
+    // #370 — the bound is read off the registry per game type. #435 raised
+    // wire-game's range to 3-5 (was 2-4): 2 is now below range (the parked
+    // floor) and 5 is now valid, so `playerCount: 6` is what proves the
+    // ceiling, not 5.
     it.each([
-      { playerCount: 1, label: "below range" },
-      { playerCount: 5, label: "above range" },
+      { playerCount: 2, label: "below range" },
+      { playerCount: 6, label: "above range" },
       { playerCount: 2.5, label: "non-integer" },
       { playerCount: "two", label: "non-number" },
     ])("returns 400 for invalid playerCount ($label)", async ({ playerCount }) => {
       const res = await seedApp.inject({ method: "POST", url: "/dev/seed", payload: { playerCount } });
       expect(res.statusCode).toBe(400);
-      expect(res.json()).toEqual({ error: "playerCount must be an integer between 2 and 4 for wire-game" });
+      expect(res.json()).toEqual({ error: "playerCount must be an integer between 3 and 5 for wire-game" });
     });
 
     // #370 — Flip dev seeding. The engine (#360) is not a server dependency
@@ -791,7 +767,7 @@ describe("routes", () => {
         const res = await seedApp.inject({ method: "POST", url: "/dev/seed", payload: { mission: 2 } });
 
         expect(res.statusCode).toBe(200);
-        expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "wire-game", 4, "prof-dev", "dev_seed");
+        expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "wire-game", 5, "prof-dev", "dev_seed");
       });
 
       it("rejects an unknown gameType and creates nothing", async () => {

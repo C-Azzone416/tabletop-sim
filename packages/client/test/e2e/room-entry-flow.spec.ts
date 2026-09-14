@@ -76,6 +76,77 @@ test.describe("host path: launch -> /play -> Host -> Wire Game -> lobby -> start
   });
 });
 
+// #435 — the walk-the-real-path gate: registry bounds went to 3-5, and this
+// is proof the whole real path (not /dev/seed) actually supports 5 real,
+// independently signed-in players end to end — the same gate that caught
+// #404, #406 and #407, none of which any dev-seed-based test could see.
+test.describe("5-player Wire Game, walked through the real host/join/start path (#435)", () => {
+  test("five real players fill a room, ready up, and reach a playable 5-seat board", async ({
+    page,
+    browser,
+  }) => {
+    await signInAsNewPlayer(page, "Host435");
+
+    await page.getByRole("button", { name: "Play" }).click();
+    await page.getByRole("link", { name: "Host New Game" }).click();
+    await page.getByText("Wire Game").click();
+    await page.getByRole("button", { name: "5" }).click();
+    await page.getByRole("button", { name: "Create Room" }).click();
+    await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
+    const joinCode = joinCodeFromUrl(page);
+
+    const contexts = await Promise.all([1, 2, 3, 4].map(() => browser.newContext()));
+    const pages = await Promise.all(contexts.map((ctx) => ctx.newPage()));
+
+    try {
+      await expect(page.getByText("Players (1/5)")).toBeVisible();
+
+      for (let i = 0; i < pages.length; i++) {
+        const joinerPage = pages[i];
+        await signInAsNewPlayer(joinerPage, `Joiner435-${i + 1}`);
+        await joinerPage.getByRole("button", { name: "Play" }).click();
+        await joinerPage.getByRole("link", { name: "Join Game" }).click();
+        await joinerPage.getByPlaceholder("Enter code").fill(joinCode);
+        await joinerPage.getByRole("button", { name: "Join" }).click();
+        await expect(joinerPage).toHaveURL(new RegExp(`/game/${joinCode}$`), { timeout: 10_000 });
+      }
+
+      // All five seats filled, from the host's own live view.
+      await expectPlayerCountEventually(page, "Players (5/5)");
+
+      // Every seat readies up, host included, then starts the mission.
+      await page.getByRole("button", { name: "Ready" }).click();
+      for (const joinerPage of pages) {
+        await joinerPage.getByRole("button", { name: "Ready" }).click();
+      }
+      await page.getByRole("button", { name: /Start Mission/ }).click();
+
+      // Off the lobby and onto the real board for every one of the 5 seats
+      // — proving the tray-model dealer actually ran for 5 players, not
+      // just that the lobby accepted the count.
+      for (const p of [page, ...pages]) {
+        const rack = p.locator('[data-testid="player-rack"]').first();
+        await expect(rack.locator("button[data-wire-position]").first()).toBeVisible({
+          timeout: 10_000,
+        });
+      }
+
+      // Mission 1's tray model at 5 players: 5/5/5/5/4, captain (host) gets
+      // a 5 — the concrete proof the dealer refactor is wired end to end
+      // through the real path, not just unit-tested in isolation.
+      const hostRackCount = await page
+        .locator('[data-testid="player-rack"]')
+        .first()
+        .locator("button[data-wire-position]")
+        .count();
+      expect(hostRackCount).toBe(5);
+    } finally {
+      await Promise.all(contexts.map((ctx) => ctx.close()));
+      await cleanupGame(joinCode);
+    }
+  });
+});
+
 test.describe("join path: a second browser context joins by code into the same lobby", () => {
   test("two independently signed-in players land in the same lobby and see each other", async ({
     page,
@@ -124,7 +195,7 @@ test.describe("join path: a second browser context joins by code into the same l
 });
 
 test.describe("host-chosen player count is enforced on join (#437)", () => {
-  test("a host who picks 3 gets a room that refuses a 4th real joiner, even though Wire Game's registry max is 4", async ({
+  test("a host who picks 3 gets a room that refuses a 4th real joiner, even though Wire Game's registry max is 5", async ({
     page,
     browser,
   }) => {
@@ -150,7 +221,7 @@ test.describe("host-chosen player count is enforced on join (#437)", () => {
     try {
       await expect(page.getByText("Players (1/3)")).toBeVisible();
 
-      // Fills the room to the host's chosen 3 (registry max for Wire Game is 4).
+      // Fills the room to the host's chosen 3 (registry max for Wire Game is 5, since #435).
       const secondPage = await secondContext.newPage();
       await signInAsNewPlayer(secondPage, "Second");
       await secondPage.getByRole("button", { name: "Play" }).click();
@@ -168,7 +239,7 @@ test.describe("host-chosen player count is enforced on join (#437)", () => {
       // regardless of broadcast delivery to anyone else.
       await expect(secondPage.getByText("Players (2/3)")).toBeVisible({ timeout: 15_000 });
 
-      // This is the case #437 exists to close: a registry ceiling of 4 must
+      // This is the case #437 exists to close: a registry ceiling of 5 must
       // not open a 4th seat once the room's persisted choice (3) is full.
       const thirdPage = await thirdContext.newPage();
       await signInAsNewPlayer(thirdPage, "Third");
@@ -305,7 +376,10 @@ test.describe("leaving a room (#451, #430)", () => {
     await page.getByRole("button", { name: "Play" }).click();
     await page.getByRole("link", { name: "Host New Game" }).click();
     await page.getByText("Wire Game").click();
-    await page.getByRole("button", { name: "2" }).click();
+    // #435 — registry minPlayers is now 3 (2-player path is parked, not a
+    // selectable host count); this only ever needed a second real player,
+    // so the lowest available count works the same as "2" did.
+    await page.getByRole("button", { name: "3" }).click();
     await page.getByRole("button", { name: "Create Room" }).click();
     await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
     const joinCode = joinCodeFromUrl(page);
@@ -321,6 +395,9 @@ test.describe("leaving a room (#451, #430)", () => {
       await joinerPage.getByRole("button", { name: "Join" }).click();
       await expect(joinerPage).toHaveURL(new RegExp(`/game/${joinCode}$`), { timeout: 10_000 });
 
+      // Solo-plus-one is still a valid seat count for a 3-seat room's Ready
+      // gate (startGame only requires every SEATED player ready, not a full
+      // room) — same principle the solo-host test above relies on.
       await page.getByRole("button", { name: "Ready" }).click();
       await joinerPage.getByRole("button", { name: "Ready" }).click();
       await page.getByRole("button", { name: /Start Mission/ }).click();
@@ -398,20 +475,28 @@ test.describe("host resizing the room's player count from the lobby (#438)", () 
     await page.getByRole("button", { name: "Play" }).click();
     await page.getByRole("link", { name: "Host New Game" }).click();
     await page.getByText("Wire Game").click();
-    await page.getByRole("button", { name: "4" }).click();
+    // #435 — registry max is now 5 (was 4); host at the new ceiling and
+    // seat 4 total so there's a count (3) that's below current occupancy
+    // but still >= the new registry min (3) — proving the refusal is about
+    // OCCUPANCY, not about the registry floor, which "2" would have
+    // conflated back when the floor was also 2.
+    await page.getByRole("button", { name: "5" }).click();
     await page.getByRole("button", { name: "Create Room" }).click();
     await expect(page).toHaveURL(/\/game\/[A-Z0-9]{6}$/, { timeout: 10_000 });
     const joinCode = joinCodeFromUrl(page);
 
     const secondContext = await browser.newContext();
     const thirdContext = await browser.newContext();
+    const fourthContext = await browser.newContext();
     const secondPage = await secondContext.newPage();
     const thirdPage = await thirdContext.newPage();
+    const fourthPage = await fourthContext.newPage();
 
     try {
       for (const [joinerPage, name] of [
         [secondPage, "Second438"],
         [thirdPage, "Third438"],
+        [fourthPage, "Fourth438"],
       ] as const) {
         await signInAsNewPlayer(joinerPage, name);
         await joinerPage.getByRole("button", { name: "Play" }).click();
@@ -420,14 +505,15 @@ test.describe("host resizing the room's player count from the lobby (#438)", () 
         await joinerPage.getByRole("button", { name: "Join" }).click();
         await expect(joinerPage).toHaveURL(new RegExp(`/game/${joinCode}$`), { timeout: 10_000 });
       }
-      await expect(page.getByText("Players (3/4)")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText("Players (4/5)")).toBeVisible({ timeout: 10_000 });
 
-      // Caroline's ruling: refuse, don't eject. "2" is below the 3 already
-      // seated, so it's disabled with the reason shown, not just missing.
-      await expect(page.getByRole("button", { name: "2", exact: true })).toBeDisabled();
-      await expect(page.getByText(/Can't go below 3/)).toBeVisible();
-      // The room is still at its original 4 — the refused option never took.
-      await expect(page.getByText("Players (3/4)")).toBeVisible();
+      // Caroline's ruling: refuse, don't eject. "3" is below the 4 already
+      // seated (even though it's still within the registry's own range),
+      // so it's disabled with the reason shown, not just missing.
+      await expect(page.getByRole("button", { name: "3", exact: true })).toBeDisabled();
+      await expect(page.getByText(/Can't go below 4/)).toBeVisible();
+      // The room is still at its original 5 — the refused option never took.
+      await expect(page.getByText("Players (4/5)")).toBeVisible();
 
       // Host-only is the actual gate, enforced server-side, not merely
       // hidden client-side — a non-host has no picker in the DOM at all
@@ -464,6 +550,7 @@ test.describe("host resizing the room's player count from the lobby (#438)", () 
     } finally {
       await secondContext.close();
       await thirdContext.close();
+      await fourthContext.close();
       await cleanupGame(joinCode);
     }
   });

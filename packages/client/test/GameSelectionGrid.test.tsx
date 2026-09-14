@@ -13,9 +13,16 @@ describe("GameSelectionGrid", () => {
     }
   });
 
+  // #435 — Wire Game's range moved from 2-4 to 3-5; asserted directly
+  // against the registry value below (not a literal) for exactly the
+  // reason the Flip test's comment gives.
   it("shows the player-count range for a variable-count game", () => {
     render(<GameSelectionGrid onSelect={vi.fn()} />);
-    expect(screen.getByText("2–4 players")).toBeInTheDocument();
+    const wireGame = GAME_REGISTRY.find((game) => game.id === "wire-game")!;
+    const wireGameCard = screen.getByText("Wire Game").closest("button")!;
+    expect(
+      within(wireGameCard).getByText(`${wireGame.minPlayers}–${wireGame.maxPlayers} players`),
+    ).toBeInTheDocument();
   });
 
   // #436 — Flip's floor moved from 2 to 3; asserted directly against the

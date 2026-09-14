@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { dealWires, drawColorGroup, buildDeck } from "../src/engine/wire-dealer.js";
+import { dealWires, drawColorGroup, buildDeck, computeWireCounts, computeTraySizes } from "../src/engine/wire-dealer.js";
+import { MISSION_CONFIGS } from "@tabletop/shared";
 import type { MissionConfig } from "@tabletop/shared";
 
 describe("wire-dealer", () => {
@@ -70,10 +71,22 @@ describe("wire-dealer", () => {
       expect(() => dealWires([], "p1")).toThrow("Invalid player count");
     });
 
-    it("throws for invalid player count (5)", () => {
-      expect(() => dealWires(["p1", "p2", "p3", "p4", "p5"], "p1")).toThrow(
+    // #435 — 5 players is now valid (the registry's ceiling); the guard
+    // rejects only past it.
+    it("throws for invalid player count (6, past the registry's 5-player ceiling)", () => {
+      expect(() => dealWires(["p1", "p2", "p3", "p4", "p5", "p6"], "p1")).toThrow(
         "Invalid player count"
       );
+    });
+
+    it("deals 24 wires for 5 players (5/5/5/5/4, captain gets a 5)", () => {
+      const { wires } = dealWires(["p1", "p2", "p3", "p4", "p5"], "p1");
+      expect(wires).toHaveLength(24);
+
+      const counts = ["p1", "p2", "p3", "p4", "p5"].map(
+        (pid) => wires.filter((w) => w.playerId === pid).length
+      );
+      expect(counts).toEqual([5, 5, 5, 5, 4]);
     });
 
     // #473 — the two-deal version of this test compared SORTED rack value
@@ -108,7 +121,7 @@ describe("wire-dealer", () => {
   describe("dealWires — Mission 3 (blue + yellow placeholder)", () => {
     it("deals the configured total across 2 players", () => {
       const { wires } = dealWires(["p1", "p2"], "p1", 3);
-      expect(wires).toHaveLength(16); // 8 + 8, per MISSION_3_CONFIG.wiresPerPlayer
+      expect(wires).toHaveLength(16); // 8 + 8, per the tray model (totalWires=16)
     });
 
     it("includes at most 11 yellow wires (singleton master set) and no duplicate yellow values", () => {
@@ -138,7 +151,7 @@ describe("wire-dealer", () => {
   describe("dealWires — Mission 5 (blue + yellow + red placeholders)", () => {
     it("deals the configured total for 2 players", () => {
       const { wires } = dealWires(["p1", "p2"], "p1", 5);
-      expect(wires).toHaveLength(32); // 16 + 16, per MISSION_5_CONFIG.wiresPerPlayer
+      expect(wires).toHaveLength(32); // 16 + 16, per the tray model (totalWires=32)
     });
 
     it("red wire values carry the .5 decimal sort suffix", () => {
@@ -162,7 +175,7 @@ describe("wire-dealer", () => {
   describe("dealWires — Mission 8 (36 wires, hardest)", () => {
     it("deals the configured total for 2 players", () => {
       const { wires } = dealWires(["p1", "p2"], "p1", 8);
-      expect(wires).toHaveLength(36); // 18 + 18, per MISSION_8_CONFIG.wiresPerPlayer
+      expect(wires).toHaveLength(36); // 18 + 18, per the tray model (totalWires=36)
     });
 
     it("uses the full confirmed 48-tile blue set (values 1-12, 4 copies each) as the draw pool", () => {
@@ -324,11 +337,98 @@ describe("wire-dealer", () => {
       }
     });
 
-    it("the total dealt always exactly matches wiresPerPlayer capacity — no leftover, nothing undealt", () => {
+    it("the total dealt always exactly matches the tray-model capacity — no leftover, nothing undealt", () => {
       for (let i = 0; i < ITERATIONS; i++) {
         const { wires } = dealWires(["p1", "p2"], "p1", 5);
         expect(wires, `iteration ${i}`).toHaveLength(32);
       }
+    });
+  });
+
+  // #435 — the tray model replacing the eight per-mission wiresPerPlayer
+  // tables. This is the regression gate for the refactor: it must reproduce
+  // every stored 2p/3p/4p config exactly, since this is a refactor of
+  // existing behaviour, not a change to it.
+  describe("computeWireCounts / computeTraySizes — the tray model (#435)", () => {
+    // The 24 stored 2p/3p/4p configs this refactor must reproduce exactly,
+    // keyed by totalWires (several missions share a totalWires and
+    // therefore share a row) — see #435's issue body.
+    const STORED_CONFIGS: Array<{ totalWires: number; expected: Record<number, number[]> }> = [
+      { totalWires: 24, expected: { 2: [12, 12], 3: [12, 6, 6], 4: [6, 6, 6, 6] } }, // missions 1, 2
+      { totalWires: 16, expected: { 2: [8, 8], 3: [8, 4, 4], 4: [4, 4, 4, 4] } }, // mission 3
+      { totalWires: 28, expected: { 2: [14, 14], 3: [14, 7, 7], 4: [7, 7, 7, 7] } }, // mission 4
+      { totalWires: 32, expected: { 2: [16, 16], 3: [16, 8, 8], 4: [8, 8, 8, 8] } }, // missions 5, 6
+      { totalWires: 36, expected: { 2: [18, 18], 3: [18, 9, 9], 4: [9, 9, 9, 9] } }, // missions 7, 8
+    ];
+
+    it("reproduces all 24 stored 2p/3p/4p configs exactly", () => {
+      for (const { totalWires, expected } of STORED_CONFIGS) {
+        for (const playerCount of [2, 3, 4] as const) {
+          expect(computeWireCounts(totalWires, playerCount)).toEqual(expected[playerCount]);
+        }
+      }
+    });
+
+    it("produces the new 5-player deal per mission's totalWires — index 0 (captain) gets the largest tray", () => {
+      expect(computeWireCounts(24, 5)).toEqual([5, 5, 5, 5, 4]);
+      expect(computeWireCounts(16, 5)).toEqual([4, 3, 3, 3, 3]);
+      expect(computeWireCounts(28, 5)).toEqual([6, 6, 6, 5, 5]);
+      expect(computeWireCounts(32, 5)).toEqual([7, 7, 6, 6, 6]);
+      expect(computeWireCounts(36, 5)).toEqual([8, 7, 7, 7, 7]);
+    });
+
+    it("the dealt total always equals totalWires exactly, for every player count 1-5 (#220's guarantee, generalised)", () => {
+      for (const totalWires of [16, 24, 28, 32, 36]) {
+        for (let playerCount = 1; playerCount <= 5; playerCount++) {
+          const counts = computeWireCounts(totalWires, playerCount);
+          expect(counts.reduce((a, b) => a + b, 0), `totalWires=${totalWires} playerCount=${playerCount}`).toBe(totalWires);
+        }
+      }
+    });
+
+    it("no player ever receives a partial tray — tray sizes are always whole numbers", () => {
+      for (const totalWires of [16, 24, 28, 32, 36]) {
+        for (const trayCount of [4, 5]) {
+          for (const size of computeTraySizes(totalWires, trayCount)) {
+            expect(Number.isInteger(size)).toBe(true);
+          }
+        }
+      }
+    });
+
+    it("every real mission's totalWires is divisible by 4 — the structural invariant the model depends on", () => {
+      for (const mission of Object.values(MISSION_CONFIGS)) {
+        expect(mission.totalWires % 4).toBe(0);
+      }
+    });
+
+    it("every real mission's dealt total matches totalWires exactly, for every supported player count 2-5", () => {
+      for (const mission of Object.values(MISSION_CONFIGS)) {
+        for (let playerCount = 2; playerCount <= 5; playerCount++) {
+          const counts = computeWireCounts(mission.totalWires, playerCount);
+          expect(counts.reduce((a, b) => a + b, 0)).toBe(mission.totalWires);
+        }
+      }
+    });
+
+    // #435 — detonator[5] is provisional (extrapolated, not sourced from
+    // the rulebook): assert only that a value EXISTS for every mission at
+    // every supported player count, never that it's correct, so Caroline's
+    // eventual rulebook correction doesn't read as a regression here.
+    it("every mission has a detonator value for every supported player count 2-5", () => {
+      for (const mission of Object.values(MISSION_CONFIGS)) {
+        for (const playerCount of [2, 3, 4, 5]) {
+          expect(mission.detonator[playerCount]).toBeTypeOf("number");
+        }
+      }
+    });
+
+    // computeTraySizes itself is a pure function and stays well-defined
+    // even off the totalWires%4===0 invariant (dealWires is what enforces
+    // that invariant, asserted in the mission-config test above) — this
+    // just confirms the sizes still sum correctly in that case.
+    it("computeTraySizes sums to totalWires even for a totalWires the tray model wasn't designed for", () => {
+      expect(computeTraySizes(17, 4).reduce((a, b) => a + b, 0)).toBe(17);
     });
   });
 
@@ -340,7 +440,6 @@ describe("wire-dealer", () => {
       ],
       totalWires: 18,
       detonator: { 2: 4, 3: 5, 4: 6 },
-      wiresPerPlayer: { 2: 9, 3: { captain: 6, others: 6 }, 4: 5 },
     };
 
     it("deals every guaranteed non-blue tile and fills the rest with blue, sized to exactly capacity", () => {

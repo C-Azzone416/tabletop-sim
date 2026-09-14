@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { MISSION_CONFIGS, WIRE_MASTER_SET } from '@tabletop/shared';
+import { MISSION_CONFIGS, WIRE_MASTER_SET, getGameById } from '@tabletop/shared';
 import type { MissionConfig, WireColor } from '@tabletop/shared';
 
 export interface DealedWire {
@@ -156,12 +156,65 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 /**
- * Deal wires to players for the given mission.
+ * #435 — the tray model, replacing eight per-mission wiresPerPlayer tables
+ * with one derivation. Caroline's rule (2026-09-13): "there is a 5th tray,
+ * divided as closely to even as possible; no split trays; totalWires
+ * changes based on mission, not number of players."
  *
- * Wire distribution is driven by the mission config's wiresPerPlayer field:
- * - 2 players: equal split
- * - 3 players: captain gets more, others equal
- * - 4 players: equal split
+ *   trays   = max(4, playerCount)
+ *   sizes   = totalWires split across those trays, as evenly as possible,
+ *             larger trays first
+ *   dealing = whole trays handed to players, as evenly as possible,
+ *             captain first
+ *
+ * Trays are atomic — no player ever holds a partial one — so the
+ * unevenness has to live somewhere: in the DEALING at 2-4 players (four
+ * equal trays, since totalWires % 4 === 0 for every mission; the captain
+ * absorbs an extra whole tray when 4 doesn't divide evenly by playerCount),
+ * or in the TRAY SIZES at 5 (one tray each, but the trays differ). The
+ * captain (index 0, always dealt first) absorbs the excess at both levels.
+ *
+ * Reproduces all 24 stored 2p/3p/4p configs exactly — see
+ * wire-dealer.test.ts's property test.
+ */
+export function computeTraySizes(totalWires: number, trayCount: number): number[] {
+  const base = Math.floor(totalWires / trayCount);
+  const remainder = totalWires % trayCount;
+  // The first `remainder` trays get one extra wire each — already
+  // descending, since every "+1" tray sorts before every plain one.
+  return Array.from({ length: trayCount }, (_, i) => (i < remainder ? base + 1 : base));
+}
+
+/**
+ * Per-player wire counts, index 0 = captain. See computeTraySizes' doc
+ * comment above for the model this implements.
+ */
+export function computeWireCounts(totalWires: number, playerCount: number): number[] {
+  const trayCount = Math.max(4, playerCount);
+  const traySizes = computeTraySizes(totalWires, trayCount);
+
+  const traysPerPlayerBase = Math.floor(trayCount / playerCount);
+  const traysPerPlayerRemainder = trayCount % playerCount;
+
+  const counts: number[] = [];
+  let trayIndex = 0;
+  for (let p = 0; p < playerCount; p++) {
+    // The captain (p === 0) is dealt first and so is first in line for the
+    // remainder tray whenever trayCount doesn't divide evenly by
+    // playerCount — this is what makes the captain absorb the extra tray
+    // at 3 players and the largest tray at 5.
+    const traysThisPlayer = traysPerPlayerBase + (p < traysPerPlayerRemainder ? 1 : 0);
+    let sum = 0;
+    for (let t = 0; t < traysThisPlayer; t++) sum += traySizes[trayIndex++];
+    counts.push(sum);
+  }
+  return counts;
+}
+
+/**
+ * Deal wires to players for the given mission, using the tray model above
+ * to derive per-player counts from `totalWires` and player count — no
+ * per-mission table.
  *
  * Rack order is a single ascending numeric sequence across ALL colors (#190
  * Phase A) — NOT grouped by color. Yellow's .1 and red's .5 suffixes are
@@ -177,29 +230,38 @@ export interface DealWiresResult {
 
 export function dealWires(playerIds: string[], captainId: string, missionNumber: number = 1): DealWiresResult {
   const playerCount = playerIds.length;
-  if (playerCount < 1 || playerCount > 4) {
-    throw new Error(`Invalid player count: ${playerCount}. Must be 1-4.`);
+  // #435 — bound to the registry's own ceiling rather than a hardcoded
+  // number, so raising Wire Game's maxPlayers is the only place that needs
+  // to change; this can't silently drift out of sync with it.
+  const maxPlayers = getGameById('wire-game')!.maxPlayers;
+  if (playerCount < 1 || playerCount > maxPlayers) {
+    throw new Error(`Invalid player count: ${playerCount}. Must be 1-${maxPlayers}.`);
   }
 
   const config = MISSION_CONFIGS[missionNumber];
   if (!config) {
     throw new Error(`Unknown mission: ${missionNumber}. Must be 1-8.`);
   }
-
-  // Determine wire counts per player from mission config (computed before
-  // the deck so #220's guarantee can size the deck to exactly this total).
-  const wireCounts = new Map<string, number>();
-  const wpp = config.wiresPerPlayer;
-  if (playerCount === 2) {
-    for (const pid of playerIds) wireCounts.set(pid, wpp[2]);
-  } else if (playerCount === 3) {
-    const counts = wpp[3] as { captain: number; others: number };
-    for (const pid of playerIds) {
-      wireCounts.set(pid, pid === captainId ? counts.captain : counts.others);
-    }
-  } else {
-    for (const pid of playerIds) wireCounts.set(pid, wpp[4]);
+  // #435 — a structural invariant the tray model depends on: 2-4 players
+  // always get four EQUAL trays (only the dealing is uneven), which only
+  // holds if every mission's deck divides evenly by four. Asserted here
+  // rather than left implicit, so a future mission config that violates it
+  // fails loudly instead of silently mis-dealing.
+  if (config.totalWires % 4 !== 0) {
+    throw new Error(
+      `Mission ${missionNumber}'s totalWires (${config.totalWires}) is not divisible by 4 — the tray model requires four equal trays at 2-4 players`
+    );
   }
+
+  // Determine wire counts per player from the tray model (computed before
+  // the deck so #220's guarantee can size the deck to exactly this total).
+  // Captain is dealt first (counts[0]) so they receive the tray-model's
+  // remainder tray/largest tray, per computeWireCounts' doc comment.
+  const wireCounts = new Map<string, number>();
+  const others = playerIds.filter(pid => pid !== captainId);
+  const counts = computeWireCounts(config.totalWires, playerCount);
+  wireCounts.set(captainId, counts[0]);
+  others.forEach((pid, i) => wireCounts.set(pid, counts[i + 1]));
 
   const capacity = [...wireCounts.values()].reduce((sum, n) => sum + n, 0);
   const { deck: builtDeck, candidates } = buildDeck(config, capacity);

@@ -68,18 +68,14 @@ export type WireGroup = BlueWireGroup | ColorWireGroup;
 export interface MissionConfig {
   wireGroups: readonly WireGroup[];
   totalWires: number;
-  /** Detonator threshold (mistakes before explosion) keyed by player count */
+  /**
+   * Detonator threshold (mistakes before explosion) keyed by player count.
+   * #435 — the `5` entry on every mission is provisional (TODO(#216) at the
+   * call site), extrapolated from the 2/3/4 pattern rather than sourced
+   * from the rulebook. Do not assert these values are correct; only that
+   * one exists for every supported player count.
+   */
   detonator: Readonly<Record<number, number>>;
-  wiresPerPlayer: {
-    2: number;
-    3: { captain: number; others: number };
-    4: number;
-    /**
-     * Physical game supports 5p; v1 scope is 2-4 so no mission defines this
-     * yet, but the shape must not preclude it (#190 Phase A AC).
-     */
-    5?: number;
-  };
 }
 
 // Mission 1: 24 blue wires, values 1-6, 4 of each.
@@ -91,8 +87,9 @@ const MISSION_1: MissionConfig = {
     { color: 'blue', values: [1, 2, 3, 4, 5, 6], copiesPerValue: 4 },
   ],
   totalWires: 24,
-  detonator: { 2: 4, 3: 5, 4: 6 },
-  wiresPerPlayer: { 2: 12, 3: { captain: 12, others: 6 }, 4: 6 },
+  // detonator[5]: TODO(#216) — provisional, extrapolated (2/3/4 follow
+  // playerCount + 2), not sourced from the rulebook. See #435.
+  detonator: { 2: 4, 3: 5, 4: 6, 5: 7 },
 };
 
 // Mission 2: Same 24 blue wires as M1, tighter detonator (learn efficiency).
@@ -102,8 +99,9 @@ export const MISSION_2_CONFIG: MissionConfig = {
     { color: 'blue', values: [1, 2, 3, 4, 5, 6], copiesPerValue: 4 },
   ],
   totalWires: 24,
-  detonator: { 2: 3, 3: 4, 4: 5 },
-  wiresPerPlayer: { 2: 12, 3: { captain: 12, others: 6 }, 4: 6 },
+  // detonator[5]: TODO(#216) — provisional, extrapolated (2/3/4 follow
+  // playerCount + 1), not sourced from the rulebook. See #435.
+  detonator: { 2: 3, 3: 4, 4: 5, 5: 6 },
 };
 
 // Mission 3: yellow wires introduced.
@@ -120,8 +118,9 @@ export const MISSION_3_CONFIG: MissionConfig = {
     { color: 'yellow', count: 1 },
   ],
   totalWires: 16,
-  detonator: { 2: 4, 3: 5, 4: 6 },
-  wiresPerPlayer: { 2: 8, 3: { captain: 8, others: 4 }, 4: 4 },
+  // detonator[5]: TODO(#216) — provisional, extrapolated (2/3/4 follow
+  // playerCount + 2), not sourced from the rulebook. See #435.
+  detonator: { 2: 4, 3: 5, 4: 6, 5: 7 },
 };
 
 // Mission 4: blue set CONFIRMED (rulebook: missions 4-8 use all 48 blue
@@ -132,8 +131,9 @@ export const MISSION_4_CONFIG: MissionConfig = {
     { color: 'yellow', count: 1 },
   ],
   totalWires: 28,
-  detonator: { 2: 3, 3: 4, 4: 5 },
-  wiresPerPlayer: { 2: 14, 3: { captain: 14, others: 7 }, 4: 7 },
+  // detonator[5]: TODO(#216) — provisional, extrapolated (2/3/4 follow
+  // playerCount + 1), not sourced from the rulebook. See #435.
+  detonator: { 2: 3, 3: 4, 4: 5, 5: 6 },
 };
 
 // Mission 5: blue set CONFIRMED (all 48). Yellow/red counts are TODO(#216).
@@ -144,8 +144,9 @@ export const MISSION_5_CONFIG: MissionConfig = {
     { color: 'red', count: 1 },
   ],
   totalWires: 32,
-  detonator: { 2: 4, 3: 5, 4: 6 },
-  wiresPerPlayer: { 2: 16, 3: { captain: 16, others: 8 }, 4: 8 },
+  // detonator[5]: TODO(#216) — provisional, extrapolated (2/3/4 follow
+  // playerCount + 2), not sourced from the rulebook. See #435.
+  detonator: { 2: 4, 3: 5, 4: 6, 5: 7 },
 };
 
 // Mission 6: blue set CONFIRMED (all 48). Yellow/red counts are TODO(#216).
@@ -156,8 +157,9 @@ export const MISSION_6_CONFIG: MissionConfig = {
     { color: 'red', count: 1 },
   ],
   totalWires: 32,
-  detonator: { 2: 3, 3: 4, 4: 5 },
-  wiresPerPlayer: { 2: 16, 3: { captain: 16, others: 8 }, 4: 8 },
+  // detonator[5]: TODO(#216) — provisional, extrapolated (2/3/4 follow
+  // playerCount + 1), not sourced from the rulebook. See #435.
+  detonator: { 2: 3, 3: 4, 4: 5, 5: 6 },
 };
 
 // Mission 7: blue set CONFIRMED (all 48). Yellow/red counts are TODO(#216).
@@ -168,8 +170,9 @@ export const MISSION_7_CONFIG: MissionConfig = {
     { color: 'red', count: 1 },
   ],
   totalWires: 36,
-  detonator: { 2: 4, 3: 5, 4: 6 },
-  wiresPerPlayer: { 2: 18, 3: { captain: 18, others: 9 }, 4: 9 },
+  // detonator[5]: TODO(#216) — provisional, extrapolated (2/3/4 follow
+  // playerCount + 2), not sourced from the rulebook. See #435.
+  detonator: { 2: 4, 3: 5, 4: 6, 5: 7 },
 };
 
 // Mission 8: blue set CONFIRMED (all 48). Yellow/red counts are TODO(#216).
@@ -180,8 +183,14 @@ export const MISSION_8_CONFIG: MissionConfig = {
     { color: 'red', count: 1 },
   ],
   totalWires: 36,
-  detonator: { 2: 3, 3: 3, 4: 4 },
-  wiresPerPlayer: { 2: 18, 3: { captain: 18, others: 9 }, 4: 9 },
+  // detonator[5]: TODO(#216) — provisional and LEAST CONFIDENT of all eight
+  // missions. Missions 1-7 follow a clean playerCount+1/+2 pattern that this
+  // one breaks entirely; the stored 2/3/4 values instead read as pairs
+  // ((2,3)->3, (4,5)->4), which is what gives 4 rather than the +1 pattern's
+  // 5. #216 already flags mission 8 as a possible transcription slip rather
+  // than a real difficulty spike — if any detonator[5] value across all
+  // eight missions turns out wrong, it is this one. See #435.
+  detonator: { 2: 3, 3: 3, 4: 4, 5: 4 },
 };
 
 // Lookup map: mission number → config (all missions 1-8)

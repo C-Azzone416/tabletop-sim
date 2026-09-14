@@ -155,12 +155,15 @@ describe("game-engine", () => {
     // go through this one function.
     describe("rejects a player count outside the game's registry bounds (#437)", () => {
       it("above the maximum", async () => {
-        await expect(engine.createGame("Alice", "wire-game", 5)).rejects.toThrow("Invalid player count");
+        // #435 — wire-game's registry max is now 5.
+        await expect(engine.createGame("Alice", "wire-game", 6)).rejects.toThrow("Invalid player count");
         expect(mockGamesDb.createGame).not.toHaveBeenCalled();
       });
 
       it("below the minimum", async () => {
-        await expect(engine.createGame("Alice", "wire-game", 1)).rejects.toThrow("Invalid player count");
+        // #435 — wire-game's registry min is now 3 (2-player path parked,
+        // not deleted — see game-registry.ts).
+        await expect(engine.createGame("Alice", "wire-game", 2)).rejects.toThrow("Invalid player count");
         expect(mockGamesDb.createGame).not.toHaveBeenCalled();
       });
 
@@ -340,8 +343,8 @@ describe("game-engine", () => {
     });
 
     it("rejects a value outside the game's registry bounds", async () => {
-      setup(); // wire-game: 2-4
-      await expect(engine.updatePlayerCount("g1", "host", 5)).rejects.toThrow("Invalid player count");
+      setup(); // wire-game: 3-5 (#435)
+      await expect(engine.updatePlayerCount("g1", "host", 6)).rejects.toThrow("Invalid player count");
     });
 
     it("rejects a non-integer value", async () => {
