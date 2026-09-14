@@ -325,7 +325,7 @@ describe("message-handler", () => {
     // must stay clearly distinguishable — a real entry with its seat range,
     // versus nothing at all.
     it("recognises flip as a registered game id and checkers as not one", () => {
-      expect(getGameById("flip")).toMatchObject({ id: "flip", minPlayers: 2, maxPlayers: 5 });
+      expect(getGameById("flip")).toMatchObject({ id: "flip", minPlayers: 3, maxPlayers: 5 });
       expect(getGameById("checkers")).toBeUndefined();
     });
   });

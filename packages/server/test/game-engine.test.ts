@@ -335,12 +335,13 @@ describe("game-engine", () => {
     });
 
     // Bounds come from the registry, the same source the join gate uses.
-    it("rejects a solo lobby, below Flip's minimum of 2", async () => {
-      flipLobby({ players: 1 });
-      await expect(engine.startFlipRoom("g1", "p0")).rejects.toThrow("Need at least 2 players");
+    // #436 raised the floor from 2 to 3.
+    it("rejects a 2-player lobby, below Flip's minimum of 3", async () => {
+      flipLobby({ players: 2 });
+      await expect(engine.startFlipRoom("g1", "p0")).rejects.toThrow("Need at least 3 players");
     });
 
-    it.each([2, 3, 4, 5])("accepts a lobby of %i, within Flip's registry range", async (players) => {
+    it.each([3, 4, 5])("accepts a lobby of %i, within Flip's registry range", async (players) => {
       flipLobby({ players });
       await expect(engine.startFlipRoom("g1", "p0")).resolves.toBeDefined();
     });

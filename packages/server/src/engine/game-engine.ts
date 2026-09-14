@@ -152,12 +152,15 @@ export async function startFlipRoom(
   if (!players.every(p => p.ready)) throw new Error('Not all players are ready');
 
   // Bounds come from the registry, the same source the join gate uses, so the
-  // two cannot disagree about how many seats Flip takes.
+  // two cannot disagree about how many seats Flip takes. `game.gameType` is
+  // already checked to be 'flip' above, which is always registered — #436
+  // dropped the `?? 2`/`?? 5` fallback since a missing entry here would mean
+  // the registry itself is broken, not something to paper over with stale
+  // hardcoded bounds.
   const entry = getGameById(game.gameType);
-  const min = entry?.minPlayers ?? 2;
-  const max = entry?.maxPlayers ?? 5;
-  if (players.length < min) throw new Error(`Need at least ${min} players`);
-  if (players.length > max) throw new Error(`Flip seats at most ${max} players`);
+  if (!entry) throw new Error('Unknown game type');
+  if (players.length < entry.minPlayers) throw new Error(`Need at least ${entry.minPlayers} players`);
+  if (players.length > entry.maxPlayers) throw new Error(`Flip seats at most ${entry.maxPlayers} players`);
 
   const state = startFlipGame({
     players: players.map(p => ({ id: p.id, name: p.name })),
