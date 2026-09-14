@@ -617,7 +617,7 @@ describe("message-handler", () => {
       await handleMessage(ws, JSON.stringify({ type: "next_mission", mission: 2 }));
 
       expect(mockEngine.executeNextMission).toHaveBeenCalledWith("g1", "p1", 2);
-      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game, players);
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game);
     });
 
     it("rejects a missing mission as an invalid message (no captain-only/won-lost guard reached)", async () => {
@@ -790,7 +790,7 @@ describe("message-handler", () => {
       await handleMessage(ws, JSON.stringify({ type: "place_info_token", wireId: "w1" }));
 
       expect(mockEngine.executePlaceInfoToken).toHaveBeenCalledWith("g1", "p1", "w1");
-      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game, players);
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game);
     });
 
     it("surfaces the #191 non-blue-wire rejection reason to the client, not a generic Internal error", async () => {
@@ -933,7 +933,7 @@ describe("message-handler", () => {
         playerId: "p2",
         playerName: "Bob",
       });
-      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game, remainingPlayers);
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", game);
     });
   });
 

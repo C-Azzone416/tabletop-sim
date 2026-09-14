@@ -1142,7 +1142,7 @@ describe("routes", () => {
       expect(mockEngine.completeSetup).toHaveBeenCalledWith("g1");
       expect(mockTokensDb.createInfoToken).toHaveBeenCalledTimes(1);
       expect(mockTokensDb.createInfoToken).toHaveBeenCalledWith("g1", "w2", "5", true);
-      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", activeGame, players);
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", activeGame);
     });
 
     it("skips completeSetup for a game already 'active', still backfilling missing tokens", async () => {
@@ -1232,7 +1232,7 @@ describe("routes", () => {
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ joinCode: "DEVGAME", tokensRemoved: 3, game: activeGame });
       expect(mockTokensDb.deleteDevInfoTokensByGameId).toHaveBeenCalledWith("g1");
-      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", activeGame, players);
+      expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalledWith("g1", activeGame);
     });
 
     it("succeeds with tokensRemoved: 0 when no dev-created tokens exist (gameplay tokens survive)", async () => {

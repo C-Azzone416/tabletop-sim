@@ -364,8 +364,7 @@ export async function buildApp() {
           if (game) {
             registerConnection(socket, player.id, game.id);
             app.log.info({ gameId: game.id, playerId: player.id }, '[WS /ws] player reconnected');
-            const players = await playersDb.getPlayersByGameId(game.id);
-            await broadcastGameState(game.id, game, players);
+            await broadcastGameState(game.id, game);
           }
         }
       } catch (err) {
@@ -395,7 +394,7 @@ export async function buildApp() {
 
         const updatedGame = await engine.advanceTurn(game.id);
         const players = await playersDb.getPlayersByGameId(game.id);
-        await broadcastGameState(game.id, updatedGame, players);
+        await broadcastGameState(game.id, updatedGame);
 
         const currentPlayer = players.find(p => p.id === updatedGame.currentTurnPlayerId);
         return { currentTurnPlayerId: updatedGame.currentTurnPlayerId, playerName: currentPlayer?.name ?? '' };
@@ -896,10 +895,9 @@ export async function buildApp() {
           updatedGame = await engine.completeSetup(game.id);
         }
 
-        const [wires, existingTokens, players] = await Promise.all([
+        const [wires, existingTokens] = await Promise.all([
           wiresDb.getWiresByGameId(game.id),
           tokensDb.getInfoTokensByGameId(game.id),
-          playersDb.getPlayersByGameId(game.id),
         ]);
         const wiresWithTokens = new Set(existingTokens.map(t => t.wireId));
 
@@ -910,7 +908,7 @@ export async function buildApp() {
           created += 1;
         }
 
-        await broadcastGameState(game.id, updatedGame, players);
+        await broadcastGameState(game.id, updatedGame);
 
         return { joinCode, tokensCreated: created, game: updatedGame };
       } catch (err) {
@@ -936,8 +934,7 @@ export async function buildApp() {
 
         const tokensRemoved = await tokensDb.deleteDevInfoTokensByGameId(game.id);
 
-        const players = await playersDb.getPlayersByGameId(game.id);
-        await broadcastGameState(game.id, game, players);
+        await broadcastGameState(game.id, game);
 
         return { joinCode, tokensRemoved, game };
       } catch (err) {

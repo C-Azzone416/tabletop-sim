@@ -21,12 +21,16 @@ vi.mock("../src/ws/connection-manager.js", () => ({
   getGameSockets: vi.fn(() => new Map()),
   sendToPlayer: vi.fn(),
 }));
+// #445 — players is queried fresh inside broadcastGameState now, not passed
+// in by the caller (see state-broadcaster.ts's doc comment on why).
+vi.mock("../src/db/players.js", () => ({ getPlayersByGameId: vi.fn() }));
 
 import * as wiresDb from "../src/db/wires.js";
 import * as tokensDb from "../src/db/tokens.js";
 import * as candidatesDb from "../src/db/candidates.js";
 import * as connManager from "../src/ws/connection-manager.js";
 import * as flipGamesDb from "../src/db/flip-games.js";
+import * as playersDb from "../src/db/players.js";
 import { buildFlipGameState, flipCards } from "@tabletop/game-flip";
 
 const mockFlipGamesDb = vi.mocked(flipGamesDb);
@@ -34,6 +38,7 @@ const mockWiresDb = vi.mocked(wiresDb);
 const mockTokensDb = vi.mocked(tokensDb);
 const mockCandidatesDb = vi.mocked(candidatesDb);
 const mockConnManager = vi.mocked(connManager);
+const mockPlayersDb = vi.mocked(playersDb);
 
 describe("state-broadcaster", () => {
   beforeEach(() => {
@@ -150,6 +155,9 @@ describe("state-broadcaster", () => {
       if (mockFlipGamesDb.getFlipRoundScores.getMockImplementation() === undefined) {
         mockFlipGamesDb.getFlipRoundScores.mockResolvedValue([]);
       }
+      // #445 — players is queried fresh; default to the same roster every
+      // test in this block already builds via flipPlayers().
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(flipPlayers());
     };
 
     it("broadcasts a renderable flip table to every connected seat", async () => {
@@ -158,7 +166,7 @@ describe("state-broadcaster", () => {
       );
       connect("p0", "p1");
 
-      await broadcastGameState("g1", flipGame(), flipPlayers());
+      await broadcastGameState("g1", flipGame());
 
       expect(mockConnManager.sendToPlayer).toHaveBeenCalledTimes(2);
       const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
@@ -174,7 +182,7 @@ describe("state-broadcaster", () => {
       );
       connect("p0");
 
-      await broadcastGameState("g1", flipGame(), flipPlayers());
+      await broadcastGameState("g1", flipGame());
 
       expect(mockWiresDb.getWiresByGameId).not.toHaveBeenCalled();
       expect(mockTokensDb.getInfoTokensByGameId).not.toHaveBeenCalled();
@@ -188,7 +196,7 @@ describe("state-broadcaster", () => {
       );
       connect("p0");
 
-      await broadcastGameState("g1", flipGame(), flipPlayers());
+      await broadcastGameState("g1", flipGame());
 
       const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
       expect(message).not.toHaveProperty("wires");
@@ -208,7 +216,7 @@ describe("state-broadcaster", () => {
       );
       connect("p0", "p1");
 
-      await broadcastGameState("g1", flipGame(), flipPlayers());
+      await broadcastGameState("g1", flipGame());
 
       const [, , first] = mockConnManager.sendToPlayer.mock.calls[0];
       const [, , second] = mockConnManager.sendToPlayer.mock.calls[1];
@@ -229,7 +237,7 @@ describe("state-broadcaster", () => {
       );
       connect("p0");
 
-      await broadcastGameState("g1", flipGame(), flipPlayers());
+      await broadcastGameState("g1", flipGame());
 
       const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
       expect((message as { flip: { pendingAction: unknown } }).flip.pendingAction).toMatchObject({
@@ -252,7 +260,7 @@ describe("state-broadcaster", () => {
       );
       connect("p0");
 
-      await broadcastGameState("g1", flipGame(), flipPlayers());
+      await broadcastGameState("g1", flipGame());
 
       const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
       const flip = (message as { flip: {
@@ -293,7 +301,7 @@ describe("state-broadcaster", () => {
         ]);
         connect("p0");
 
-        await broadcastGameState("g1", flipGame(), flipPlayers());
+        await broadcastGameState("g1", flipGame());
 
         const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
         const view = (message as { flip: { players: { id: string; rounds: unknown[] }[] } }).flip;
@@ -310,7 +318,7 @@ describe("state-broadcaster", () => {
         ]);
         connect("p0");
 
-        await broadcastGameState("g1", flipGame(), flipPlayers());
+        await broadcastGameState("g1", flipGame());
 
         const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
         const rounds = (message as { flip: { players: { id: string; rounds: { roundNumber: number }[] }[] } })
@@ -331,7 +339,7 @@ describe("state-broadcaster", () => {
         ]);
         connect("p0");
 
-        await broadcastGameState("g1", flipGame(), flipPlayers());
+        await broadcastGameState("g1", flipGame());
 
         const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
         const round = (message as { flip: { players: { id: string; rounds: { breakdown: Record<string, unknown> }[] }[] } })
@@ -344,7 +352,7 @@ describe("state-broadcaster", () => {
         mockFlipGamesDb.getFlipRoundScores.mockResolvedValue([]);
         connect("p0");
 
-        await broadcastGameState("g1", flipGame(), flipPlayers());
+        await broadcastGameState("g1", flipGame());
 
         const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
         const view = (message as { flip: { players: { rounds: unknown[] }[] } }).flip;
@@ -370,9 +378,16 @@ describe("state-broadcaster", () => {
       it("still broadcasts room and player state", async () => {
         lobby();
         const game = flipGame();
+        // Set explicitly (overriding lobby()/connect()'s own flipPlayers()
+        // call) so the mock and this assertion share the exact same array
+        // reference — calling flipPlayers() a second time would give
+        // makePlayer's counter-based `name` default a different value even
+        // with the same overridden `id`, and toMatchObject would fail on a
+        // difference that has nothing to do with what this test checks.
         const players = flipPlayers();
+        mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
 
-        await broadcastGameState("g1", game, players);
+        await broadcastGameState("g1", game);
 
         expect(mockConnManager.sendToPlayer).toHaveBeenCalledTimes(2);
         const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
@@ -384,7 +399,7 @@ describe("state-broadcaster", () => {
       it("sends flip as an explicit null rather than a partial table", async () => {
         lobby();
 
-        await broadcastGameState("g1", flipGame(), flipPlayers());
+        await broadcastGameState("g1", flipGame());
 
         const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
         expect(message).toHaveProperty("flip");
@@ -396,7 +411,7 @@ describe("state-broadcaster", () => {
       it("keeps the flip key present so the client narrows correctly", async () => {
         lobby();
 
-        await broadcastGameState("g1", flipGame(), flipPlayers());
+        await broadcastGameState("g1", flipGame());
 
         const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
         expect("flip" in (message as object)).toBe(true);
@@ -406,7 +421,7 @@ describe("state-broadcaster", () => {
       it("reaches every seat in the lobby, not just the host", async () => {
         lobby();
 
-        await broadcastGameState("g1", flipGame(), flipPlayers());
+        await broadcastGameState("g1", flipGame());
 
         const recipients = mockConnManager.sendToPlayer.mock.calls.map((c) => c[1]);
         expect(recipients).toEqual(["p0", "p1"]);
@@ -415,7 +430,7 @@ describe("state-broadcaster", () => {
       it("touches no wire-game tables and reads no round history", async () => {
         lobby();
 
-        await broadcastGameState("g1", flipGame(), flipPlayers());
+        await broadcastGameState("g1", flipGame());
 
         expect(mockWiresDb.getWiresByGameId).not.toHaveBeenCalled();
         // No table means there can be no history either — don't query for it.
@@ -433,8 +448,9 @@ describe("state-broadcaster", () => {
       mockTokensDb.getValidationTokensByGameId.mockResolvedValue([]);
       mockCandidatesDb.getWireCandidatesByGameId.mockResolvedValue([]);
       mockConnManager.getGameSockets.mockReturnValue(new Map([["p1", {}]]) as Map<string, WebSocket>);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([makePlayer({ id: "p1" })]);
 
-      await broadcastGameState("g1", makeGame({ id: "g1", gameType: "wire-game" }), [makePlayer({ id: "p1" })]);
+      await broadcastGameState("g1", makeGame({ id: "g1", gameType: "wire-game" }));
 
       expect(mockWiresDb.getWiresByGameId).toHaveBeenCalledWith("g1");
       expect(mockFlipGamesDb.getFlipGameState).not.toHaveBeenCalled();
@@ -458,8 +474,9 @@ describe("state-broadcaster", () => {
       mockTokensDb.getValidationTokensByGameId.mockResolvedValue(validationTokens);
       mockCandidatesDb.getWireCandidatesByGameId.mockResolvedValue([]);
       mockConnManager.getGameSockets.mockReturnValue(gameSockets);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
 
-      await broadcastGameState("g1", game, players);
+      await broadcastGameState("g1", game);
 
       expect(mockWiresDb.getWiresByGameId).toHaveBeenCalledWith("g1");
       expect(mockConnManager.sendToPlayer).toHaveBeenCalledTimes(2);
@@ -485,8 +502,9 @@ describe("state-broadcaster", () => {
       mockTokensDb.getValidationTokensByGameId.mockResolvedValue([]);
       mockCandidatesDb.getWireCandidatesByGameId.mockResolvedValue([]);
       mockConnManager.getGameSockets.mockReturnValue(gameSockets);
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
 
-      await broadcastGameState("g1", game, players);
+      await broadcastGameState("g1", game);
 
       const calls = mockConnManager.sendToPlayer.mock.calls;
       const p1Message = calls.find(c => c[1] === "p1")![2] as { wires: { id: string; value: string | null }[] };
@@ -504,8 +522,9 @@ describe("state-broadcaster", () => {
       mockTokensDb.getValidationTokensByGameId.mockResolvedValue([]);
       mockCandidatesDb.getWireCandidatesByGameId.mockResolvedValue([]);
       mockConnManager.getGameSockets.mockReturnValue(new Map());
+      mockPlayersDb.getPlayersByGameId.mockResolvedValue([]);
 
-      await broadcastGameState("g1", makeGame({ id: "g1" }), []);
+      await broadcastGameState("g1", makeGame({ id: "g1" }));
 
       expect(mockConnManager.sendToPlayer).not.toHaveBeenCalled();
     });
