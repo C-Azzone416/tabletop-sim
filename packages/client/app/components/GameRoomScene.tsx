@@ -25,6 +25,7 @@ const MEEPLES: Array<{ x: number; y: number; gradient: string }> = [
 export function GameRoomScene() {
   return (
     <svg
+      data-testid="game-room-scene"
       viewBox="0 0 1200 780"
       className="absolute inset-0 h-full w-full"
       preserveAspectRatio="xMidYMid slice"
