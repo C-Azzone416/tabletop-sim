@@ -39,4 +39,9 @@ jobs:
         # #262 — secrets.STAGING_API_ACCESS_KEY lets this check get past
         # #252's access gate (once API_ACCESS_KEY is configured on staging)
         # to actually observe the #98/#121 invariants it exists to verify.
+        #
+        # #469 swept this file: safe. Every ${{ }} here is vars.*/secrets.*
+        # (repo-admin-configured, never attacker-influenceable text), and
+        # this workflow has no pull_request trigger — nothing here is
+        # reachable from anything a PR author controls.
         run: npx tsx scripts/staging-smoke-check.ts "${{ vars.STAGING_SERVER_URL }}" "${{ vars.STAGING_ORIGIN }}" "${{ secrets.STAGING_API_ACCESS_KEY }}"
