@@ -160,6 +160,32 @@ describe("routes", () => {
     });
   });
 
+  // #481 — lets a post-deploy check ask which commit is actually running.
+  describe("GET /version", () => {
+    afterEach(() => {
+      delete process.env.RENDER_GIT_COMMIT;
+    });
+
+    it("reports RENDER_GIT_COMMIT when set", async () => {
+      process.env.RENDER_GIT_COMMIT = "abc123fakesha";
+      const versionedApp = await buildApp();
+
+      const res = await versionedApp.inject({ method: "GET", url: "/version" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ commit: "abc123fakesha" });
+
+      await versionedApp.close();
+    });
+
+    it("reports commit: null when RENDER_GIT_COMMIT is unset (local/non-Render)", async () => {
+      const res = await app.inject({ method: "GET", url: "/version" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ commit: null });
+    });
+  });
+
   describe("POST /profiles", () => {
     it("creates a new profile and returns 201", async () => {
       const profile = makeProfile({ id: "prof-1", name: "Alice" });
@@ -2074,6 +2100,15 @@ describe("routes", () => {
 
       expect(healthRes.statusCode).toBe(200);
       expect(healthzRes.statusCode).toBe(200);
+    });
+
+    // #481 — the opposite of /health's exemption above: /version is
+    // diagnostic-per-deploy information, not a liveness probe a platform
+    // needs to reach unauthenticated, so it stays behind the gate.
+    it("gates /version, unlike /health and /healthz", async () => {
+      const res = await keyedApp.inject({ method: "GET", url: "/version" });
+
+      expect(res.statusCode).toBe(401);
     });
   });
 

@@ -183,6 +183,16 @@ export async function buildApp() {
   app.get('/health', async () => ({ status: 'ok' }));
   app.get('/healthz', async () => ({ status: 'ok' }));
 
+  // #481 — lets a post-deploy check ask "which commit is actually running
+  // right now," the one thing no static build check can answer. Render
+  // injects RENDER_GIT_COMMIT into every service automatically (no build
+  // step or manual wiring needed); null locally/on any host that isn't
+  // Render, which is expected and not an error. Deliberately NOT exempted
+  // from the #252 preHandler gate above like /health is — this is
+  // diagnostic-per-deploy information, not a liveness probe a platform
+  // needs to reach unauthenticated.
+  app.get('/version', async () => ({ commit: process.env.RENDER_GIT_COMMIT ?? null }));
+
   app.post('/games', async (request, reply) => {
     const { playerName } = request.body as { playerName: string };
     if (!playerName || typeof playerName !== 'string') {

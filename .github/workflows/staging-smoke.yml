@@ -45,3 +45,28 @@ jobs:
         # this workflow has no pull_request trigger — nothing here is
         # reachable from anything a PR author controls.
         run: npx tsx scripts/staging-smoke-check.ts "${{ vars.STAGING_SERVER_URL }}" "${{ vars.STAGING_ORIGIN }}" "${{ secrets.STAGING_API_ACCESS_KEY }}"
+
+      # #481 (Check C, split from #417) — the check that would have caught
+      # #413/#414: A/B (#417) verify the BUILD is correct; this is the only
+      # one that verifies a push actually REACHED a running server. Polls
+      # /version and fails if it never reports this exact pushed commit.
+      #
+      # Reuses the same secrets/vars as the step above (#262, added by
+      # #262 itself) rather than adding new ones — same host, same gate.
+      #
+      # Deliberate choice on failure path, per the PM's ask to state this
+      # explicitly: FAILS THE WORKFLOW (loud — a red check on the commit
+      # in the Actions tab), same as the step above, rather than a quieter
+      # issue/board post. This runs post-merge and can't block anything,
+      # but #413/#414 sat unnoticed specifically because nothing was loud
+      # about it; a check that fails silently into a channel nobody is
+      # watching would reproduce the exact gap this issue exists to close.
+      # No new notification mechanism — extends the existing pattern this
+      # workflow already uses.
+      #
+      # #469-safe for the same reason as the step above: every ${{ }} here
+      # is either vars.*/secrets.* or github.sha (the actual SHA of the
+      # commit GitHub just ran this workflow for for — not text a PR author
+      # can shape), and this workflow has no pull_request trigger.
+      - name: Check the deployed commit matches the pushed commit
+        run: npx tsx scripts/deployed-sha-check.ts "${{ vars.STAGING_SERVER_URL }}" "${{ github.sha }}" "${{ secrets.STAGING_API_ACCESS_KEY }}"
