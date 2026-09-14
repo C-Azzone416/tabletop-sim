@@ -98,14 +98,15 @@ describe("usePlayAction", () => {
       const { result } = renderHook(() => usePlayAction());
 
       act(() => {
-        result.current.createGame("wire-game");
+        result.current.createGame("wire-game", 4);
       });
 
-      // gameType comes from the caller, never from a client-side default (#313).
+      // gameType/maxPlayers come from the caller, never a client-side default (#313, #437).
       expect(mockSend).toHaveBeenCalledWith({
         type: "create_game",
         playerName: "Ada",
         gameType: "wire-game",
+        maxPlayers: 4,
       });
       expect(mockConnect).toHaveBeenCalled();
       expect(result.current.mode).toBe("creating");
@@ -116,7 +117,7 @@ describe("usePlayAction", () => {
       const { result } = renderHook(() => usePlayAction());
 
       act(() => {
-        result.current.createGame("wire-game");
+        result.current.createGame("wire-game", 4);
       });
       act(() => {
         capturedOnMessage?.({ type: "game_created", game: { joinCode: "ABC123" } });
@@ -169,7 +170,7 @@ describe("usePlayAction", () => {
 
   describe("failure handling shared by both branches", () => {
     it.each([
-      ["creating", (r: ReturnType<typeof usePlayAction>) => r.createGame("wire-game")],
+      ["creating", (r: ReturnType<typeof usePlayAction>) => r.createGame("wire-game", 4)],
       ["joining", (r: ReturnType<typeof usePlayAction>) => r.joinGame("ABC123")],
     ])("returns to idle with a message when %s times out", (expectedMode, start) => {
       vi.useFakeTimers();
@@ -193,7 +194,7 @@ describe("usePlayAction", () => {
       const { result } = renderHook(() => usePlayAction());
 
       act(() => {
-        result.current.createGame("wire-game");
+        result.current.createGame("wire-game", 4);
       });
       act(() => {
         capturedOnMessage?.({ type: "error", message: "Game not found" });
@@ -215,7 +216,7 @@ describe("usePlayAction", () => {
       const { result } = renderHook(() => usePlayAction());
 
       act(() => {
-        result.current.createGame("wire-game");
+        result.current.createGame("wire-game", 4);
       });
       act(() => {
         capturedOnMessage?.({ type: "game_created", game: { joinCode: "ABC123" } });
@@ -232,7 +233,7 @@ describe("usePlayAction", () => {
       const { result } = renderHook(() => usePlayAction());
 
       act(() => {
-        result.current.createGame("wire-game");
+        result.current.createGame("wire-game", 4);
       });
       act(() => {
         vi.advanceTimersByTime(ACTION_TIMEOUT_MS);
@@ -249,7 +250,7 @@ describe("usePlayAction", () => {
       const { result } = renderHook(() => usePlayAction());
 
       act(() => {
-        result.current.createGame("wire-game");
+        result.current.createGame("wire-game", 4);
       });
       act(() => {
         expect(result.current.joinGame("ABC123")).toBe(false);
@@ -263,7 +264,7 @@ describe("usePlayAction", () => {
       const { result } = renderHook(() => usePlayAction());
 
       act(() => {
-        expect(result.current.createGame("wire-game")).toBe(false);
+        expect(result.current.createGame("wire-game", 4)).toBe(false);
       });
 
       expect(mockSend).not.toHaveBeenCalled();

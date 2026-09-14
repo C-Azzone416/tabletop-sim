@@ -34,10 +34,12 @@ function validateMessage(parsed: unknown): ClientMessage | null {
   switch (msg.type) {
     case 'create_game':
       // Shape check only — a syntactically-fine but unregistered/unavailable
-      // gameType is rejected by handleCreateGame's registry lookup, the
-      // actual security gate (never trust the client with a DB-bound value).
+      // gameType, or a maxPlayers outside that game's registry bounds, is
+      // rejected by engine.createGame's registry lookup (#437), the actual
+      // security gate (never trust the client with a DB-bound value).
       if (!isValidName(msg.playerName) || !isNonEmptyString(msg.gameType)) return null;
-      return { type: 'create_game', playerName: msg.playerName, gameType: msg.gameType as GameId };
+      if (typeof msg.maxPlayers !== 'number' || !Number.isInteger(msg.maxPlayers) || msg.maxPlayers < 1) return null;
+      return { type: 'create_game', playerName: msg.playerName, gameType: msg.gameType as GameId, maxPlayers: msg.maxPlayers };
     case 'join_game':
       if (!isNonEmptyString(msg.joinCode) || !isValidName(msg.playerName)) return null;
       return { type: 'join_game', joinCode: msg.joinCode, playerName: msg.playerName };
@@ -128,7 +130,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
   try {
     switch (msg.type) {
       case 'create_game':
-        await handleCreateGame(socket, msg.playerName, msg.gameType);
+        await handleCreateGame(socket, msg.playerName, msg.gameType, msg.maxPlayers);
         break;
       case 'join_game':
         await handleJoinGame(socket, msg.joinCode, msg.playerName);
@@ -196,7 +198,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Reveal reds not available in this mission',
       'Game is not in setup phase', 'Can only place info token on your own wire', 'Info token already placed',
       'Opening info token must be placed on a blue wire',
-      'Game is not in waiting phase', 'Mission is locked', 'Unknown game type',
+      'Game is not in waiting phase', 'Mission is locked', 'Unknown game type', 'Invalid player count',
       // #387 — Flip. Every one of these is a rejection the player caused and
       // can act on, so it is safe (and useful) to name; anything else from the
       // Flip path still falls through to the generic 'Internal error' below,
@@ -235,7 +237,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
   }
 }
 
-async function handleCreateGame(socket: WebSocket, _playerName: string, gameType: GameId): Promise<void> {
+async function handleCreateGame(socket: WebSocket, _playerName: string, gameType: GameId, maxPlayers: number): Promise<void> {
   // The application-level gate: a client-controlled value is about to reach
   // a DB column, and the #324 CHECK constraint is only the backstop, not
   // the primary defense. Reject anything not in the registry as available
@@ -244,7 +246,10 @@ async function handleCreateGame(socket: WebSocket, _playerName: string, gameType
   if (!isAvailableGameId(gameType)) throw new Error('Unknown game type');
 
   const user = getAuthenticatedUser(socket);
-  const { game, player } = await withTimeout(engine.createGame(user.name, gameType, user.profileId), 'createGame');
+  // #437 — maxPlayers's own bounds check (against gameType's registry entry)
+  // lives inside engine.createGame, the one place both this handler and the
+  // dev seed go through.
+  const { game, player } = await withTimeout(engine.createGame(user.name, gameType, maxPlayers, user.profileId), 'createGame');
   connManager.registerConnection(socket, player.id, game.id);
 
   const response: ServerMessage = { type: 'game_created', game, player };

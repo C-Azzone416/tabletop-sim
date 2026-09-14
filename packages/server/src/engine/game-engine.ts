@@ -82,11 +82,23 @@ function generateJoinCode(): string {
 export async function createGame(
   playerName: string,
   gameType: GameId,
+  maxPlayers: number,
   profileId?: string,
   createdVia: gamesDb.GameCreatedVia = 'lobby',
 ): Promise<{ game: Game; player: Player }> {
+  // #437 — the actual security gate: message-handler's shape check only
+  // confirms maxPlayers looks like a number before it gets here, and the dev
+  // seed's own parsing has already validated its callers' input too, but
+  // this is the one place both paths go through, so it is where a count
+  // outside the game's registry bounds is refused, not either caller.
+  const entry = getGameById(gameType);
+  if (!entry) throw new Error('Unknown game type');
+  if (!Number.isInteger(maxPlayers) || maxPlayers < entry.minPlayers || maxPlayers > entry.maxPlayers) {
+    throw new Error('Invalid player count');
+  }
+
   const joinCode = generateJoinCode();
-  const game = await gamesDb.createGame(joinCode, gameType, 1, createdVia);
+  const game = await gamesDb.createGame(joinCode, gameType, maxPlayers, 1, createdVia);
   const player = await playersDb.createPlayer(game.id, playerName, 0, profileId);
   const updatedGame = await gamesDb.updateGameCaptain(game.id, player.id);
   return { game: updatedGame, player };
@@ -98,13 +110,14 @@ export async function joinGame(joinCode: string, playerName: string, profileId?:
   if (game.status !== 'waiting') throw new Error('Game already started');
 
   const existingPlayers = await playersDb.getPlayersByGameId(game.id);
-  // #370 — the seat cap is per game, read from the registry, not the hardcoded
-  // 4 this used to carry. Wire Game still caps at 4; Flip seats 5, and with a
-  // constant here its fifth player could never join. Falls back to 4 for a
-  // game_type somehow absent from the registry, which keeps the old behaviour
-  // rather than opening the table up.
-  const maxPlayers = getGameById(game.gameType)?.maxPlayers ?? 4;
-  if (existingPlayers.length >= maxPlayers) throw new Error('Game is full');
+  // #437 — the room's own persisted capacity, not the game's registry
+  // ceiling. #370 made this registry-derived rather than a hardcoded 4;
+  // #437 goes one step further, since the registry ceiling was never the
+  // host's actual choice — a host who said 3 must get a room that fills at
+  // 3, even though the game itself might allow more. game.maxPlayers is set
+  // at createGame (validated against the registry there) and is always
+  // present, so there is no registry fallback needed here anymore.
+  if (existingPlayers.length >= game.maxPlayers) throw new Error('Game is full');
 
   const player = await playersDb.createPlayer(game.id, playerName, existingPlayers.length, profileId);
   const players = await playersDb.getPlayersByGameId(game.id);

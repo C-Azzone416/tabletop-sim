@@ -110,45 +110,44 @@ describe("Lobby", () => {
     });
   });
 
-  // #407: canStart and the player-count display hardcoded Wire Game's cap of
-  // 4 instead of reading the room's own game from the registry. Flip's max is
-  // 5, so a 5th player joined fine (server-side gate is registry-aware) but
-  // Start then stayed disabled forever with no explanation. Flip is used here
-  // specifically because its max (5) is not 4 — a max-4 game type can't catch
-  // this class of bug, which is exactly how it shipped.
-  describe("player cap by game type (#407)", () => {
+  // #407 fixed canStart/the player-count display reading a hardcoded 4
+  // instead of the room's own cap. #437 replaced the registry-lookup
+  // mechanism #407 introduced with the room's persisted `maxPlayers` (a
+  // host-chosen count, which may differ from the game's registry ceiling) —
+  // these tests now drive that prop directly rather than via gameType.
+  describe("player cap is the room's persisted maxPlayers (#437)", () => {
     const makeFivePlayers = (readyOverride: boolean) =>
       Array.from({ length: 5 }, (_, i) =>
         makePlayer({ id: `p${i + 1}`, name: `Player${i + 1}`, ready: readyOverride }),
       );
 
-    it("shows the room's own max, not Wire Game's, for a non-Wire game type", () => {
-      const props = { ...defaultProps(), players: makeFivePlayers(false), gameType: "flip" };
+    it("shows the room's own persisted max, not the historical default", () => {
+      const props = { ...defaultProps(), players: makeFivePlayers(false), maxPlayers: 5 };
       render(<Lobby {...props} />);
       expect(screen.getByText("Players (5/5)")).toBeInTheDocument();
     });
 
-    it("does not disable Start for a 5th player on a game whose max is 5", () => {
+    it("does not disable Start for a 5th player when the room's max is 5", () => {
       const players = makeFivePlayers(true);
       const props = {
         ...defaultProps(),
         players,
         localPlayerId: players[0].id,
         captainId: players[0].id,
-        gameType: "flip",
+        maxPlayers: 5,
       };
       render(<Lobby {...props} />);
-      expect(screen.getByRole("button", { name: "Start Game" })).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: /Start Mission/ })).not.toBeDisabled();
     });
 
-    it("still caps Wire Game at 4 when gameType is explicitly wire-game", () => {
+    it("still caps at 4 when the room's persisted max is 4", () => {
       const players = makeFivePlayers(true);
       const props = {
         ...defaultProps(),
         players,
         localPlayerId: players[0].id,
         captainId: players[0].id,
-        gameType: "wire-game",
+        maxPlayers: 4,
       };
       render(<Lobby {...props} />);
       expect(screen.getByText("Players (5/4)")).toBeInTheDocument();

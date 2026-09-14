@@ -72,13 +72,14 @@ export function usePlayAction() {
   };
 
   /**
-   * `gameType` is required of the caller, deliberately: #313 (PR #325) makes
-   * it a required field on `create_game`, and a missing one must stay a
-   * rejectable error on the server. No client-side default — not even
-   * "wire-game" — or that rejection is quietly undercut.
+   * `gameType` and `maxPlayers` are both required of the caller,
+   * deliberately: #313 (PR #325) makes gameType required, and #437 does the
+   * same for maxPlayers — a missing/invalid one must stay a rejectable error
+   * on the server. No client-side default for either, or the rejection is
+   * quietly undercut.
    */
-  const createGame = (gameType: GameId) =>
-    startAction("creating", { type: "create_game", playerName, gameType });
+  const createGame = (gameType: GameId, maxPlayers: number) =>
+    startAction("creating", { type: "create_game", playerName, gameType, maxPlayers });
 
   const joinGame = (joinCode: string) => {
     const code = joinCode.trim().toUpperCase();

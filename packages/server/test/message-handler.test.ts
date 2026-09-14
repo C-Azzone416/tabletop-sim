@@ -146,7 +146,43 @@ describe("message-handler", () => {
     it("rejects create_game with an empty-string gameType", async () => {
       const ws = mockSocket();
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
-      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "" }));
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "", maxPlayers: 4 }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockEngine.createGame).not.toHaveBeenCalled();
+    });
+
+    // #437 — maxPlayers is required of the caller like gameType, no
+    // client-side default. Shape check only; whether the number is actually
+    // within the game's registry bounds is engine.createGame's job (tested
+    // in game-engine.test.ts), not this layer's.
+    it("rejects create_game with missing maxPlayers rather than defaulting", async () => {
+      const ws = mockSocket();
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game" }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockEngine.createGame).not.toHaveBeenCalled();
+    });
+
+    it("rejects create_game with a non-numeric maxPlayers", async () => {
+      const ws = mockSocket();
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game", maxPlayers: "4" }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockEngine.createGame).not.toHaveBeenCalled();
+    });
+
+    it("rejects create_game with a non-integer maxPlayers", async () => {
+      const ws = mockSocket();
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game", maxPlayers: 2.5 }));
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockEngine.createGame).not.toHaveBeenCalled();
+    });
+
+    it("rejects create_game with maxPlayers below 1", async () => {
+      const ws = mockSocket();
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game", maxPlayers: 0 }));
       expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
       expect(mockEngine.createGame).not.toHaveBeenCalled();
     });
@@ -221,9 +257,9 @@ describe("message-handler", () => {
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
       mockEngine.createGame.mockResolvedValue({ game, player });
 
-      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game" }));
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game", maxPlayers: 4 }));
 
-      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "wire-game", "prof-1");
+      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "wire-game", 4, "prof-1");
       expect(mockConnManager.registerConnection).toHaveBeenCalledWith(ws, "p1", "g1");
       const sent = lastSent(ws) as { type: string; game: unknown; player: unknown };
       expect(sent.type).toBe("game_created");
@@ -233,7 +269,7 @@ describe("message-handler", () => {
       const ws = mockSocket();
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
 
-      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "checkers" }));
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "checkers", maxPlayers: 4 }));
 
       expect(lastSent(ws)).toEqual({ type: "error", message: "Unknown game type" });
       expect(mockEngine.createGame).not.toHaveBeenCalled();
@@ -244,7 +280,7 @@ describe("message-handler", () => {
       const ws = mockSocket();
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
 
-      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "spades" }));
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "spades", maxPlayers: 4 }));
 
       expect(lastSent(ws)).toEqual({ type: "error", message: "Unknown game type" });
       expect(mockEngine.createGame).not.toHaveBeenCalled();
@@ -263,11 +299,26 @@ describe("message-handler", () => {
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
       mockEngine.createGame.mockResolvedValue({ game, player });
 
-      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "flip" }));
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "flip", maxPlayers: 5 }));
 
-      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "flip", "prof-1");
+      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "flip", 5, "prof-1");
       expect(mockConnManager.registerConnection).toHaveBeenCalledWith(ws, "pf", "gf");
       expect((lastSent(ws) as { type: string }).type).toBe("game_created");
+    });
+
+    // #437 — the bounds check itself lives in engine.createGame (tested in
+    // game-engine.test.ts, mocked here); this only confirms the error it
+    // throws is on the safe-messages allowlist and reaches the client named,
+    // rather than falling through to 'Internal error'.
+    it("surfaces engine.createGame's 'Invalid player count' rejection to the client", async () => {
+      const ws = mockSocket();
+      mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+      mockEngine.createGame.mockRejectedValue(new Error("Invalid player count"));
+
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game", maxPlayers: 99 }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid player count" });
+      expect(mockConnManager.registerConnection).not.toHaveBeenCalled();
     });
 
     // The registry is the allowlist, so a registered id and an unknown one
@@ -809,7 +860,7 @@ describe("message-handler", () => {
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
       mockEngine.createGame.mockRejectedValue(new Error("Game not found"));
 
-      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game" }));
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game", maxPlayers: 4 }));
 
       expect(lastSent(ws)).toEqual({ type: "error", message: "Game not found" });
     });
@@ -819,7 +870,7 @@ describe("message-handler", () => {
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
       mockEngine.createGame.mockRejectedValue(new Error("DB connection failed"));
 
-      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game" }));
+      await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "wire-game", maxPlayers: 4 }));
 
       expect(lastSent(ws)).toEqual({ type: "error", message: "Internal error" });
     });

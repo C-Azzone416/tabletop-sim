@@ -41,6 +41,18 @@ function setSession(user: { id: string; name: string } | null, status: string) {
   });
 }
 
+// #437: picking a game no longer creates the room immediately — it moves to
+// a count step on the same screen. Wire Game (2-4) is not fixed-size, so
+// these helpers pick a count before confirming, matching the real flow.
+function selectWireGame() {
+  fireEvent.click(screen.getByText("Wire Game").closest("button")!);
+}
+
+function confirmCount(count: number) {
+  fireEvent.click(screen.getByRole("button", { name: String(count) }));
+  fireEvent.click(screen.getByRole("button", { name: "Create Room" }));
+}
+
 describe("HostSelection (app/play/host/page.tsx)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,14 +88,33 @@ describe("HostSelection (app/play/host/page.tsx)", () => {
       expect(screen.getByText("Spades")).toBeInTheDocument();
     });
 
-    it("sends create_game with gameType and connects when an available game is picked", () => {
+    it("picking a game moves to the count step without sending create_game yet", () => {
       render(<HostSelection />);
-      fireEvent.click(screen.getByText("Wire Game").closest("button")!);
+      selectWireGame();
+
+      expect(mockSend).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Create Room" })).toBeInTheDocument();
+    });
+
+    it("← Choose a different game returns to the grid", () => {
+      render(<HostSelection />);
+      selectWireGame();
+      fireEvent.click(screen.getByText("← Choose a different game"));
+
+      expect(screen.getByText("Spades")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Create Room" })).not.toBeInTheDocument();
+    });
+
+    it("sends create_game with the chosen gameType and maxPlayers, and connects", () => {
+      render(<HostSelection />);
+      selectWireGame();
+      confirmCount(3);
 
       expect(mockSend).toHaveBeenCalledWith({
         type: "create_game",
         playerName: "Alice",
         gameType: "wire-game",
+        maxPlayers: 3,
       });
       expect(mockConnect).toHaveBeenCalled();
     });
@@ -97,7 +128,8 @@ describe("HostSelection (app/play/host/page.tsx)", () => {
 
     it("routes to the game page when game_created arrives", () => {
       render(<HostSelection />);
-      fireEvent.click(screen.getByText("Wire Game").closest("button")!);
+      selectWireGame();
+      confirmCount(4);
 
       act(() => {
         capturedOnMessage?.({
@@ -113,15 +145,16 @@ describe("HostSelection (app/play/host/page.tsx)", () => {
 
     it("returns to a usable state (no silent hang) on a server error", () => {
       render(<HostSelection />);
-      fireEvent.click(screen.getByText("Wire Game").closest("button")!);
-      expect(screen.getByText("Wire Game").closest("button")).toBeDisabled();
+      selectWireGame();
+      confirmCount(4);
+      expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
 
       act(() => {
         capturedOnMessage?.({ type: "error", message: "Could not create game" });
       });
 
       expect(mockHandleMessage).toHaveBeenCalled();
-      expect(screen.getByText("Wire Game").closest("button")).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: "Create Room" })).not.toBeDisabled();
     });
 
     it("shows the connecting indicator when the WebSocket status is connecting (#318 relocation)", () => {
@@ -139,7 +172,8 @@ describe("HostSelection (app/play/host/page.tsx)", () => {
     it("reverts to idle with an error after a 10s server timeout — no silent hang", () => {
       vi.useFakeTimers();
       render(<HostSelection />);
-      fireEvent.click(screen.getByText("Wire Game").closest("button")!);
+      selectWireGame();
+      confirmCount(4);
 
       act(() => {
         vi.advanceTimersByTime(10_000);
@@ -148,7 +182,7 @@ describe("HostSelection (app/play/host/page.tsx)", () => {
       expect(
         screen.getByText("Server did not respond. Please try again."),
       ).toBeInTheDocument();
-      expect(screen.getByText("Wire Game").closest("button")).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: "Create Room" })).not.toBeDisabled();
     });
 
     it("offers ← Back to /play (#335/#355: adopted PlayScreen chrome)", () => {

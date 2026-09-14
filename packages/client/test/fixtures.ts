@@ -22,6 +22,7 @@ export function makeGame(overrides: Partial<Game> = {}): Game {
     gameType: "wire-game",
     mission: 1,
     status: "waiting",
+    maxPlayers: 4,
     captainId: null,
     currentTurnPlayerId: null,
     joinCode: "ABC123",

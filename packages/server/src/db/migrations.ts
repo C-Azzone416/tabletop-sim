@@ -24,6 +24,7 @@ export const EXPECTED_MIGRATIONS = [
   '015_spades_games.sql',
   '016_flip_games.sql',
   '017_flip_round_breakdown.sql',
+  '018_game_max_players.sql',
 ];
 
 export async function getMigrationsStatus(): Promise<{
