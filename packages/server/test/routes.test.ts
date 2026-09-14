@@ -600,7 +600,7 @@ describe("routes", () => {
           { name: "Carol", profileId: "prof-carol" },
         ],
       });
-      expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "wire-game", "prof-dev", "dev_seed");
+      expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "wire-game", 4, "prof-dev", "dev_seed");
       expect(mockEngine.joinGame).toHaveBeenCalledTimes(3);
       expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Alice", "prof-alice");
       expect(mockEngine.joinGame).toHaveBeenCalledWith("DEVGAME", "Bob", "prof-bob");
@@ -765,7 +765,7 @@ describe("routes", () => {
         const res = await seedApp.inject({ method: "POST", url: "/dev/seed", payload: { mission: 2 } });
 
         expect(res.statusCode).toBe(200);
-        expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "wire-game", "prof-dev", "dev_seed");
+        expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "wire-game", 4, "prof-dev", "dev_seed");
       });
 
       it("rejects an unknown gameType and creates nothing", async () => {
@@ -807,7 +807,7 @@ describe("routes", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.json()).toMatchObject({ gameType: "flip", joinCode: "FLIPME", scenario: null });
-        expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "flip", "prof-dev", "dev_seed");
+        expect(mockEngine.createGame).toHaveBeenCalledWith("Dev", "flip", 5, "prof-dev", "dev_seed");
       });
 
       // Mid-round with the deal already done, so there is something to drive

@@ -473,7 +473,12 @@ export async function buildApp() {
       const names = DEV_SEED_NAMES.slice(0, options.playerCount ?? DEV_SEED_NAMES.length);
 
       const devProfile = await getOrCreateProfile(names[0]);
-      const { game, player } = await engine.createGame(names[0], 'wire-game', devProfile.id, 'dev_seed');
+      // #437 — a dev-seeded room keeps its historical capacity (the
+      // registry's own ceiling): dev seeding isn't simulating a host's
+      // choice, and options.playerCount already bounds how many are seated.
+      const { game, player } = await engine.createGame(
+        names[0], 'wire-game', getGameById('wire-game')!.maxPlayers, devProfile.id, 'dev_seed',
+      );
 
       const seatedPlayers = [player];
       const profilesByName = new Map([[names[0], devProfile]]);
@@ -568,7 +573,11 @@ export async function buildApp() {
       const names = DEV_SEED_NAMES.slice(0, playerCount);
 
       const devProfile = await getOrCreateProfile(names[0]);
-      const { game, player } = await engine.createGame(names[0], 'flip', devProfile.id, 'dev_seed');
+      // #437 — same as the wire-game seed above: the registry's own ceiling,
+      // not a host's choice this path doesn't simulate.
+      const { game, player } = await engine.createGame(
+        names[0], 'flip', getGameById('flip')!.maxPlayers, devProfile.id, 'dev_seed',
+      );
 
       const seats = [{ id: player.id, name: names[0] }];
       const profilesByName = new Map([[names[0], devProfile]]);

@@ -112,7 +112,7 @@ describe("game-engine", () => {
 
   describe("createGame", () => {
     it("creates a game and assigns the creator as captain", async () => {
-      const game = makeGame({ id: "g1" });
+      const game = makeGame({ id: "g1", maxPlayers: 4 });
       const player = makePlayer({ id: "p1", gameId: "g1", name: "Alice" });
       const captainGame = { ...game, captainId: "p1" };
 
@@ -120,13 +120,53 @@ describe("game-engine", () => {
       mockPlayersDb.createPlayer.mockResolvedValue(player);
       mockGamesDb.updateGameCaptain.mockResolvedValue(captainGame);
 
-      const result = await engine.createGame("Alice", "wire-game");
+      const result = await engine.createGame("Alice", "wire-game", 4);
 
       expect(result.game.captainId).toBe("p1");
       expect(result.player.name).toBe("Alice");
-      expect(mockGamesDb.createGame).toHaveBeenCalledWith(expect.any(String), "wire-game", 1, "lobby");
+      expect(mockGamesDb.createGame).toHaveBeenCalledWith(expect.any(String), "wire-game", 4, 1, "lobby");
       expect(mockPlayersDb.createPlayer).toHaveBeenCalledWith("g1", "Alice", 0, undefined);
       expect(mockGamesDb.updateGameCaptain).toHaveBeenCalledWith("g1", "p1");
+    });
+
+    it("accepts a host-chosen count anywhere in the game's registry range, not just its ceiling", async () => {
+      const game = makeGame({ id: "g1", gameType: "flip", maxPlayers: 3 });
+      const player = makePlayer({ id: "p1", gameId: "g1", name: "Alice" });
+      mockGamesDb.createGame.mockResolvedValue(game);
+      mockPlayersDb.createPlayer.mockResolvedValue(player);
+      mockGamesDb.updateGameCaptain.mockResolvedValue({ ...game, captainId: "p1" });
+
+      await engine.createGame("Alice", "flip", 3);
+
+      expect(mockGamesDb.createGame).toHaveBeenCalledWith(expect.any(String), "flip", 3, 1, "lobby");
+    });
+
+    // #437 — the actual security gate. A count outside the registry's
+    // [min, max] for gameType must never reach the database, regardless of
+    // what asked for it: a real client's create_game or the dev seed both
+    // go through this one function.
+    describe("rejects a player count outside the game's registry bounds (#437)", () => {
+      it("above the maximum", async () => {
+        await expect(engine.createGame("Alice", "wire-game", 5)).rejects.toThrow("Invalid player count");
+        expect(mockGamesDb.createGame).not.toHaveBeenCalled();
+      });
+
+      it("below the minimum", async () => {
+        await expect(engine.createGame("Alice", "wire-game", 1)).rejects.toThrow("Invalid player count");
+        expect(mockGamesDb.createGame).not.toHaveBeenCalled();
+      });
+
+      it("a non-integer", async () => {
+        await expect(engine.createGame("Alice", "wire-game", 2.5)).rejects.toThrow("Invalid player count");
+        expect(mockGamesDb.createGame).not.toHaveBeenCalled();
+      });
+
+      it("a game type absent from the registry", async () => {
+        await expect(
+          engine.createGame("Alice", "checkers" as unknown as "wire-game", 4),
+        ).rejects.toThrow("Unknown game type");
+        expect(mockGamesDb.createGame).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -171,13 +211,14 @@ describe("game-engine", () => {
       await expect(engine.joinGame("ABC123", "Extra")).rejects.toThrow("Game is full");
     });
 
-    // #370 — this cap used to be a hardcoded `>= 4` for every game. Flip
-    // seats 5 (#358), so its fifth player could never join: not via /dev/seed,
-    // and not in a real lobby either. The limit now comes from the registry
-    // entry for the room's own game type.
-    describe("seat cap comes from the registry, not a constant (#370)", () => {
-      const seatedGame = (gameType: "wire-game" | "flip", seated: number) => {
-        const game = makeGame({ id: "g1", status: "waiting", gameType });
+    // #437 — the cap is the room's own persisted `maxPlayers`, set (and
+    // validated against the registry) at createGame — not a fresh registry
+    // lookup by gameType at join time. Builds on #370, which made the cap
+    // per-game-type instead of a hardcoded 4; this makes it per-ROOM, since
+    // the registry ceiling was never actually the host's choice.
+    describe("seat cap is the room's persisted maxPlayers (#437)", () => {
+      const seatedGame = (gameType: "wire-game" | "flip", maxPlayers: number, seated: number) => {
+        const game = makeGame({ id: "g1", status: "waiting", gameType, maxPlayers });
         const players = Array.from({ length: seated }, (_, i) =>
           makePlayer({ id: `p${i}`, gameId: "g1" })
         );
@@ -187,35 +228,30 @@ describe("game-engine", () => {
         return game;
       };
 
-      // The regression this fix exists for.
-      it("admits a fifth player to a flip game", async () => {
-        seatedGame("flip", 4);
+      // The #370 regression this builds on: a room whose own cap is 5 admits
+      // a fifth player.
+      it("admits a fifth player to a room capped at 5", async () => {
+        seatedGame("flip", 5, 4);
         await expect(engine.joinGame("ABC123", "Erin")).resolves.toBeDefined();
       });
 
-      it("rejects a sixth player to a flip game", async () => {
-        seatedGame("flip", 5);
+      it("rejects a sixth player to a room capped at 5", async () => {
+        seatedGame("flip", 5, 5);
         await expect(engine.joinGame("ABC123", "Frank")).rejects.toThrow("Game is full");
       });
 
-      // Raising Flip's ceiling must not raise Wire Game's.
-      it("still rejects a fifth player to a wire game", async () => {
-        seatedGame("wire-game", 4);
+      // A room's own gameType being flip must not matter if ITS cap is 4.
+      it("still rejects a fifth player to a room capped at 4", async () => {
+        seatedGame("wire-game", 4, 4);
         await expect(engine.joinGame("ABC123", "Erin")).rejects.toThrow("Game is full");
       });
 
-      // Falls back to 4 rather than opening the table up, if a row somehow
-      // carries a game_type the registry doesn't know.
-      it("falls back to a cap of 4 for an unregistered game type", async () => {
-        const game = makeGame({ id: "g1", status: "waiting" });
-        (game as { gameType: string }).gameType = "checkers";
-        const players = Array.from({ length: 4 }, (_, i) =>
-          makePlayer({ id: `p${i}`, gameId: "g1" })
-        );
-        mockGamesDb.getGameByJoinCode.mockResolvedValue(game);
-        mockPlayersDb.getPlayersByGameId.mockResolvedValue(players);
-
-        await expect(engine.joinGame("ABC123", "Extra")).rejects.toThrow("Game is full");
+      // The point of #437: the host's chosen count governs even when it is
+      // BELOW the game's own registry ceiling — a 5-seat game (Flip) can
+      // still be hosted as a 3-player room, and that room fills at 3.
+      it("caps at the host's chosen count even when it's below the game's registry ceiling", async () => {
+        seatedGame("flip", 3, 3);
+        await expect(engine.joinGame("ABC123", "Dana")).rejects.toThrow("Game is full");
       });
     });
   });

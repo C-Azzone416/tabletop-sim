@@ -198,7 +198,7 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Reveal reds not available in this mission',
       'Game is not in setup phase', 'Can only place info token on your own wire', 'Info token already placed',
       'Opening info token must be placed on a blue wire',
-      'Game is not in waiting phase', 'Mission is locked', 'Unknown game type',
+      'Game is not in waiting phase', 'Mission is locked', 'Unknown game type', 'Invalid player count',
       // #387 — Flip. Every one of these is a rejection the player caused and
       // can act on, so it is safe (and useful) to name; anything else from the
       // Flip path still falls through to the generic 'Internal error' below,
