@@ -37,6 +37,13 @@ vi.mock("../src/db/games.js", () => ({ getGameCreatedVia: vi.fn() }));
 vi.mock("../src/ws/flip-turn-timer.js", () => ({
   scheduleFlipTurnTimeout: vi.fn(),
   cancelFlipTurnTimeout: vi.fn(),
+  // #394 review — real signature-stability semantics aren't this file's
+  // concern (flip-turn-timer.test.ts and flip-turn-deadline-stability.test.ts
+  // own that); this mock just needs to behave like "always a new turn" so
+  // these wire-shape assertions keep working, matching turnDeadlineFor's
+  // own real behavior for a signature it has never seen before.
+  turnDeadlineFor: vi.fn((_gameId: string, _signature: string, durationMs: number) => Date.now() + durationMs),
+  clearTurnDeadline: vi.fn(),
 }));
 
 import * as wiresDb from "../src/db/wires.js";
@@ -58,6 +65,7 @@ const mockPlayersDb = vi.mocked(playersDb);
 const mockGamesDb = vi.mocked(gamesDb);
 const mockScheduleFlipTurnTimeout = vi.mocked(flipTurnTimer.scheduleFlipTurnTimeout);
 const mockCancelFlipTurnTimeout = vi.mocked(flipTurnTimer.cancelFlipTurnTimeout);
+const mockClearTurnDeadline = vi.mocked(flipTurnTimer.clearTurnDeadline);
 
 describe("state-broadcaster", () => {
   beforeEach(() => {
@@ -477,7 +485,14 @@ describe("state-broadcaster", () => {
         expect(mockScheduleFlipTurnTimeout).toHaveBeenCalledTimes(1);
         const [gameId, delayMs] = mockScheduleFlipTurnTimeout.mock.calls[0];
         expect(gameId).toBe("g1");
-        expect(delayMs).toBe(45_000); // FLIP_TURN_TIMEOUT_MS for a lobby-created game
+        // #394 review — the callback is armed for the time REMAINING until
+        // turnDeadlineFor's returned deadline, not for a fresh durationMs
+        // directly (that conflation was the reconnect-cycling bug). With
+        // the mock's "always new" turnDeadlineFor above, remaining should
+        // still be ~45s, just not exactly equal due to the two separate
+        // Date.now() reads either side of the call.
+        expect(delayMs).toBeGreaterThan(44_900);
+        expect(delayMs).toBeLessThanOrEqual(45_000);
         expect(mockCancelFlipTurnTimeout).not.toHaveBeenCalled();
 
         const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
@@ -497,7 +512,9 @@ describe("state-broadcaster", () => {
         await broadcastGameState("g1", flipGame());
 
         const [, delayMs] = mockScheduleFlipTurnTimeout.mock.calls[0];
-        expect(delayMs).toBe(600_000); // FLIP_DEV_TURN_TIMEOUT_MS default — longer, still a real timeout
+        // See the previous test's comment on why this isn't an exact 600_000.
+        expect(delayMs).toBeGreaterThan(599_900);
+        expect(delayMs).toBeLessThanOrEqual(600_000);
         expect(delayMs).toBeGreaterThan(45_000);
 
         const [, , message] = mockConnManager.sendToPlayer.mock.calls[0];
@@ -514,6 +531,7 @@ describe("state-broadcaster", () => {
         await broadcastGameState("g1", flipGame());
 
         expect(mockCancelFlipTurnTimeout).toHaveBeenCalledWith("g1");
+        expect(mockClearTurnDeadline).toHaveBeenCalledWith("g1");
         expect(mockScheduleFlipTurnTimeout).not.toHaveBeenCalled();
         // Never even reads createdVia when there's nothing live to time —
         // no point picking a duration for a timer that won't be armed.
@@ -530,6 +548,7 @@ describe("state-broadcaster", () => {
         await broadcastGameState("g1", flipGame());
 
         expect(mockCancelFlipTurnTimeout).toHaveBeenCalledWith("g1");
+        expect(mockClearTurnDeadline).toHaveBeenCalledWith("g1");
         expect(mockScheduleFlipTurnTimeout).not.toHaveBeenCalled();
       });
     });

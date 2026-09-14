@@ -39,7 +39,7 @@ import * as connManager from "../src/ws/connection-manager.js";
 import * as playersDb from "../src/db/players.js";
 import * as gamesDb from "../src/db/games.js";
 import { broadcastGameState } from "../src/ws/state-broadcaster.js";
-import { cancelFlipTurnTimeout } from "../src/ws/flip-turn-timer.js";
+import { cancelFlipTurnTimeout, clearTurnDeadline } from "../src/ws/flip-turn-timer.js";
 
 const mockFlipGamesDb = vi.mocked(flipGamesDb);
 const mockConnManager = vi.mocked(connManager);
@@ -70,6 +70,15 @@ describe("Flip turn timeout — end-to-end firing (#394)", () => {
 
   afterEach(() => {
     cancelFlipTurnTimeout("g1");
+    // #394 review — turnDeadlineFor's armed-deadline map is module-level
+    // and outlives a single test: without clearing it, a later test that
+    // happens to reconstruct the SAME signature ("p0:none", say) for "g1"
+    // would silently reuse a PRIOR test's stale deadline instead of
+    // computing fresh, since turnDeadlineFor's whole point is treating a
+    // matching signature as "the same turn, don't advance." That's
+    // correct in production; it's just not what a fresh test means by "a
+    // new turn that happens to look the same."
+    clearTurnDeadline("g1");
     vi.useRealTimers();
   });
 

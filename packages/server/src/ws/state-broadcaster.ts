@@ -9,7 +9,7 @@ import * as gamesDb from '../db/games.js';
 import { groupRoundsByPlayer, toFlipTableView } from './flip-view.js';
 import { getGameSockets, sendToPlayer } from './connection-manager.js';
 import { flipTimeoutAction, executeFlipAction } from './flip-actions.js';
-import { scheduleFlipTurnTimeout, cancelFlipTurnTimeout } from './flip-turn-timer.js';
+import { scheduleFlipTurnTimeout, cancelFlipTurnTimeout, turnDeadlineFor, clearTurnDeadline } from './flip-turn-timer.js';
 import { FLIP_TURN_TIMEOUT_MS, FLIP_DEV_TURN_TIMEOUT_MS } from './message-handler.js';
 
 /**
@@ -80,15 +80,32 @@ async function broadcastFlipGameState(
   const stored = await flipGamesDb.getFlipGameState(gameId);
   const state = stored as FlipGameState | null;
 
-  // #394 (Contract C4) — recomputed fresh on EVERY broadcast (not
-  // persisted, so it can't drift), and the server's own guaranteeing timer
-  // re-armed to match: whatever this broadcast tells a client the deadline
-  // is, is exactly when the server itself will fire the ruled default
-  // action if nobody has acted by then — including for a client that never
-  // sees this message at all. A turn/pending-action is "live" only during
-  // round-in-progress with a turn player set; awaiting-round-start,
-  // round-over and game-over all correctly compute `null` (nothing to time
-  // out) and cancel any timer left over from the round that just ended.
+  // #394 (Contract C4) recomputed on every broadcast — but #394 REVIEW
+  // (weasel/QA) is the reason for the shape below. Re-arming the setTimeout
+  // CALLBACK on every broadcast is correct and necessary: it's what makes
+  // the guarantee reach a client that isn't watching (a disconnected
+  // player, or one who never sees this exact message). But every broadcast
+  // — including a reconnect, which any seated player can trigger for free
+  // and repeatedly by cycling their own WebSocket — used to also ADVANCE
+  // the deadline to a fresh `now + durationMs`, which let any participant
+  // indefinitely neutralise the timeout by reconnecting before it expired.
+  // That is the mirror image of the silent-forfeit problem C4 exists to
+  // prevent, so it is fixed here rather than after merge.
+  //
+  // turnDeadlineFor (flip-turn-timer.ts) is what keeps these separate: the
+  // DEADLINE only advances when the turn/pending-action's own signature
+  // changes (a genuinely new one), never merely because a broadcast
+  // happened. The CALLBACK below is still rescheduled every time — for
+  // whatever time remains until that (possibly unchanged) deadline, not
+  // for a fresh full duration — which is what keeps a genuine reconnect BY
+  // THE TURN PLAYER THEMSELVES correctly still running toward the original
+  // ceiling (#448's C4 argument), rather than accidentally cancelling or
+  // resetting their own clock.
+  //
+  // A turn/pending-action is "live" only during round-in-progress with a
+  // turn player set; awaiting-round-start, round-over and game-over all
+  // correctly compute `null` (nothing to time out) and clear both the
+  // timer and the tracked deadline from the round that just ended.
   const isLiveTurn = state !== null && state.phase === 'round-in-progress' && state.turnPlayerId !== null;
   let turnDeadline: number | null = null;
   if (isLiveTurn) {
@@ -98,10 +115,17 @@ async function broadcastFlipGameState(
     // broadcast, same tradeoff #396 already made for round history.
     const createdVia = await gamesDb.getGameCreatedVia(gameId);
     const durationMs = createdVia === 'dev_seed' ? FLIP_DEV_TURN_TIMEOUT_MS : FLIP_TURN_TIMEOUT_MS;
-    turnDeadline = Date.now() + durationMs;
-    scheduleFlipTurnTimeout(gameId, durationMs, () => fireFlipTurnTimeout(gameId));
+    // Identifies WHICH turn/pending-action is being timed — a new
+    // turnPlayerId (a new turn) or a new pendingAction.kind (a Freeze/
+    // Flip3 card just drawn mid-turn) is a genuinely new thing to time;
+    // anything else broadcasting again is the same one.
+    const signature = `${state.turnPlayerId}:${state.pendingAction?.kind ?? 'none'}`;
+    turnDeadline = turnDeadlineFor(gameId, signature, durationMs);
+    const remainingMs = Math.max(0, turnDeadline - Date.now());
+    scheduleFlipTurnTimeout(gameId, remainingMs, () => fireFlipTurnTimeout(gameId));
   } else {
     cancelFlipTurnTimeout(gameId);
+    clearTurnDeadline(gameId);
   }
 
   // #406 — a Flip room in the lobby has no table yet, and that is NORMAL under
