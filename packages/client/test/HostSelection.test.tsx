@@ -164,6 +164,23 @@ describe("HostSelection (app/play/host/page.tsx)", () => {
       expect(screen.getByText("Connecting to server...")).toBeInTheDocument();
     });
 
+    // #336 — the positive test above only proves the indicator CAN render;
+    // nothing previously proved it does not render outside "connecting".
+    // Confirmed via mutation: replacing the condition with `true` (so the
+    // indicator renders permanently, in every status) left the whole file
+    // passing beforehand. These pin the other two statuses explicitly.
+    it("does not show the connecting indicator when disconnected (#336)", () => {
+      mockWsStatus = "disconnected";
+      render(<HostSelection />);
+      expect(screen.queryByText("Connecting to server...")).not.toBeInTheDocument();
+    });
+
+    it("does not show the connecting indicator once connected (#336)", () => {
+      mockWsStatus = "connected";
+      render(<HostSelection />);
+      expect(screen.queryByText("Connecting to server...")).not.toBeInTheDocument();
+    });
+
     it("shows a game-state error banner when present", () => {
       mockGameStateError = "Could not create game";
       render(<HostSelection />);
