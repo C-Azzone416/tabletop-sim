@@ -39,13 +39,26 @@ export interface UseTurnCountdownOptions {
   onExpire: () => void;
   /** Injectable clock for tests. */
   now?: () => number;
+  /**
+   * #394 — C4 only requires the countdown be VISIBLE for the final ≥10s
+   * before it fires; it does not require showing it for the whole
+   * duration. A caller with a duration much longer than that floor (Flip:
+   * 45s total, 15s visible per Caroline's ruling) sets this to hold
+   * `secondsRemaining` at `null` — hiding the number, not affecting
+   * anything else — until this many ms are actually left. The timer that
+   * drives `onExpire` runs for the FULL duration regardless; this only
+   * gates what's rendered. Omit to show continuously from the moment a
+   * deadline exists, the previous behavior (correct for a caller whose
+   * whole duration already fits inside its own visible window).
+   */
+  visibleForMs?: number;
 }
 
 function remainingMs(deadline: number | null, now: () => number): number | null {
   return deadline === null ? null : Math.max(0, deadline - now());
 }
 
-export function useTurnCountdown({ deadline, onExpire, now = Date.now }: UseTurnCountdownOptions) {
+export function useTurnCountdown({ deadline, onExpire, now = Date.now, visibleForMs }: UseTurnCountdownOptions) {
   const [msRemaining, setMsRemaining] = useState(() => remainingMs(deadline, now));
   const [trackedDeadline, setTrackedDeadline] = useState(deadline);
 
@@ -77,7 +90,12 @@ export function useTurnCountdown({ deadline, onExpire, now = Date.now }: UseTurn
     return () => clearInterval(intervalId);
   }, [deadline, now]);
 
+  // #394 — the visibility gate. Computed from state, not tracked
+  // separately: msRemaining already ticks every 250ms above, so this needs
+  // no timer of its own to flip from hidden to visible at the right moment.
+  const withinVisibleWindow = visibleForMs === undefined || msRemaining === null || msRemaining <= visibleForMs;
+
   return {
-    secondsRemaining: msRemaining === null ? null : Math.ceil(msRemaining / 1000),
+    secondsRemaining: msRemaining === null || !withinVisibleWindow ? null : Math.ceil(msRemaining / 1000),
   };
 }

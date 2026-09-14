@@ -5,8 +5,52 @@ import * as tokensDb from '../db/tokens.js';
 import * as candidatesDb from '../db/candidates.js';
 import * as flipGamesDb from '../db/flip-games.js';
 import * as playersDb from '../db/players.js';
+import * as gamesDb from '../db/games.js';
 import { groupRoundsByPlayer, toFlipTableView } from './flip-view.js';
 import { getGameSockets, sendToPlayer } from './connection-manager.js';
+import { flipTimeoutAction, executeFlipAction } from './flip-actions.js';
+import { scheduleFlipTurnTimeout, cancelFlipTurnTimeout, turnDeadlineFor, clearTurnDeadline } from './flip-turn-timer.js';
+import { FLIP_TURN_TIMEOUT_MS, FLIP_DEV_TURN_TIMEOUT_MS } from './message-handler.js';
+
+/**
+ * #394 (Contract C4) — fires when a Flip turn/pending-action's timer
+ * (scheduleFlipTurnTimeout, armed by broadcastFlipGameState) elapses with
+ * nobody having acted. Re-derives the action from freshly-loaded state
+ * (never from anything captured when the timer was armed) and runs it
+ * through the EXACT SAME executeFlipAction path a real player's click
+ * does — same authorization, same persistence, same broadcast at the end —
+ * so there is no separate "auto-action" code path that could authorize or
+ * behave differently than a manual one.
+ *
+ * If the state changed between the timer being armed and this firing (a
+ * manual action landed first, or the round otherwise moved on),
+ * flipTimeoutAction reads the FRESH state and simply returns null / a
+ * now-irrelevant action that executeFlipAction's own authorization refuses
+ * — either way this is a no-op rather than a misfire, because it never
+ * trusts anything about the state other than what it reads right now.
+ */
+async function fireFlipTurnTimeout(gameId: string): Promise<void> {
+  const stored = await flipGamesDb.getFlipGameState(gameId);
+  if (!stored) return;
+  const state = stored as FlipGameState;
+
+  const action = flipTimeoutAction(state);
+  if (!action || state.turnPlayerId === null) return;
+
+  try {
+    await executeFlipAction(gameId, state.turnPlayerId, action);
+  } catch {
+    // Stale by the time this ran (a manual action already resolved it, or
+    // the round ended) — executeFlipAction's own authorization/engine
+    // guards correctly refused it. Nothing to recover: the next real
+    // broadcast already reflects whatever actually happened.
+    return;
+  }
+
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) return;
+  await broadcastGameState(gameId, game);
+}
 
 /**
  * #382 — the Flip table, rebuilt from the persisted state blob on every
@@ -34,6 +78,79 @@ async function broadcastFlipGameState(
   // staying wrong indefinitely.
   const players = await playersDb.getPlayersByGameId(gameId);
   const stored = await flipGamesDb.getFlipGameState(gameId);
+  const state = stored as FlipGameState | null;
+
+  // #394 (Contract C4) recomputed on every broadcast — but #394 REVIEW
+  // (weasel/QA) is the reason for the shape below. Re-arming the setTimeout
+  // CALLBACK on every broadcast is correct and necessary: it's what makes
+  // the guarantee reach a client that isn't watching (a disconnected
+  // player, or one who never sees this exact message). But every broadcast
+  // — including a reconnect, which any seated player can trigger for free
+  // and repeatedly by cycling their own WebSocket — used to also ADVANCE
+  // the deadline to a fresh `now + durationMs`, which let any participant
+  // indefinitely neutralise the timeout by reconnecting before it expired.
+  // That is the mirror image of the silent-forfeit problem C4 exists to
+  // prevent, so it is fixed here rather than after merge.
+  //
+  // turnDeadlineFor (flip-turn-timer.ts) is what keeps these separate: the
+  // DEADLINE only advances when the turn/pending-action's own signature
+  // changes (a genuinely new one), never merely because a broadcast
+  // happened. The CALLBACK below is still rescheduled every time — for
+  // whatever time remains until that (possibly unchanged) deadline, not
+  // for a fresh full duration — which is what keeps a genuine reconnect BY
+  // THE TURN PLAYER THEMSELVES correctly still running toward the original
+  // ceiling (#448's C4 argument), rather than accidentally cancelling or
+  // resetting their own clock.
+  //
+  // A turn/pending-action is "live" only during round-in-progress with a
+  // turn player set; awaiting-round-start, round-over and game-over all
+  // correctly compute `null` (nothing to time out) and clear both the
+  // timer and the tracked deadline from the round that just ended.
+  const isLiveTurn = state !== null && state.phase === 'round-in-progress' && state.turnPlayerId !== null;
+  let turnDeadline: number | null = null;
+  if (isLiveTurn) {
+    // #394 — dev tooling gets a much longer duration, never an exemption
+    // (Caroline's ruling): the DevPanel seat-switcher workflow depends on
+    // this read, not on the timeout being a no-op. One extra read per
+    // broadcast, same tradeoff #396 already made for round history.
+    const createdVia = await gamesDb.getGameCreatedVia(gameId);
+    const durationMs = createdVia === 'dev_seed' ? FLIP_DEV_TURN_TIMEOUT_MS : FLIP_TURN_TIMEOUT_MS;
+    // #394 review round 2 (QA) — turnPlayerId + pendingAction.kind alone is
+    // too coarse: a NESTED Flip 3 drawn while dealing through an outer
+    // one's stack re-sets pendingAction back to the SAME {kind:'flip3'} for
+    // the SAME turnPlayerId, synchronously inside chooseFlip3Target's own
+    // advance() call, with no intervening broadcast in between. That made
+    // the nested target choice inherit whatever time was left on the outer
+    // one instead of getting its own window — a quieter version of the
+    // exact silent-forfeit problem C4 exists to prevent.
+    //
+    // Fix: fold in the id of the card that produced the CURRENT pause. Every
+    // one of the four public mutators (hit/freeze/chooseFreezeTarget/
+    // chooseFlip3Target) resets resolutionLog to [] before calling advance,
+    // and advance() never returns — to a genuine pause OR to "nothing
+    // pending, waiting on the next hit/freeze decision" — without first
+    // drawing and appending at least one card (see the dealQueue and
+    // flip3Stack loops in game.ts's advance()); the very first call at round
+    // start is no exception, since it deals the opening hands before ever
+    // returning. So the LAST resolutionLog entry at the moment this state is
+    // read is always the draw that produced whatever is being timed right
+    // now, and drawFromShoe/buildFlipDeck give every card instance a
+    // globally unique id (flip-cards.ts's `${idPrefix}:${counter}`) — two
+    // states with the same turnPlayerId, same pendingAction.kind AND the
+    // same trailing card id are, by construction, re-broadcasts of the
+    // SAME pause, never two different ones. (The 'start' fallback below is
+    // unreachable for a state that has ever been visible to a client, for
+    // exactly that reason, and only exists so this can't throw on an
+    // unresolved-yet-somehow-empty log.)
+    const lastEvent = state.resolutionLog[state.resolutionLog.length - 1] ?? null;
+    const signature = `${state.turnPlayerId}:${state.pendingAction?.kind ?? 'none'}:${lastEvent?.card.id ?? 'start'}`;
+    turnDeadline = turnDeadlineFor(gameId, signature, durationMs);
+    const remainingMs = Math.max(0, turnDeadline - Date.now());
+    scheduleFlipTurnTimeout(gameId, remainingMs, () => fireFlipTurnTimeout(gameId));
+  } else {
+    cancelFlipTurnTimeout(gameId);
+    clearTurnDeadline(gameId);
+  }
 
   // #406 — a Flip room in the lobby has no table yet, and that is NORMAL under
   // the ruled awaiting-round-start flow: no Flip state exists until the dealer
@@ -54,8 +171,8 @@ async function broadcastFlipGameState(
   // current round plus cumulative totals. One extra read per broadcast, which
   // is what keeps the scoreboard correct across a reconnect. Skipped entirely
   // when there is no table, since there can be no history either.
-  const flip = stored
-    ? toFlipTableView(stored as FlipGameState, groupRoundsByPlayer(await flipGamesDb.getFlipRoundScores(gameId)))
+  const flip = state
+    ? toFlipTableView(state, groupRoundsByPlayer(await flipGamesDb.getFlipRoundScores(gameId)), turnDeadline)
     : null;
   const gameSockets = getGameSockets(gameId);
 

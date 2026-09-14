@@ -28,6 +28,13 @@ import type { FlipGameState } from "./engine-types";
 
 type SeatCount = 2 | 3 | 4 | 5;
 
+// #394 — Caroline's ruling: 45s total, countdown visible for the final 15s
+// (C4's floor is >=10s; 15 clears it with margin). A judgement call, not a
+// derived number — revisit after the first full game with real people.
+// Kept next to FLIP_TURN_TIMEOUT_MS's own comment (message-handler.ts)
+// rather than duplicated reasoning here.
+const FLIP_TURN_COUNTDOWN_VISIBLE_MS = 15_000;
+
 export interface FlipTableProps {
   game: FlipGameState;
   localPlayerId: string;
@@ -131,7 +138,11 @@ export function FlipTable({
     onChooseFlip3Target,
   ]);
 
-  const { secondsRemaining } = useTurnCountdown({ deadline: turnDeadline, onExpire: handleExpire });
+  const { secondsRemaining } = useTurnCountdown({
+    deadline: turnDeadline,
+    onExpire: handleExpire,
+    visibleForMs: FLIP_TURN_COUNTDOWN_VISIBLE_MS,
+  });
 
   return (
     // #450 — pt-28 reserves top clearance for two fixed overlays GameClient
