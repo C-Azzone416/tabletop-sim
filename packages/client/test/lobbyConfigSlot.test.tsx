@@ -132,6 +132,7 @@ describe("lobby config slot (#319)", () => {
       onStartGame: vi.fn(),
       onLeave: vi.fn(),
       onChangePlayerCount: vi.fn(),
+      onConfigChange: vi.fn(),
       highestUnlocked: 8,
       ...overrides,
     });
@@ -219,6 +220,100 @@ describe("lobby config slot (#319)", () => {
 
       expect(screen.queryByText("Select Mission")).not.toBeInTheDocument();
       expect(screen.getByText("Game Options")).toBeInTheDocument();
+    });
+  });
+
+  // #329 — replicating the captain's config value into room state so a
+  // non-captain sees the live pick, read-only, instead of no panel at all.
+  describe("lobby config replication (#329)", () => {
+    const props = (overrides: Record<string, unknown> = {}) => ({
+      joinCode: "XYZ789",
+      players: [
+        makePlayer({ id: "p1", name: "Alice", ready: true }),
+        makePlayer({ id: "p2", name: "Bob", ready: true }),
+      ],
+      localPlayerId: "p1",
+      captainId: "p1",
+      onReady: vi.fn(),
+      onStartGame: vi.fn(),
+      onLeave: vi.fn(),
+      onChangePlayerCount: vi.fn(),
+      onConfigChange: vi.fn(),
+      highestUnlocked: 8,
+      gameType: "wire-game",
+      ...overrides,
+    });
+
+    it("the captain broadcasts the panel's default config shortly after mount, without any edit", () => {
+      const onConfigChange = vi.fn();
+      render(<Lobby {...props({ onConfigChange })} />);
+
+      // wireGameConfigSlot.createDefaultConfig() -> { mission: 1 }, matching
+      // the panel's own initial "Start Mission 1" label.
+      expect(onConfigChange).toHaveBeenCalledWith({ mission: 1 });
+    });
+
+    it("the captain re-broadcasts on every committed change, not just the default", async () => {
+      const user = userEvent.setup();
+      const onConfigChange = vi.fn();
+      render(<Lobby {...props({ onConfigChange })} />);
+      onConfigChange.mockClear();
+
+      await user.click(screen.getByRole("button", { name: /Mission 4/ }));
+
+      expect(onConfigChange).toHaveBeenCalledWith({ mission: 4 });
+    });
+
+    it("a non-captain never calls onConfigChange — there is nothing for them to commit", async () => {
+      const user = userEvent.setup();
+      const onConfigChange = vi.fn();
+      render(<Lobby {...props({ localPlayerId: "p2", onConfigChange, lobbyConfig: { mission: 1 } })} />);
+
+      // Read-only: the button is present (every mission always renders in
+      // full, #333) but disabled via the fieldset, so clicking it does
+      // nothing — confirms the panel is genuinely non-interactive, not
+      // just that onConfigChange happens to not fire.
+      const mission4 = screen.getByRole("button", { name: /Mission 4/ });
+      expect(mission4).toBeDisabled();
+      await user.click(mission4).catch(() => {});
+      expect(onConfigChange).not.toHaveBeenCalled();
+    });
+
+    it("a non-captain renders no config panel at all while the replicated value has not arrived yet", () => {
+      render(<Lobby {...props({ localPlayerId: "p2", lobbyConfig: null })} />);
+
+      // Not "Select Mission" defaulted to something possibly wrong — nothing,
+      // exactly the failure mode #329 exists to avoid (a read-only panel
+      // that can't yet be sure of the captain's actual pick).
+      expect(screen.queryByText("Select Mission")).not.toBeInTheDocument();
+    });
+
+    it("a non-captain sees the captain's actual replicated pick, read-only, once it arrives", () => {
+      render(<Lobby {...props({ localPlayerId: "p2", lobbyConfig: { mission: 5 } })} />);
+
+      expect(screen.getByText("Select Mission")).toBeInTheDocument();
+      // canEdit=false -> the fieldset is disabled (WireGameConfigPanel's own
+      // read-only implementation from #319) — confirms this isn't editable,
+      // not just that the value happens to display correctly.
+      const mission5 = screen.getByRole("button", { name: /Mission 5/ });
+      expect(mission5).toBeDisabled();
+      // MissionSelector marks the selected mission via its own highlight
+      // class, not an explicit selected/pressed attribute — this is the
+      // proof it's showing mission 5 specifically, not just that mission 5
+      // happens to be present among the (always fully rendered) choices.
+      expect(mission5.className).toContain("bg-accent/10");
+      expect(screen.getByRole("button", { name: /Mission 1/ }).className).not.toContain("bg-accent/10");
+    });
+
+    it("a non-captain's panel updates live as the replicated value changes", () => {
+      const p = props({ localPlayerId: "p2", lobbyConfig: { mission: 2 } });
+      const { rerender } = render(<Lobby {...p} />);
+      expect(screen.getByRole("button", { name: /Mission 2/ }).className).toContain("bg-accent/10");
+
+      rerender(<Lobby {...p} lobbyConfig={{ mission: 3 }} />);
+
+      expect(screen.getByRole("button", { name: /Mission 3/ }).className).toContain("bg-accent/10");
+      expect(screen.getByRole("button", { name: /Mission 2/ }).className).not.toContain("bg-accent/10");
     });
   });
 });

@@ -27,7 +27,7 @@ describe("useGameState", () => {
     const player = makePlayer({ id: "p1", gameId: "g1", name: "Alice" });
 
     act(() => {
-      result.current.handleMessage({ type: "game_created", game, player });
+      result.current.handleMessage({ type: "game_created", lobbyConfig: null, game, player });
     });
 
     expect(result.current.state.game).toEqual(game);
@@ -42,7 +42,7 @@ describe("useGameState", () => {
     const players = [makePlayer({ id: "p1", name: "Alice" }), player];
 
     act(() => {
-      result.current.handleMessage({ type: "joined_game", game, player, players });
+      result.current.handleMessage({ type: "joined_game", lobbyConfig: null, game, player, players });
     });
 
     expect(result.current.state.game).toEqual(game);
@@ -56,7 +56,7 @@ describe("useGameState", () => {
     const alice = makePlayer({ id: "p1", name: "Alice" });
     const bob = makePlayer({ id: "p2", name: "Bob" });
 
-    act(() => { result.current.handleMessage({ type: "game_created", game, player: alice }); });
+    act(() => { result.current.handleMessage({ type: "game_created", lobbyConfig: null, game, player: alice }); });
     act(() => { result.current.handleMessage({ type: "player_joined", player: bob }); });
 
     expect(result.current.state.players).toHaveLength(2);
@@ -199,7 +199,7 @@ describe("useGameState", () => {
     const alice = makePlayer({ id: "p1", name: "Alice" });
     const bob = makePlayer({ id: "p2", name: "Bob" });
 
-    act(() => { result.current.handleMessage({ type: "game_created", game, player: alice }); });
+    act(() => { result.current.handleMessage({ type: "game_created", lobbyConfig: null, game, player: alice }); });
     act(() => { result.current.handleMessage({ type: "player_joined", player: bob }); });
     expect(result.current.state.players).toHaveLength(2);
 
@@ -362,7 +362,7 @@ describe("useGameState", () => {
 
   it("reset returns to initial state", () => {
     const { result } = renderHook(() => useGameState());
-    act(() => { result.current.handleMessage({ type: "game_created", game: makeGame(), player: makePlayer() }); });
+    act(() => { result.current.handleMessage({ type: "game_created", lobbyConfig: null, game: makeGame(), player: makePlayer() }); });
     expect(result.current.state.game).not.toBeNull();
     act(() => result.current.reset());
     expect(result.current.state.game).toBeNull();
@@ -387,5 +387,57 @@ describe("useGameState", () => {
     expect(result.current.state.wires).toEqual(wires);
     expect(result.current.state.infoTokens).toEqual(infoTokens);
     expect(result.current.state.validationTokens).toEqual(validationTokens);
+  });
+
+  describe("lobby config replication (#329)", () => {
+    it("starts null before any server message", () => {
+      const { result } = renderHook(() => useGameState());
+      expect(result.current.state.lobbyConfig).toBeNull();
+    });
+
+    it("takes game_created's lobbyConfig verbatim (null — nothing has been picked yet)", () => {
+      const { result } = renderHook(() => useGameState());
+      const game = makeGame({ id: "g1" });
+      const player = makePlayer({ id: "p1" });
+
+      act(() => {
+        result.current.handleMessage({ type: "game_created", game, player, lobbyConfig: null });
+      });
+
+      expect(result.current.state.lobbyConfig).toBeNull();
+    });
+
+    it("takes joined_game's lobbyConfig — a late joiner sees the captain's already-live pick", () => {
+      const { result } = renderHook(() => useGameState());
+      const game = makeGame({ id: "g1" });
+      const player = makePlayer({ id: "p2" });
+
+      act(() => {
+        result.current.handleMessage({
+          type: "joined_game",
+          game,
+          player,
+          players: [player],
+          lobbyConfig: { mission: 3 },
+        });
+      });
+
+      expect(result.current.state.lobbyConfig).toEqual({ mission: 3 });
+    });
+
+    it("updates on lobby_config_updated", () => {
+      const { result } = renderHook(() => useGameState());
+      act(() => {
+        result.current.handleMessage({ type: "lobby_config_updated", config: { mission: 2 } });
+      });
+
+      expect(result.current.state.lobbyConfig).toEqual({ mission: 2 });
+
+      act(() => {
+        result.current.handleMessage({ type: "lobby_config_updated", config: { mission: 5 } });
+      });
+
+      expect(result.current.state.lobbyConfig).toEqual({ mission: 5 });
+    });
   });
 });

@@ -25,6 +25,7 @@ vi.mock("../src/engine/game-engine.js", () => ({
   executeNextMission: vi.fn(),
   leaveGame: vi.fn(),
   updatePlayerCount: vi.fn(),
+  assertCanUpdateLobbyConfig: vi.fn(),
 }));
 
 vi.mock("../src/db/games.js", () => ({
@@ -55,6 +56,9 @@ vi.mock("../src/ws/connection-manager.js", () => ({
   schedulePendingLeave: vi.fn(),
   cancelPendingLeave: vi.fn(),
   hasPendingLeave: vi.fn(),
+  setLobbyConfig: vi.fn(),
+  getLobbyConfig: vi.fn(),
+  clearLobbyConfig: vi.fn(),
 }));
 
 vi.mock("../src/ws/state-broadcaster.js", () => ({
@@ -266,8 +270,11 @@ describe("message-handler", () => {
 
       expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "wire-game", 4, "prof-1");
       expect(mockConnManager.registerConnection).toHaveBeenCalledWith(ws, "p1", "g1");
-      const sent = lastSent(ws) as { type: string; game: unknown; player: unknown };
+      const sent = lastSent(ws) as { type: string; game: unknown; player: unknown; lobbyConfig: unknown };
       expect(sent.type).toBe("game_created");
+      // #329 — nothing has run yet that could have set a config for a room
+      // that didn't exist a moment ago.
+      expect(sent.lobbyConfig).toBeNull();
     });
 
     it("rejects an unknown gameType with a clear error and creates no room", async () => {
@@ -350,6 +357,9 @@ describe("message-handler", () => {
       expect(mockEngine.startFlipRoom).toHaveBeenCalledWith("g1", "p0");
       expect(mockEngine.startGame).not.toHaveBeenCalled();
       expect(mockStateBroadcaster.broadcastGameState).toHaveBeenCalled();
+      // #329 — the lobby config preview stops being relevant once the room
+      // leaves 'waiting'.
+      expect(mockConnManager.clearLobbyConfig).toHaveBeenCalledWith("g1");
     });
 
     it("still starts a wire game through startGame, untouched", async () => {
@@ -364,6 +374,8 @@ describe("message-handler", () => {
 
       expect(mockEngine.startGame).toHaveBeenCalledWith("g1", "p0", 3);
       expect(mockEngine.startFlipRoom).not.toHaveBeenCalled();
+      // #329 — same cleanup as the Flip start path above.
+      expect(mockConnManager.clearLobbyConfig).toHaveBeenCalledWith("g1");
     });
 
     it("surfaces a flip start rejection to the host rather than a generic error", async () => {
@@ -533,12 +545,17 @@ describe("message-handler", () => {
 
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-2", name: "Bob" });
       mockEngine.joinGame.mockResolvedValue({ game, player, players });
+      // #329 — the captain already picked mission 3 before Bob joined.
+      mockConnManager.getLobbyConfig.mockReturnValue(3);
 
       await handleMessage(ws, JSON.stringify({ type: "join_game", joinCode: "ABC123", playerName: "Bob" }));
 
       expect(mockEngine.joinGame).toHaveBeenCalledWith("ABC123", "Bob", "prof-2");
-      const sent = lastSent(ws) as { type: string };
+      const sent = lastSent(ws) as { type: string; lobbyConfig: unknown };
       expect(sent.type).toBe("joined_game");
+      // #329 — a late joiner sees the live pick immediately, not just future changes.
+      expect(mockConnManager.getLobbyConfig).toHaveBeenCalledWith("g1");
+      expect(sent.lobbyConfig).toBe(3);
       expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith(
         "g1",
         expect.objectContaining({ type: "player_joined" }),
@@ -911,6 +928,8 @@ describe("message-handler", () => {
       expect(mockConnManager.removeConnection).toHaveBeenCalledWith(remaining2);
       // No game_state push for a torn-down room.
       expect(mockStateBroadcaster.broadcastGameState).not.toHaveBeenCalled();
+      // #329 — the room no longer exists; nothing left to preview a config for.
+      expect(mockConnManager.clearLobbyConfig).toHaveBeenCalledWith("g1");
     });
 
     it("non-host leaving broadcasts a player_left notice naming who left, then game_state", async () => {
@@ -1041,6 +1060,84 @@ describe("message-handler", () => {
       await handleMessage(ws, JSON.stringify({ type: "update_player_count", maxPlayers: 3 }));
 
       expect(lastSent(ws)).toEqual({ type: "error", message: reason });
+    });
+  });
+
+  describe("update_lobby_config (#329)", () => {
+    it("rejects when there is no connection info", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue(undefined);
+
+      await handleMessage(ws, JSON.stringify({ type: "update_lobby_config", config: 3 }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Not connected to a game" });
+      expect(mockEngine.assertCanUpdateLobbyConfig).not.toHaveBeenCalled();
+    });
+
+    // Basic-shape validation (this couldn't be a LobbyConfigValue at all)
+    // lives in validateMessage, same split update_player_count uses
+    // between shape there and business rules in the handler/engine —
+    // reaches "Invalid message format", not a bespoke error, and never
+    // reaches the engine.
+    it.each([
+      ["a string", "not-a-mission"],
+      ["an array", [1, 2, 3]],
+      ["null", null],
+    ])("rejects %s config without reaching the engine", async (_label, config) => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "host", gameId: "g1", socket: ws });
+
+      await handleMessage(ws, JSON.stringify({ type: "update_lobby_config", config }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: "Invalid message format" });
+      expect(mockEngine.assertCanUpdateLobbyConfig).not.toHaveBeenCalled();
+      expect(mockConnManager.setLobbyConfig).not.toHaveBeenCalled();
+    });
+
+    it("accepts a bare number (Wire Game's mission shape)", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "host", gameId: "g1", socket: ws });
+
+      await handleMessage(ws, JSON.stringify({ type: "update_lobby_config", config: 4 }));
+
+      expect(mockEngine.assertCanUpdateLobbyConfig).toHaveBeenCalledWith("g1", "host");
+      expect(mockConnManager.setLobbyConfig).toHaveBeenCalledWith("g1", 4);
+    });
+
+    it("accepts a plain object (a future game's multi-field config shape)", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "host", gameId: "g1", socket: ws });
+
+      await handleMessage(ws, JSON.stringify({ type: "update_lobby_config", config: { difficulty: "hard" } }));
+
+      expect(mockConnManager.setLobbyConfig).toHaveBeenCalledWith("g1", { difficulty: "hard" });
+    });
+
+    it("broadcasts lobby_config_updated to the whole room on success", async () => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "host", gameId: "g1", socket: ws });
+
+      await handleMessage(ws, JSON.stringify({ type: "update_lobby_config", config: 2 }));
+
+      expect(mockConnManager.broadcastToGame).toHaveBeenCalledWith("g1", { type: "lobby_config_updated", config: 2 });
+    });
+
+    // Every engine rejection must reach the requesting client verbatim —
+    // the UI has to be able to say WHY, same standard as update_player_count.
+    it.each([
+      "Only the captain can change the game config",
+      "Game config can only change in the lobby",
+      "Game not found",
+    ])("surfaces the engine's rejection reason verbatim: %s", async (reason) => {
+      const ws = mockSocket();
+      mockConnManager.getConnectionInfo.mockReturnValue({ playerId: "p2", gameId: "g1", socket: ws });
+      mockEngine.assertCanUpdateLobbyConfig.mockRejectedValue(new Error(reason));
+
+      await handleMessage(ws, JSON.stringify({ type: "update_lobby_config", config: 3 }));
+
+      expect(lastSent(ws)).toEqual({ type: "error", message: reason });
+      expect(mockConnManager.setLobbyConfig).not.toHaveBeenCalled();
+      expect(mockConnManager.broadcastToGame).not.toHaveBeenCalled();
     });
   });
 

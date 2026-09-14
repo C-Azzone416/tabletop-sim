@@ -399,6 +399,42 @@ describe("game-engine", () => {
     });
   });
 
+  // #329 — validation only. The value itself is never persisted or returned
+  // here (message-handler stores/broadcasts it via connection-manager's
+  // in-memory map) — this only gates who may send an update and when,
+  // same captain/lobby-only shape as updatePlayerCount above.
+  describe("assertCanUpdateLobbyConfig", () => {
+    it("rejects an unknown game", async () => {
+      mockGamesDb.getGameById.mockResolvedValue(null);
+      await expect(engine.assertCanUpdateLobbyConfig("nope", "host")).rejects.toThrow("Game not found");
+    });
+
+    it("rejects a non-captain requester", async () => {
+      mockGamesDb.getGameById.mockResolvedValue(
+        makeGame({ id: "g1", status: "waiting", captainId: "host" }),
+      );
+      await expect(engine.assertCanUpdateLobbyConfig("g1", "not-the-captain")).rejects.toThrow(
+        "Only the captain can change the game config",
+      );
+    });
+
+    it("rejects once the game has left the lobby", async () => {
+      mockGamesDb.getGameById.mockResolvedValue(
+        makeGame({ id: "g1", status: "active", captainId: "host" }),
+      );
+      await expect(engine.assertCanUpdateLobbyConfig("g1", "host")).rejects.toThrow(
+        "Game config can only change in the lobby",
+      );
+    });
+
+    it("allows the captain while the room is still in the lobby", async () => {
+      mockGamesDb.getGameById.mockResolvedValue(
+        makeGame({ id: "g1", status: "waiting", captainId: "host" }),
+      );
+      await expect(engine.assertCanUpdateLobbyConfig("g1", "host")).resolves.toBeUndefined();
+    });
+  });
+
   // #402 — the real lobby's Start for a Flip room. Before this, start_game
   // ran engine.startGame for every game type: a Flip room got 24 wire tiles
   // dealt into it, landed on `setup`, and never had any Flip state created,

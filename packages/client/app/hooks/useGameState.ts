@@ -9,6 +9,7 @@ import type {
   ValidationToken,
   ServerMessage,
   FlipTableView,
+  LobbyConfigValue,
 } from "@tabletop/shared";
 
 export interface GameState {
@@ -64,6 +65,18 @@ export interface GameState {
    * there's nothing left for a per-player flag to stay correct for.
    */
   reconnectingPlayerIds: readonly string[];
+  /**
+   * #329 — the captain's current lobby config pick, replicated so every
+   * player sees it live (not just the captain). Null until the captain's
+   * own client has had a round trip to send one — genuinely "not picked
+   * yet", not a default this client should guess at; Lobby.tsx renders
+   * nothing for a non-captain until this is non-null rather than showing a
+   * value that might not match the captain's real selection (the exact
+   * "wrong information to everyone but one person" problem #329 exists to
+   * fix). Untouched by `room_closed`/`player_left` for the same reason
+   * `reconnectingPlayerIds` is — nothing reads it once those fire either.
+   */
+  lobbyConfig: LobbyConfigValue | null;
 }
 
 const initialState: GameState = {
@@ -82,6 +95,7 @@ const initialState: GameState = {
   roomClosedReason: null,
   missionEndedReason: null,
   reconnectingPlayerIds: [],
+  lobbyConfig: null,
 };
 
 type Action =
@@ -115,6 +129,7 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
         localPlayer: msg.player,
         players: [msg.player],
         error: null,
+        lobbyConfig: msg.lobbyConfig,
       };
 
     case "joined_game":
@@ -124,7 +139,17 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
         localPlayer: msg.player,
         players: msg.players,
         error: null,
+        lobbyConfig: msg.lobbyConfig,
       };
+
+    // #329 — the captain committed a new config value; replicate it for
+    // everyone, including the captain's own client (which echoes back its
+    // own update). Lobby.tsx keeps the captain's local edit state as the
+    // source of truth for what the captain SEES while editing — this field
+    // is what a non-captain reads, and what confirms the round trip
+    // completed.
+    case "lobby_config_updated":
+      return { ...state, lobbyConfig: msg.config };
 
     case "player_joined":
       return {

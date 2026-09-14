@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getGameById } from "@tabletop/shared";
-import type { Player } from "@tabletop/shared";
+import type { Player, LobbyConfigValue } from "@tabletop/shared";
 import { resolveLobbyConfigSlot } from "./lobbyConfig/registry";
 import type { LobbyStartArg } from "./lobbyConfig/types";
 import { BackAffordance } from "./BackAffordance";
@@ -46,6 +46,19 @@ interface LobbyProps {
    * first render.
    */
   maxPlayers?: number | null;
+  /**
+   * #329 — the captain's current config pick, replicated from room state.
+   * Null means "not received yet", not "no config" — see `useGameState`'s
+   * own doc comment on this field. Read by non-captains only; the captain
+   * uses its own local edit state (`config` below) so typing/clicking never
+   * has to wait on a round trip to render.
+   */
+  lobbyConfig?: LobbyConfigValue | null;
+  /**
+   * #329 — the captain committing a new config value for replication.
+   * Never called by a non-captain (there is nothing for them to commit).
+   */
+  onConfigChange: (config: LobbyConfigValue) => void;
 }
 
 export function Lobby({
@@ -60,6 +73,8 @@ export function Lobby({
   highestUnlocked,
   gameType = null,
   maxPlayers: roomMaxPlayers = null,
+  lobbyConfig = null,
+  onConfigChange,
 }: LobbyProps) {
   const isCaptain = localPlayerId === captainId;
   const localPlayer = players.find((p) => p.id === localPlayerId);
@@ -123,6 +138,43 @@ export function Lobby({
     setConfigGameId(slot.gameId);
     setConfig(effectiveConfig);
   }
+
+  // #329 — replicates the captain's edit into room state so every other
+  // player sees it live. Broadcasts on every committed change (see
+  // ClientMessage's `update_lobby_config` doc comment for why "every
+  // commit" is the right granularity — every panel's onChange today fires
+  // on a discrete, complete selection, not a keystroke). Sends
+  // `effectiveConfig`, not `slot.toStartArg(effectiveConfig)`: this is the
+  // slot's own internal shape, so a non-captain's client can feed the
+  // received value straight back into the same ConfigPanel with no second
+  // mapping — see LobbyConfigValue's own doc comment.
+  //
+  // Non-captains never reach this effect (guarded on isCaptain first) —
+  // there is nothing for them to commit, only to read.
+  useEffect(() => {
+    if (!isCaptain || !slot) return;
+    onConfigChange(effectiveConfig as LobbyConfigValue);
+    // `onConfigChange` deliberately excluded: it's `GameClient.tsx`'s
+    // `(config) => send(...)`, a fresh function reference every render even
+    // though `send` itself is stable. Depending on it would re-broadcast
+    // the SAME config on every unrelated GameClient re-render (a
+    // reconnecting-indicator tick, another player's ready toggle), not
+    // just on a real change — `effectiveConfig` is a fresh object
+    // reference only when `config` actually changes (useState preserves
+    // the same reference otherwise) or the slot transitions, which is
+    // exactly the "committed change" granularity this is meant to fire on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveConfig, isCaptain, slot]);
+
+  // #329 — the panel's displayed value: the captain's own local edit state
+  // while editing (never waits on the round trip to see their own
+  // keystroke/click), the replicated room-state value for everyone else.
+  // Rendering the section at all is gated below on this being non-null for
+  // a non-captain — showing nothing until the real value arrives, never a
+  // guessed default, is the whole point of #329 (a read-only panel that
+  // can't yet be sure of the captain's pick is the exact "wrong
+  // information to everyone but one person" problem it exists to fix).
+  const displayConfig = isCaptain ? effectiveConfig : lobbyConfig;
 
   const ConfigPanel = slot?.Panel;
 
@@ -228,23 +280,28 @@ export function Lobby({
       )}
 
       {/*
-        Captain-only, exactly as before #319. The config value is local to the
-        captain's client and is not replicated in room state, so a "read-only
-        for everyone else" view would show every non-captain a default rather
-        than the captain's actual choice. The slot API already carries
-        `canEdit` and each panel implements it, so once the config lives in
-        room state this becomes `<div>` unconditionally with
-        `canEdit={isCaptain}`.
+        #329 — every player sees this now, not just the captain: the config
+        value is replicated into room state (see `displayConfig`/the
+        broadcast effect above), so a non-captain's read-only view shows the
+        captain's actual live pick rather than a guessed default. `canEdit`
+        (from #319's original slot API) is what makes it read-only for
+        everyone but the captain — no panel-specific change needed for
+        that half.
+
+        Gated on `isCaptain || lobbyConfig !== null`: a non-captain renders
+        nothing until the real value has arrived (see `lobbyConfig`'s own
+        doc comment) rather than showing a value that might not match yet.
+
+        #333 — slot is null only while the room has not loaded yet; render
+        nothing for that window rather than guessing a game's panel.
       */}
-      {/* #333 — slot is null only while the room has not loaded yet; render
-          nothing for that window rather than guessing a game's panel. */}
-      {isCaptain && slot && ConfigPanel && (
+      {slot && ConfigPanel && (isCaptain || lobbyConfig !== null) && (
         <div className="w-full max-w-sm">
           <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-muted">
             {slot.title}
           </h3>
           <ConfigPanel
-            config={effectiveConfig}
+            config={displayConfig}
             onChange={setConfig}
             canEdit={isCaptain}
             context={configContext}

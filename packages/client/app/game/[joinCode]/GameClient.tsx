@@ -325,6 +325,8 @@ export function GameClient({
           onReady={() => send({ type: "player_ready" })}
           onLeave={handleLeave}
           onChangePlayerCount={(count) => send({ type: "update_player_count", maxPlayers: count })}
+          lobbyConfig={state.lobbyConfig}
+          onConfigChange={(config) => send({ type: "update_lobby_config", config })}
           onStartGame={(startArg) =>
             // #319: Wire Game's config slot returns its mission as a number,
             // which is the existing start_game shape — unchanged by the slot

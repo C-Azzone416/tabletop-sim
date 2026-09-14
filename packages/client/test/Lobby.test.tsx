@@ -19,6 +19,7 @@ describe("Lobby", () => {
       onStartGame: vi.fn(),
       onLeave: vi.fn(),
       onChangePlayerCount: vi.fn(),
+      onConfigChange: vi.fn(),
       highestUnlocked: 8,
     };
   };

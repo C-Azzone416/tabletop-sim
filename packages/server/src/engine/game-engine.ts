@@ -194,6 +194,21 @@ export async function updatePlayerCount(gameId: string, requestingPlayerId: stri
 }
 
 /**
+ * #329 — validates a captain's lobby-config update. Deliberately does not
+ * persist or return the config value itself: it is a live preview, not
+ * authoritative game data (that remains `start_game`'s own `mission`
+ * field), so it lives in connection-manager's in-memory store rather than
+ * the games table — the caller (message-handler) stores and broadcasts it
+ * after this validates the request is allowed.
+ */
+export async function assertCanUpdateLobbyConfig(gameId: string, requestingPlayerId: string): Promise<void> {
+  const game = await gamesDb.getGameById(gameId);
+  if (!game) throw new Error('Game not found');
+  if (game.captainId !== requestingPlayerId) throw new Error('Only the captain can change the game config');
+  if (game.status !== 'waiting') throw new Error('Game config can only change in the lobby');
+}
+
+/**
  * #402 — starting a Flip room from the real lobby.
  *
  * `startGame` below is wire-game shaped end to end: it deals wire tiles,

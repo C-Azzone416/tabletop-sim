@@ -82,7 +82,7 @@ describe("GameClient — full game flow integration", () => {
     // 1. Game created → lobby
     act(() => {
       ws.simulateMessage({
-        type: "game_created",
+        type: "game_created", lobbyConfig: null,
         game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
         player: makePlayer({ id: "p1", name: "Alice" }),
       });
@@ -170,7 +170,7 @@ describe("GameClient — full game flow integration", () => {
 
     act(() => {
       ws.simulateMessage({
-        type: "game_created",
+        type: "game_created", lobbyConfig: null,
         game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
         player: makePlayer({ id: "p1", name: "Alice" }),
       });
@@ -190,7 +190,7 @@ describe("GameClient — full game flow integration", () => {
       const ws = getWs();
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -227,7 +227,7 @@ describe("GameClient — full game flow integration", () => {
       const ws = getWs();
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -308,7 +308,7 @@ describe("GameClient — full game flow integration", () => {
       const ws = getWs();
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -330,7 +330,7 @@ describe("GameClient — full game flow integration", () => {
       const ws = getWs();
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -536,7 +536,7 @@ describe("GameClient — full game flow integration", () => {
 
     act(() => {
       ws.simulateMessage({
-        type: "game_created",
+        type: "game_created", lobbyConfig: null,
         game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
         player: makePlayer({ id: "p1", name: "Alice" }),
       });
@@ -587,7 +587,7 @@ describe("GameClient — full game flow integration", () => {
 
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -624,7 +624,7 @@ describe("GameClient — full game flow integration", () => {
 
       act(() => {
         ws.simulateMessage({
-          type: "joined_game",
+          type: "joined_game", lobbyConfig: null,
           game: { ...game, status: "waiting" },
           player: makePlayer({ id: "p2", name: "Bob" }),
           players: [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })],
@@ -660,7 +660,7 @@ describe("GameClient — full game flow integration", () => {
       const ws = getWs();
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -675,7 +675,7 @@ describe("GameClient — full game flow integration", () => {
       const ws = getWs();
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -698,7 +698,7 @@ describe("GameClient — full game flow integration", () => {
       const ws = getWs();
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -742,7 +742,7 @@ describe("GameClient — full game flow integration", () => {
       const ws = getWs();
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -768,7 +768,7 @@ describe("GameClient — full game flow integration", () => {
       const ws = getWs();
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -908,7 +908,7 @@ describe("GameClient — full game flow integration", () => {
 
       act(() => {
         devWs.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Dev" }),
         });
@@ -1039,7 +1039,7 @@ describe("GameClient — full game flow integration", () => {
 
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -1058,7 +1058,7 @@ describe("GameClient — full game flow integration", () => {
 
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -1083,7 +1083,7 @@ describe("GameClient — full game flow integration", () => {
 
       act(() => {
         ws.simulateMessage({
-          type: "joined_game",
+          type: "joined_game", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
           player: makePlayer({ id: "p2", name: "Bob" }),
           players: [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })],
@@ -1163,7 +1163,7 @@ describe("GameClient — full game flow integration", () => {
 
       act(() => {
         ws.simulateMessage({
-          type: "game_created",
+          type: "game_created", lobbyConfig: null,
           game: makeGame({ id: "g1", status: "waiting", captainId: "p1", maxPlayers: 4 }),
           player: makePlayer({ id: "p1", name: "Alice" }),
         });
@@ -1172,6 +1172,65 @@ describe("GameClient — full game flow integration", () => {
       fireEvent.click(screen.getByRole("button", { name: "3" }));
 
       expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: "update_player_count", maxPlayers: 3 }));
+    });
+  });
+
+  // #329 — replicating the lobby config value. Lobby.tsx's own tests cover
+  // the panel logic in depth; this only checks GameClient wires the
+  // captain's edits out and a non-captain's broadcast in.
+  describe("lobby config replication (#329)", () => {
+    it("sends update_lobby_config when the captain picks a mission", () => {
+      render(<GameClient joinCode="ABC123" profileId="p1" playerName="Alice" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "game_created", lobbyConfig: null,
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p1", name: "Alice" }),
+        });
+      });
+
+      // The mount-time default broadcast (mission 1) fires first; clear it
+      // so this assertion is unambiguously about the click, not the mount.
+      // Mission 1 is the only mission unlocked for a fresh profile in this
+      // test file's mission-unlock mocking (see #179's own describe block
+      // here) — clicking it re-fires onChange with the same value, which
+      // still proves the click -> send wiring, not the value itself.
+      ws.send.mockClear();
+      fireEvent.click(screen.getByRole("button", { name: /Mission 1/ }));
+
+      expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: "update_lobby_config", config: { mission: 1 } }));
+    });
+
+    it("shows a non-captain the captain's replicated pick, read-only, on lobby_config_updated", () => {
+      render(<GameClient joinCode="ABC123" profileId="p2" playerName="Bob" />);
+      act(() => vi.advanceTimersByTime(0));
+      const ws = getWs();
+
+      act(() => {
+        ws.simulateMessage({
+          type: "joined_game",
+          game: makeGame({ id: "g1", status: "waiting", captainId: "p1" }),
+          player: makePlayer({ id: "p2", name: "Bob" }),
+          players: [makePlayer({ id: "p1", name: "Alice" }), makePlayer({ id: "p2", name: "Bob" })],
+          lobbyConfig: null,
+        });
+      });
+
+      // Nothing yet — the captain's own value has not replicated.
+      expect(screen.queryByText("Select Mission")).not.toBeInTheDocument();
+
+      act(() => {
+        ws.simulateMessage({ type: "lobby_config_updated", config: { mission: 1 } });
+      });
+
+      expect(screen.getByText("Select Mission")).toBeInTheDocument();
+      // Mission 1 is the only one unlocked for a fresh profile here, so it
+      // renders as a real (disabled) button rather than the locked
+      // placeholder div other missions would.
+      expect(screen.getByRole("button", { name: /Mission 1/ })).toBeDisabled();
     });
   });
 

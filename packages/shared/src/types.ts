@@ -154,6 +154,23 @@ export interface Turn {
  */
 export const DEV_SEAT_SWITCH_CLOSE_CODE = 4700;
 
+/**
+ * #329 — the lobby's in-progress per-game config value, replicated so every
+ * player (not just the captain) can see the current pick live. Opaque to
+ * the platform on purpose: this is the slot's own INTERNAL config shape —
+ * exactly what `createDefaultConfig`/a panel's `onChange` produces
+ * client-side (`packages/client/app/components/lobbyConfig/types.ts`),
+ * Wire Game's `{ mission: number }` today. Deliberately NOT the
+ * `toStartArg`-mapped wire shape `start_game` uses to commit a game —
+ * that mapping only needs to exist once, at commit time; broadcasting the
+ * raw internal shape lets a non-captain's client feed a received value
+ * straight back into the same panel component with no second mapping
+ * function required. The platform stores and forwards it without
+ * interpreting it; only the slot that owns a given game's config shape
+ * ever reads inside it.
+ */
+export type LobbyConfigValue = number | Record<string, unknown>;
+
 export type ClientMessage =
   // #437 — maxPlayers is the host's chosen room capacity, required of the
   // caller for the same reason gameType is (#313): no client-side default,
@@ -195,11 +212,24 @@ export type ClientMessage =
   // game.captainId against the socket's bound player id, never claimed by
   // the client. maxPlayers is the requested new value, validated against
   // the game's registry bounds and current occupancy in engine.updatePlayerCount.
-  | { type: 'update_player_count'; maxPlayers: number };
+  | { type: 'update_player_count'; maxPlayers: number }
+  // #329 — captain-only, lobby-only: replicates the in-progress config value
+  // into room state so every player sees the live pick, not just the
+  // captain. Broadcast on every committed change (see `lobby_config_updated`
+  // below for why "committed" is the right granularity), not persisted —
+  // `start_game`'s own `mission` field remains the sole authoritative value;
+  // this is a live preview of what the captain currently has selected, nothing
+  // more.
+  | { type: 'update_lobby_config'; config: LobbyConfigValue };
 
 export type ServerMessage =
-  | { type: 'game_created'; game: Game; player: Player }
-  | { type: 'joined_game'; game: Game; player: Player; players: Player[] }
+  // #329 — `lobbyConfig` is null at creation (the captain has not sent a
+  // value yet — create_game carries no config) and on a late join before
+  // the captain's own mount-effect has had a round trip to reach the
+  // server. Null is unambiguous: a real value is always a number or a
+  // non-null object, per LobbyConfigValue.
+  | { type: 'game_created'; game: Game; player: Player; lobbyConfig: LobbyConfigValue | null }
+  | { type: 'joined_game'; game: Game; player: Player; players: Player[]; lobbyConfig: LobbyConfigValue | null }
   | { type: 'game_started'; game: Game; players: Player[]; wires: Wire[]; candidates: WireCandidate[] }
   | { type: 'setup_complete'; game: Game }
   // #382 — the wire game's shape, unchanged. `flip` is absent on this path.
@@ -260,6 +290,18 @@ export type ServerMessage =
   // `reconnectingPlayerIds` doc comment.
   | { type: 'player_reconnecting'; playerId: string }
   | { type: 'player_reconnected'; playerId: string }
+  // #329 — broadcast whenever the captain's `update_lobby_config` commits a
+  // new value. "Broadcast every commit" rather than debouncing: every
+  // config panel's onChange today fires on a discrete, complete selection
+  // (Wire's mission buttons — a click IS the whole change, not a keystroke
+  // toward one), so there is no partial-input granularity to coalesce.
+  // A future free-text/slider panel (#295) would need to revisit this —
+  // flagged, not solved speculatively here. Lobby-phase only (game.status
+  // === 'waiting', enforced server-side), so this can never interact with
+  // Flip's active-play turn-timer re-arm-on-broadcast behaviour (#502) —
+  // the two are mutually exclusive by game phase, checked directly rather
+  // than assumed.
+  | { type: 'lobby_config_updated'; config: LobbyConfigValue }
   | { type: 'error'; message: string };
 
 /**
