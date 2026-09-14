@@ -116,7 +116,16 @@ export function FlipTable({
   const { secondsRemaining } = useTurnCountdown({ deadline: turnDeadline, onExpire: handleExpire });
 
   return (
-    <div className="flex flex-col gap-3 p-3" data-game="flip">
+    // #450 — pt-28 reserves top clearance for two fixed overlays GameClient
+    // renders as siblings: the JoinCodeBadge (top-4 left-4, GameBoard.tsx
+    // uses pt-14 for the same reason) and, at 400px width with 2 or 3
+    // players specifically, the collapsed DevPanel toggle (top-40 right-4)
+    // — TableSeating's top-right opponent card sat close enough to the top
+    // of the table to land under it. pt-14 alone cleared the join code
+    // badge but not the dev toggle; pt-28 is the smallest tested value that
+    // clears both across every player count (2-5) at both 400px and desktop
+    // widths. FlipTable never reserved either when it was built.
+    <div className="flex flex-col gap-3 p-3 pt-28" data-game="flip">
       <SeatRail seats={seats} />
 
       <TurnCountdown secondsRemaining={secondsRemaining} />

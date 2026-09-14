@@ -316,3 +316,66 @@ test.describe("Flip — reconnect", () => {
     await expect(seatByName(page, alice.name)).toBeVisible();
   });
 });
+
+test.describe("Flip — fixed-overlay layout (#450)", () => {
+  // #450 — both regressions here passed every existing assertion:
+  // JoinCodeBadge and the DevPanel toggle are `fixed`-positioned siblings
+  // GameClient renders independently of FlipTable's own layout, so nothing
+  // about their presence or text content was ever wrong — `toBeVisible()`
+  // is satisfied by an element sitting directly on top of another one.
+  // Only comparing bounding boxes catches a visual collision; asserting on
+  // DOM presence/text, which is all the rest of this suite does, cannot.
+  //
+  // Covers every seat count (2-5, the full range #439 is deciding whether
+  // to extend) at both a phone width (400px, the acceptance criterion) and
+  // a desktop width — the two overlaps in #450 needed different amounts of
+  // top clearance to clear at different counts, so a single width/count
+  // combination isn't enough to guard the fix.
+  async function noOverlap(a: Locator, b: Locator): Promise<void> {
+    const [boxA, boxB] = await Promise.all([a.boundingBox(), b.boundingBox()]);
+    expect(boxA, "first element must be visible/measurable").not.toBeNull();
+    expect(boxB, "second element must be visible/measurable").not.toBeNull();
+    const overlaps = !(
+      boxA!.x + boxA!.width <= boxB!.x ||
+      boxB!.x + boxB!.width <= boxA!.x ||
+      boxA!.y + boxA!.height <= boxB!.y ||
+      boxB!.y + boxB!.height <= boxA!.y
+    );
+    expect(overlaps, `expected no overlap between ${JSON.stringify(boxA)} and ${JSON.stringify(boxB)}`).toBe(false);
+  }
+
+  for (const viewport of [
+    { width: 400, height: 800, label: "400px phone width" },
+    { width: 1280, height: 900, label: "1280px desktop" },
+  ]) {
+    // #449 raised Flip's registry floor to 3 (2 is no longer a legal
+    // playerCount for /dev/seed's gameType: "flip") — narrowed from the
+    // original 2-5, not silently dropping the 2-player case: it's simply
+    // unreachable for Flip now. Still every count Flip actually seats.
+    for (const playerCount of [3, 4, 5] as const) {
+      test(`${playerCount} players at ${viewport.label}: Join Code badge and DevPanel toggle don't cover a seat chip or card`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        const seed = await seedFlipGame(playerCount);
+        await page.goto(flipGameUrl(seed));
+        await expect(page.getByTestId("seat-rail")).toBeVisible();
+
+        const joinCodeBadge = page.getByText(/^Join Code:/);
+        const devToggle = page.getByRole("button", { name: "Open dev tools" });
+        const seatChips = page.locator('ul[data-testid="seat-rail"] > li');
+        const tableCards = page.locator('[data-testid="table-seating"] [data-testid^="seat-"]');
+
+        const chipCount = await seatChips.count();
+        for (let i = 0; i < chipCount; i++) {
+          await noOverlap(joinCodeBadge, seatChips.nth(i));
+        }
+
+        const cardCount = await tableCards.count();
+        for (let i = 0; i < cardCount; i++) {
+          await noOverlap(devToggle, tableCards.nth(i));
+        }
+      });
+    }
+  }
+});
