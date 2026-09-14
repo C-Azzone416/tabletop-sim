@@ -175,10 +175,7 @@ jobs:
       - name: Security audit (npm)
         run: |
           set +e
-          # SCRATCH — temporary forced failure to demonstrate #302's
-          # acceptance criterion live (every earlier step still runs and
-          # reports, messaging renders correctly). Reverted before merge.
-          false
+          npm audit --audit-level=high
           status=$?
           set -e
           if [ "$status" -ne 0 ]; then
