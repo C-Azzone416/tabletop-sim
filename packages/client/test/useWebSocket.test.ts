@@ -164,6 +164,221 @@ describe("useWebSocket", () => {
     expect(ws.close).toHaveBeenCalled();
   });
 
+  // #467 — the ~7% switchToSeat flake: a deliberate disconnect() (e.g.
+  // DevPanel's seat switch, which closes with a non-4001 code) still
+  // scheduled a reconnect for the socket it had just closed, since only
+  // code 4001 skipped that. The resulting stray reconnect fired against
+  // whatever profileId was CURRENT by the time its timer elapsed — not the
+  // seat being abandoned — colliding with the real new connection via
+  // connection-manager's #469 eviction, whose own close (also not 4001)
+  // scheduled ANOTHER stray reconnect, and so on: a self-sustaining
+  // ping-pong that never let the client settle on the right identity.
+  describe("disconnect() never schedules a reconnect for the socket it closes (#467)", () => {
+    it("a plain disconnect() does not reconnect", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() => useWebSocket(onMessage));
+
+      act(() => result.current.connect());
+      const ws = MockWebSocket.instances[0];
+      act(() => ws.simulateOpen());
+
+      act(() => result.current.disconnect());
+      act(() => vi.advanceTimersByTime(30_000));
+
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    // The exact case that broke: a non-4001 code (DevPanel's seat-switch
+    // close) — before this fix, only 4001 was exempt, so this specific
+    // call is what triggered the ping-pong.
+    it("disconnect(code, reason) with a non-4001 code does not reconnect either", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() => useWebSocket(onMessage));
+
+      act(() => result.current.connect());
+      const ws = MockWebSocket.instances[0];
+      act(() => ws.simulateOpen());
+
+      act(() => result.current.disconnect(4700, "dev seat switch"));
+      act(() => vi.advanceTimersByTime(30_000));
+
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    // A disconnect() call while there's nothing to close (already
+    // disconnected) must not leave the suppression armed and wrongly
+    // swallow a LATER, genuinely-unexpected close's reconnect.
+    it("does not suppress a later unrelated close's reconnect", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() => useWebSocket(onMessage));
+
+      act(() => result.current.disconnect()); // nothing connected yet — no-op
+
+      act(() => result.current.connect());
+      const ws = MockWebSocket.instances[0];
+      act(() => ws.simulateOpen());
+      act(() => ws.simulateClose()); // a genuine, unexpected close
+
+      act(() => vi.advanceTimersByTime(1000));
+      expect(MockWebSocket.instances).toHaveLength(2);
+    });
+
+    // An unrelated genuine close AFTER an intentional disconnect() still
+    // reconnects normally — the suppression is one-shot, not sticky.
+    it("a genuine close after a prior intentional disconnect still reconnects", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() => useWebSocket(onMessage));
+
+      act(() => result.current.connect());
+      const ws1 = MockWebSocket.instances[0];
+      act(() => ws1.simulateOpen());
+      act(() => result.current.disconnect());
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(MockWebSocket.instances).toHaveLength(1);
+
+      act(() => result.current.connect());
+      const ws2 = MockWebSocket.instances[1];
+      act(() => ws2.simulateOpen());
+      act(() => ws2.simulateClose());
+
+      act(() => vi.advanceTimersByTime(1000));
+      expect(MockWebSocket.instances).toHaveLength(3);
+    });
+
+    it("unmount closes the socket without leaving a reconnect timer armed", () => {
+      const onMessage = vi.fn();
+      const { result, unmount } = renderHook(() => useWebSocket(onMessage));
+
+      act(() => result.current.connect());
+      const ws = MockWebSocket.instances[0];
+      act(() => ws.simulateOpen());
+
+      unmount();
+      act(() => vi.advanceTimersByTime(30_000));
+
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    // #467 review — the deeper bug found during live verification: the mock
+    // above fires onclose SYNCHRONOUSLY inside close(), which can never
+    // reproduce this. A real browser's close handshake is asynchronous, so
+    // a disconnect()+connect() pair (exactly what the seat switcher does)
+    // can have a NEWER socket already live in wsRef.current by the time the
+    // OLD socket's own onclose finally fires. Without an identity check,
+    // that late close unconditionally nulled wsRef.current, wiping the
+    // reference to the live connection — every subsequent send() then
+    // queued forever with nothing to flush it, and (with the ping-pong
+    // above already fixed) nothing left to reconnect and repair it either.
+    it("a stale socket's late close does not wipe the reference to a newer connection", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() => useWebSocket(onMessage));
+
+      act(() => result.current.connect());
+      const ws1 = MockWebSocket.instances[0];
+      act(() => ws1.simulateOpen());
+
+      // Defer ws1's onclose rather than letting the mock's close() fire it
+      // synchronously, so the disconnect+connect below can race ahead of it
+      // exactly as happens over a real network.
+      ws1.close = vi.fn();
+      act(() => result.current.disconnect(4700, "dev seat switch"));
+
+      act(() => result.current.connect());
+      const ws2 = MockWebSocket.instances[1];
+      act(() => ws2.simulateOpen());
+      expect(result.current.status).toBe("connected");
+
+      // ws1's close handshake finally completes, late.
+      act(() => { ws1.onclose?.({ code: 4700, reason: "dev seat switch" }); });
+
+      // The live connection (ws2) must be unaffected.
+      expect(result.current.status).toBe("connected");
+      act(() => result.current.send({ type: "player_ready" }));
+      expect(ws2.send).toHaveBeenCalled();
+      expect(ws1.send).not.toHaveBeenCalled();
+
+      // And no reconnect should have been scheduled for the stale socket.
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(MockWebSocket.instances).toHaveLength(2);
+    });
+
+    // #483 QA (toucan) — a narrower race the single shared boolean reopened:
+    // disconnect() arms suppression for socket A (old, deliberately closed,
+    // close handshake still pending), then connect() makes socket B current.
+    // If B then suffers a GENUINE, unexpected close before A's deferred
+    // close finally arrives, B's onclose reads the flag armed for A —
+    // wrongly swallowing B's real reconnect. Keying suppression to the
+    // specific socket (WeakSet) rather than a hook-wide flag closes this
+    // the same way `isCurrentSocket` closes #482's version of the same
+    // mistake: never let one socket's state answer for a different socket.
+    it("a genuine close on the new socket still reconnects, even while an old socket's deliberate close is still pending", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() => useWebSocket(onMessage));
+
+      act(() => result.current.connect());
+      const ws1 = MockWebSocket.instances[0];
+      act(() => ws1.simulateOpen());
+
+      // Defer ws1's onclose — its close handshake is still in flight.
+      ws1.close = vi.fn();
+      act(() => result.current.disconnect(4700, "dev seat switch"));
+
+      act(() => result.current.connect());
+      const ws2 = MockWebSocket.instances[1];
+      act(() => ws2.simulateOpen());
+      expect(result.current.status).toBe("connected");
+
+      // ws2 (the current, live socket) suffers a real, unexpected close —
+      // BEFORE ws1's deferred close handshake has completed.
+      act(() => ws2.simulateClose());
+
+      // A reconnect must still be scheduled for ws2's own close: it's the
+      // current socket having a genuine problem, unrelated to ws1's
+      // deliberate teardown.
+      act(() => vi.advanceTimersByTime(1000));
+      expect(MockWebSocket.instances).toHaveLength(3);
+
+      // ws1's deferred close finally arrives — must have no further effect
+      // (already consumed correctly by ws1's own suppression, and ws1 is
+      // long since superseded).
+      act(() => { ws1.onclose?.({ code: 4700, reason: "dev seat switch" }); });
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(MockWebSocket.instances).toHaveLength(3);
+    });
+
+    // #467 review — the same invariant (only the current socket may touch
+    // shared state) applies to onmessage, not just onclose: a superseded
+    // socket that still has a message in flight (the server hasn't evicted
+    // it yet, or it arrives mid-close) must not deliver it as if it were
+    // live traffic on the real connection.
+    it("a stale socket's late message is not delivered once a newer connection is current", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() => useWebSocket(onMessage));
+
+      act(() => result.current.connect());
+      const ws1 = MockWebSocket.instances[0];
+      act(() => ws1.simulateOpen());
+
+      ws1.close = vi.fn();
+      act(() => result.current.disconnect(4700, "dev seat switch"));
+
+      act(() => result.current.connect());
+      const ws2 = MockWebSocket.instances[1];
+      act(() => ws2.simulateOpen());
+
+      // ws1 has a message in flight, arriving after ws2 is already current.
+      const staleMessage: ServerMessage = { type: "error", message: "stale" };
+      act(() => ws1.simulateMessage(staleMessage));
+
+      expect(onMessage).not.toHaveBeenCalledWith(staleMessage);
+
+      // A message on the actually-current socket still delivers normally.
+      const liveMessage: ServerMessage = { type: "error", message: "live" };
+      act(() => ws2.simulateMessage(liveMessage));
+      expect(onMessage).toHaveBeenCalledWith(liveMessage);
+    });
+  });
+
   // #462 — disconnect(code, reason) is additive: a plain disconnect() call
   // (the test above) still closes with no arguments, exactly as before.
   // This is what lets a caller (GameClient's seat switch) distinguish an
