@@ -301,6 +301,38 @@ describe("useWebSocket", () => {
       act(() => vi.advanceTimersByTime(30_000));
       expect(MockWebSocket.instances).toHaveLength(2);
     });
+
+    // #467 review — the same invariant (only the current socket may touch
+    // shared state) applies to onmessage, not just onclose: a superseded
+    // socket that still has a message in flight (the server hasn't evicted
+    // it yet, or it arrives mid-close) must not deliver it as if it were
+    // live traffic on the real connection.
+    it("a stale socket's late message is not delivered once a newer connection is current", () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() => useWebSocket(onMessage));
+
+      act(() => result.current.connect());
+      const ws1 = MockWebSocket.instances[0];
+      act(() => ws1.simulateOpen());
+
+      ws1.close = vi.fn();
+      act(() => result.current.disconnect(4700, "dev seat switch"));
+
+      act(() => result.current.connect());
+      const ws2 = MockWebSocket.instances[1];
+      act(() => ws2.simulateOpen());
+
+      // ws1 has a message in flight, arriving after ws2 is already current.
+      const staleMessage: ServerMessage = { type: "error", message: "stale" };
+      act(() => ws1.simulateMessage(staleMessage));
+
+      expect(onMessage).not.toHaveBeenCalledWith(staleMessage);
+
+      // A message on the actually-current socket still delivers normally.
+      const liveMessage: ServerMessage = { type: "error", message: "live" };
+      act(() => ws2.simulateMessage(liveMessage));
+      expect(onMessage).toHaveBeenCalledWith(liveMessage);
+    });
   });
 
   // #462 — disconnect(code, reason) is additive: a plain disconnect() call

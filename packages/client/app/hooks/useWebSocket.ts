@@ -72,6 +72,14 @@ export function useWebSocket(
     };
 
     ws.onmessage = (event) => {
+      // #467 — same invariant as onclose below: only the socket currently
+      // held in wsRef.current may touch shared state. A superseded socket
+      // (an old connection mid-close, or one the server hasn't evicted yet)
+      // can still have a message in flight; without this check, that stale
+      // delivery would reach the app's message handler exactly like a
+      // legitimate one — stale/duplicate state applied over the real
+      // connection's, with nothing to distinguish it from a genuine update.
+      if (wsRef.current !== ws) return;
       try {
         const message: ServerMessage = JSON.parse(event.data);
         onMessageRef.current(message);
@@ -82,16 +90,19 @@ export function useWebSocket(
 
     ws.onclose = (event) => {
       console.warn("[ws] connection closed", { code: event.code, reason: event.reason });
-      // #467 — this handler is bound to THIS socket instance (`ws`), but it
-      // fires asynchronously once the close handshake completes — by then a
-      // disconnect()+connect() pair (the DevPanel seat switcher does exactly
-      // this) can already have replaced wsRef.current with a newer, live
-      // socket. Without this identity check, a late close for the OLD
-      // socket unconditionally nulled wsRef.current, wiping the reference to
-      // the new connection — `send()` then silently queues forever, since
-      // nothing else repairs wsRef.current and (with the ping-pong fixed
-      // below) nothing schedules a reconnect to replace it either. Only the
-      // socket that's still actually current may touch shared state.
+      // #467 — the invariant this whole hook depends on: only the socket
+      // currently held in wsRef.current may touch shared state (status,
+      // wsRef itself, reconnect scheduling). This handler is bound to THIS
+      // socket instance (`ws`), but it fires asynchronously once the close
+      // handshake completes — by then a disconnect()+connect() pair (the
+      // DevPanel seat switcher does exactly this) can already have replaced
+      // wsRef.current with a newer, live socket. Without checking identity
+      // first, a late close for the OLD socket unconditionally nulled
+      // wsRef.current, wiping the reference to the new connection —
+      // `send()` then silently queued forever, since nothing else repairs
+      // wsRef.current and (with the ping-pong fixed below) nothing
+      // schedules a reconnect to replace it either. See onmessage above for
+      // the same invariant guarding a different door.
       const isCurrentSocket = wsRef.current === ws;
       if (isCurrentSocket) {
         setStatus("disconnected");
