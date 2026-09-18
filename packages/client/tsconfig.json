@@ -20,6 +20,8 @@
     ],
     "paths": {
       "@/*": ["./*"],
+      "@tabletop/cards": ["../cards/src"],
+      "@tabletop/game-spades": ["../games/spades/src"],
       "@tabletop/shared": ["../shared/src"]
     }
   },
