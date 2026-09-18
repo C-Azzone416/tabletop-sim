@@ -31,6 +31,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      "@tabletop/cards": path.resolve(__dirname, "../cards/src"),
+      "@tabletop/game-spades": path.resolve(__dirname, "../games/spades/src"),
       "@tabletop/shared": path.resolve(__dirname, "../shared/src"),
     },
   },

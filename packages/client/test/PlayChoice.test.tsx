@@ -39,8 +39,8 @@ describe("/play — the Host / Join choice", () => {
     });
   });
 
-  describe("the two branches", () => {
-    it("offers exactly Join Game and Host New Game, each linking to its own route", () => {
+  describe("play modes", () => {
+    it("offers online room choices and local Spades, each linking to its own route", () => {
       render(<PlayChoice />);
 
       expect(screen.getByRole("link", { name: /Join Game/ })).toHaveAttribute(
@@ -50,6 +50,10 @@ describe("/play — the Host / Join choice", () => {
       expect(screen.getByRole("link", { name: /Host New Game/ })).toHaveAttribute(
         "href",
         "/play/host",
+      );
+      expect(screen.getByRole("link", { name: /Spades Hot Seat/ })).toHaveAttribute(
+        "href",
+        "/spades/hot-seat",
       );
     });
 
