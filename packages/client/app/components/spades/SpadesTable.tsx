@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CardInstance } from "@tabletop/cards";
 import {
   getLegalPlays,
@@ -46,6 +46,8 @@ const TEAM_SEATS: Record<SpadesTeam, readonly SpadesSeat[]> = {
   "north-south": ["north", "south"],
   "east-west": ["east", "west"],
 };
+
+export const RESOLVED_TRICK_DISPLAY_MS = 1500;
 
 function sortHand(cards: readonly CardInstance[]): CardInstance[] {
   return [...cards].sort((left, right) => (
@@ -223,8 +225,30 @@ export function SpadesTable(props: SpadesTableProps) {
   const latestTrickIndex = completedTricks.length - 1;
   const [reviewedTrickIndex, setReviewedTrickIndex] = useState<number | null>(null);
   const [olderReviewConfirmed, setOlderReviewConfirmed] = useState(false);
+  const [dismissedResolutionKey, setDismissedResolutionKey] = useState<string | null>(null);
   const reviewedTrick = reviewedTrickIndex === null ? undefined : completedTricks[reviewedTrickIndex];
   const viewingPlayer = view.players.find((player) => player.seat === viewingSeat);
+  const resolutionKey = (
+    view.phase === "playing"
+    && view.currentTrick.plays.length === 0
+    && completedTricks.length > 0
+  ) ? `${view.handNumber}:${completedTricks.length}` : null;
+  const heldResolvedTrick = (
+    resolutionKey
+    && resolutionKey !== dismissedResolutionKey
+  ) ? completedTricks[latestTrickIndex] : undefined;
+  const displayedPlays = heldResolvedTrick?.plays ?? view.currentTrick.plays;
+  const resolvedWinner = heldResolvedTrick
+    ? view.players.find((player) => player.seat === heldResolvedTrick.winner)?.name ?? heldResolvedTrick.winner
+    : null;
+
+  useEffect(() => {
+    if (!resolutionKey || resolutionKey === dismissedResolutionKey) return;
+    const timer = window.setTimeout(() => {
+      setDismissedResolutionKey(resolutionKey);
+    }, RESOLVED_TRICK_DISPLAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [dismissedResolutionKey, resolutionKey]);
 
   const openLastWonTrick = () => {
     if (latestTrickIndex < 0) return;
@@ -318,10 +342,14 @@ export function SpadesTable(props: SpadesTableProps) {
 
         <section aria-label="Current trick" className="col-start-2 row-start-2 flex min-h-32 flex-col items-center justify-center rounded-2xl border border-emerald-700/60 bg-emerald-800/40 p-2 sm:min-h-56">
           <p className="mb-3 text-xs uppercase tracking-widest text-emerald-200">
-            {view.phase === "playing" ? (view.spadesBroken ? "Spades broken" : "Spades unbroken") : view.phase.replace("-", " ")}
+            {resolvedWinner
+              ? `${resolvedWinner} won trick ${completedTricks.length}`
+              : view.phase === "playing"
+                ? (view.spadesBroken ? "Spades broken" : "Spades unbroken")
+                : view.phase.replace("-", " ")}
           </p>
           <div className="flex flex-wrap justify-center gap-2">
-            {view.currentTrick.plays.map((play) => (
+            {displayedPlays.map((play) => (
               <div
                 key={play.card.id}
                 aria-label={`${view.players.find((player) => player.seat === play.seat)?.name ?? play.seat} played ${rankLabel(play.card)} of ${SUIT_LABEL[play.card.suit]}`}
@@ -336,7 +364,7 @@ export function SpadesTable(props: SpadesTableProps) {
                 <small className="block text-[9px] uppercase tracking-wide text-zinc-400">{play.seat}</small>
               </div>
             ))}
-            {view.currentTrick.plays.length === 0 && (
+            {displayedPlays.length === 0 && (
               <span className="text-sm text-emerald-300">{phaseStatus(view)}</span>
             )}
           </div>

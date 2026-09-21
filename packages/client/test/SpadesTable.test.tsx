@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { CardInstance } from "@tabletop/cards";
 import type { CompletedTrick, SpadesPlayerView } from "@tabletop/game-spades";
-import { SpadesTable } from "../app/components/spades/SpadesTable";
+import { RESOLVED_TRICK_DISPLAY_MS, SpadesTable } from "../app/components/spades/SpadesTable";
 
 const cards: CardInstance[] = [
   { id: "club-2", deckIndex: 0, suit: "clubs", rank: "2" },
@@ -91,6 +91,30 @@ describe("SpadesTable", () => {
     render(<SpadesTable view={makeView({ phase: "bidding" })} viewingSeat="south" {...handlers()} />);
     expect(within(screen.getByLabelText("Current trick")).getByLabelText("Bid controls")).toBeVisible();
     expect(within(screen.getByLabelText("Your hand")).queryByLabelText("Bid controls")).not.toBeInTheDocument();
+  });
+
+  it("shows all four resolved cards briefly, then clears for the next lead", () => {
+    vi.useFakeTimers();
+    try {
+      render(<SpadesTable
+        view={makeView({
+          currentTrick: { leader: "south", plays: [] },
+          completedTricks: [completed(1)],
+        })}
+        viewingSeat="south"
+        {...handlers()}
+      />);
+
+      const table = screen.getByLabelText("Current trick");
+      expect(table).toHaveTextContent("Ben won trick 1");
+      expect(within(table).getAllByLabelText(/played/)).toHaveLength(4);
+
+      act(() => vi.advanceTimersByTime(RESOLVED_TRICK_DISPLAY_MS));
+      expect(within(table).queryAllByLabelText(/played/)).toHaveLength(0);
+      expect(table).toHaveTextContent("Ben leads");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("opens the most recent trick and confirms before browsing farther back", () => {
