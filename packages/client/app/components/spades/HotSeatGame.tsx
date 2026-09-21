@@ -110,6 +110,7 @@ export function HotSeatGame({ initialSession, botOptions = {} }: HotSeatGameProp
       <SpadesTable
         view={view}
         viewingSeat={activeSeat}
+        interactionLocked={busy}
         onBlindNilChoice={(blindNil) => void update((options) => hotSeatBlindNil(session, blindNil, options))}
         onBid={(bid) => void update((options) => hotSeatBid(session, bid, options))}
         onPlayCard={(cardId) => void update((options) => hotSeatPlay(session, cardId, options))}

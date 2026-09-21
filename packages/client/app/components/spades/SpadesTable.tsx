@@ -15,6 +15,7 @@ interface SpadesTableProps {
   view: SpadesPlayerView;
   viewingSeat: SpadesSeat;
   concealHand?: boolean;
+  interactionLocked?: boolean;
   onBlindNilChoice: (blindNil: boolean) => void;
   onBid: (bid: Exclude<SpadesBid, { kind: "blind-nil" }>) => void;
   onPlayCard: (cardId: string) => void;
@@ -173,15 +174,21 @@ function PlayingCard({ card, playable, onPlay }: {
   );
 }
 
-function PhaseControls({ view, viewingSeat, onBlindNilChoice, onBid }: Omit<SpadesTableProps, "onPlayCard">) {
+function PhaseControls({
+  view,
+  viewingSeat,
+  interactionLocked = false,
+  onBlindNilChoice,
+  onBid,
+}: Omit<SpadesTableProps, "onPlayCard">) {
   if (view.phase === "blind-nil") {
     return (
       <div className="rounded-2xl bg-black/65 p-4 text-center text-white shadow-xl" aria-label="Blind nil choice">
         <h2 className="font-bold">Choose before viewing your hand</h2>
         <p className="mt-1 text-sm text-zinc-300">{view.blindNilChoicesMade} of 4 players locked</p>
         <div className="mt-3 flex justify-center gap-3">
-          <button type="button" onClick={() => onBlindNilChoice(true)} className="press rounded-cab bg-violet-600 px-4 py-3 font-semibold">Blind Nil</button>
-          <button type="button" onClick={() => onBlindNilChoice(false)} className="press rounded-cab bg-emerald-600 px-4 py-3 font-semibold">View Hand</button>
+          <button type="button" disabled={interactionLocked} onClick={() => onBlindNilChoice(true)} className="press rounded-cab bg-violet-600 px-4 py-3 font-semibold disabled:opacity-50">Blind Nil</button>
+          <button type="button" disabled={interactionLocked} onClick={() => onBlindNilChoice(false)} className="press rounded-cab bg-emerald-600 px-4 py-3 font-semibold disabled:opacity-50">View Hand</button>
         </div>
       </div>
     );
@@ -192,9 +199,9 @@ function PhaseControls({ view, viewingSeat, onBlindNilChoice, onBid }: Omit<Spad
       <div className="rounded-2xl bg-black/65 p-3 text-white shadow-xl" aria-label="Bid controls">
         <p className="mb-2 text-center text-sm font-semibold">Your bid</p>
         <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
-          <button type="button" onClick={() => onBid({ kind: "nil" })} className="press min-w-14 rounded-cab bg-violet-600 px-3 py-2 font-semibold">Nil</button>
+          <button type="button" disabled={interactionLocked} onClick={() => onBid({ kind: "nil" })} className="press min-w-14 rounded-cab bg-violet-600 px-3 py-2 font-semibold disabled:opacity-50">Nil</button>
           {Array.from({ length: 13 }, (_, index) => index + 1).map((tricks) => (
-            <button key={tricks} type="button" onClick={() => onBid({ kind: "normal", tricks })} className="press min-w-10 rounded-cab bg-emerald-700 px-3 py-2 font-semibold">{tricks}</button>
+            <button key={tricks} type="button" disabled={interactionLocked} onClick={() => onBid({ kind: "normal", tricks })} className="press min-w-10 rounded-cab bg-emerald-700 px-3 py-2 font-semibold disabled:opacity-50">{tricks}</button>
           ))}
         </div>
       </div>
@@ -305,7 +312,7 @@ export function SpadesTable(props: SpadesTableProps) {
         </section>
       </header>
 
-      <div className="mx-auto grid min-h-[55vh] max-w-6xl grid-cols-[minmax(4.5rem,0.7fr)_minmax(9rem,2fr)_minmax(4.5rem,0.7fr)] grid-rows-[auto_1fr] items-center gap-2 rounded-[2rem] border border-emerald-700 bg-emerald-900/70 p-2 shadow-inner sm:min-h-[62vh] sm:gap-5 sm:p-6">
+      <div className="mx-auto grid min-h-[48vh] max-w-6xl grid-cols-[minmax(4.5rem,0.7fr)_minmax(9rem,2fr)_minmax(4.5rem,0.7fr)] grid-rows-[auto_1fr] items-center gap-2 rounded-[2rem] border border-emerald-700 bg-emerald-900/70 p-2 shadow-inner sm:min-h-[40vh] sm:gap-5 sm:p-6">
         <div className="col-start-2 row-start-1"><PlayerSeat seat={seats.top} view={view} /></div>
         <div className="col-start-1 row-start-2"><PlayerSeat seat={seats.left} view={view} /></div>
 
@@ -333,6 +340,11 @@ export function SpadesTable(props: SpadesTableProps) {
               <span className="text-sm text-emerald-300">{phaseStatus(view)}</span>
             )}
           </div>
+          {!concealHand && (
+            <div className="mt-4 w-full max-w-2xl">
+              <PhaseControls {...props} />
+            </div>
+          )}
         </section>
 
         <div className="col-start-3 row-start-2"><PlayerSeat seat={seats.right} view={view} /></div>
@@ -381,7 +393,6 @@ export function SpadesTable(props: SpadesTableProps) {
             <strong>{view.players.find((player) => player.seat === viewingSeat)?.name ?? "You"} · {viewingSeat}</strong>
             <span>Bid {bidLabel(view.bids[viewingSeat])} · {view.tricksWon[viewingSeat]} tricks</span>
           </div>
-          <PhaseControls {...props} />
           {view.phase !== "blind-nil" && (
             <div className="mt-3 flex gap-1 overflow-x-auto px-1 pb-2 sm:justify-center sm:gap-2" data-testid="player-hand">
               {sortHand(view.hand).map((card) => (

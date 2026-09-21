@@ -87,6 +87,12 @@ describe("SpadesTable", () => {
     expect(scoreboard).toHaveTextContent("2");
   });
 
+  it("keeps the required phase action in the center of the table", () => {
+    render(<SpadesTable view={makeView({ phase: "bidding" })} viewingSeat="south" {...handlers()} />);
+    expect(within(screen.getByLabelText("Current trick")).getByLabelText("Bid controls")).toBeVisible();
+    expect(within(screen.getByLabelText("Your hand")).queryByLabelText("Bid controls")).not.toBeInTheDocument();
+  });
+
   it("opens the most recent trick and confirms before browsing farther back", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<SpadesTable view={makeView({ completedTricks: [completed(1), completed(2)] })} viewingSeat="south" {...handlers()} />);
