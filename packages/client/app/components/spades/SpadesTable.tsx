@@ -315,11 +315,18 @@ export function SpadesTable(props: SpadesTableProps) {
           </p>
           <div className="flex flex-wrap justify-center gap-2">
             {view.currentTrick.plays.map((play) => (
-              <div key={play.card.id} className="rounded-lg bg-white px-3 py-2 text-center text-zinc-950 shadow">
+              <div
+                key={play.card.id}
+                aria-label={`${view.players.find((player) => player.seat === play.seat)?.name ?? play.seat} played ${rankLabel(play.card)} of ${SUIT_LABEL[play.card.suit]}`}
+                className="min-w-20 rounded-lg bg-white px-3 py-2 text-center text-zinc-950 shadow"
+              >
                 <span className={play.card.suit === "hearts" || play.card.suit === "diamonds" ? "text-red-600" : ""}>
                   {rankLabel(play.card)} {SUIT_SYMBOL[play.card.suit]}
                 </span>
-                <small className="block text-[10px] uppercase text-zinc-500">{play.seat}</small>
+                <strong className="mt-1 block max-w-24 truncate text-[11px] text-zinc-700">
+                  {view.players.find((player) => player.seat === play.seat)?.name ?? play.seat}
+                </strong>
+                <small className="block text-[9px] uppercase tracking-wide text-zinc-400">{play.seat}</small>
               </div>
             ))}
             {view.currentTrick.plays.length === 0 && (

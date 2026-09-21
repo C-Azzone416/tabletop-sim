@@ -70,6 +70,8 @@ describe("SpadesTable", () => {
   it("keeps the current trick visible while concealing the hand", () => {
     render(<SpadesTable view={makeView()} viewingSeat="south" concealHand {...handlers()} />);
     expect(screen.getByLabelText("Current trick")).toHaveTextContent("K ♣");
+    expect(screen.getByLabelText("Ari played K of Clubs")).toHaveTextContent("Ari");
+    expect(screen.getByLabelText("Ari played K of Clubs")).toHaveTextContent("north");
     expect(screen.queryByLabelText("Your hand")).not.toBeInTheDocument();
   });
 
