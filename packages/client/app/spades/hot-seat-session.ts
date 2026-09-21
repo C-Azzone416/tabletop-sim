@@ -41,12 +41,19 @@ function nextHumanInput(state: SpadesGameState): SpadesSeat | null {
 async function settleBots(
   state: SpadesGameState,
   botOptions: BotTurnRunnerOptions,
+  showInitialState = false,
 ): Promise<HotSeatSession> {
+  if (showInitialState) {
+    await botOptions.onState?.(state);
+  }
   const settled = await runBotTurns(state, botOptions);
+  const activeHumanSeat = nextHumanInput(settled);
+  const humanCount = settled.players.filter((player) => !player.isBot).length;
   return {
     state: settled,
-    activeHumanSeat: nextHumanInput(settled),
-    confirmedSeat: null,
+    activeHumanSeat,
+    // A solo player never needs to pass the device back to themselves.
+    confirmedSeat: humanCount === 1 ? activeHumanSeat : null,
   };
 }
 
@@ -87,7 +94,7 @@ export async function hotSeatBlindNil(
   botOptions: BotTurnRunnerOptions = {},
 ): Promise<HotSeatSession> {
   const seat = requireConfirmedSeat(session);
-  return settleBots(submitBlindNilChoice(session.state, seat, blindNil), botOptions);
+  return settleBots(submitBlindNilChoice(session.state, seat, blindNil), botOptions, true);
 }
 
 export async function hotSeatBid(
@@ -96,7 +103,7 @@ export async function hotSeatBid(
   botOptions: BotTurnRunnerOptions = {},
 ): Promise<HotSeatSession> {
   const seat = requireConfirmedSeat(session);
-  return settleBots(submitBid(session.state, seat, bid), botOptions);
+  return settleBots(submitBid(session.state, seat, bid), botOptions, true);
 }
 
 export async function hotSeatPlay(
@@ -105,5 +112,5 @@ export async function hotSeatPlay(
   botOptions: BotTurnRunnerOptions = {},
 ): Promise<HotSeatSession> {
   const seat = requireConfirmedSeat(session);
-  return settleBots(playCard(session.state, seat, cardId, botOptions.random), botOptions);
+  return settleBots(playCard(session.state, seat, cardId, botOptions.random), botOptions, true);
 }

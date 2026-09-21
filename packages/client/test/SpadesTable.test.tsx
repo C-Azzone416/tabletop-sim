@@ -76,6 +76,9 @@ describe("SpadesTable", () => {
   it("shows score, bids, tricks, settled bags, and pending bags", () => {
     render(<SpadesTable view={makeView()} viewingSeat="south" {...handlers()} />);
     const scoreboard = screen.getByLabelText("Live scoreboard");
+    expect(scoreboard).toHaveTextContent("North / South");
+    expect(scoreboard).toHaveTextContent("Ari + Ben");
+    expect(scoreboard).toHaveTextContent("Your team");
     expect(scoreboard).toHaveTextContent("120");
     expect(scoreboard).toHaveTextContent("7");
     expect(scoreboard).toHaveTextContent("3");

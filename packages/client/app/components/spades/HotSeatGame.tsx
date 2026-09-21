@@ -25,11 +25,25 @@ export function HotSeatGame({ initialSession, botOptions = {} }: HotSeatGameProp
   const activePlayer = session.state.players.find((player) => player.seat === activeSeat);
   const view = buildHotSeatView(session);
 
-  const update = async (action: () => Promise<HotSeatSession>) => {
+  const update = async (action: (progressOptions: BotTurnRunnerOptions) => Promise<HotSeatSession>) => {
     if (busy) return;
     setBusy(true);
     try {
-      setSession(await action());
+      const viewerSeat = session.activeHumanSeat;
+      const progressOptions: BotTurnRunnerOptions = {
+        ...botOptions,
+        onState: async (state) => {
+          // Render the human move immediately, then every bot move as it happens.
+          // Keep the same viewer during bot turns so a solo player's hand stays visible.
+          setSession({
+            state,
+            activeHumanSeat: viewerSeat,
+            confirmedSeat: viewerSeat,
+          });
+          await botOptions.onState?.(state);
+        },
+      };
+      setSession(await action(progressOptions));
     } finally {
       setBusy(false);
     }
@@ -96,9 +110,9 @@ export function HotSeatGame({ initialSession, botOptions = {} }: HotSeatGameProp
       <SpadesTable
         view={view}
         viewingSeat={activeSeat}
-        onBlindNilChoice={(blindNil) => void update(() => hotSeatBlindNil(session, blindNil, botOptions))}
-        onBid={(bid) => void update(() => hotSeatBid(session, bid, botOptions))}
-        onPlayCard={(cardId) => void update(() => hotSeatPlay(session, cardId, botOptions))}
+        onBlindNilChoice={(blindNil) => void update((options) => hotSeatBlindNil(session, blindNil, options))}
+        onBid={(bid) => void update((options) => hotSeatBid(session, bid, options))}
+        onPlayCard={(cardId) => void update((options) => hotSeatPlay(session, cardId, options))}
       />
     </div>
   );

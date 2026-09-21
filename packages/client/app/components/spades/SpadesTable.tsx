@@ -95,6 +95,29 @@ function pendingBags(view: SpadesPlayerView, team: SpadesTeam): number {
   return Math.max(0, teamTricks(view, team) - contract);
 }
 
+function teamNames(view: SpadesPlayerView, team: SpadesTeam): string {
+  return TEAM_SEATS[team]
+    .map((seat) => view.players.find((player) => player.seat === seat)?.name ?? seat)
+    .join(" + ");
+}
+
+function teamPlayers(view: SpadesPlayerView, team: SpadesTeam) {
+  return TEAM_SEATS[team].map((seat) => ({
+    seat,
+    player: view.players.find((candidate) => candidate.seat === seat),
+  }));
+}
+
+function phaseStatus(view: SpadesPlayerView): string {
+  const currentPlayer = view.players.find((player) => player.seat === view.currentSeat)?.name;
+  if (view.phase === "blind-nil") return "Players are choosing whether to go blind nil";
+  if (view.phase === "bidding") return currentPlayer ? `${currentPlayer} is bidding` : "Bidding";
+  if (view.phase === "playing" && view.currentTrick.plays.length === 0) {
+    return currentPlayer ? `${currentPlayer} leads` : "Waiting for the lead";
+  }
+  return "";
+}
+
 function rankLabel(card: CardInstance): string {
   if (card.rank === "ace") return "A";
   if (card.rank === "king") return "K";
@@ -194,6 +217,7 @@ export function SpadesTable(props: SpadesTableProps) {
   const [reviewedTrickIndex, setReviewedTrickIndex] = useState<number | null>(null);
   const [olderReviewConfirmed, setOlderReviewConfirmed] = useState(false);
   const reviewedTrick = reviewedTrickIndex === null ? undefined : completedTricks[reviewedTrickIndex];
+  const viewingPlayer = view.players.find((player) => player.seat === viewingSeat);
 
   const openLastWonTrick = () => {
     if (latestTrickIndex < 0) return;
@@ -235,20 +259,45 @@ export function SpadesTable(props: SpadesTableProps) {
             "north-south", "N/S",
           ], [
             "east-west", "E/W",
-          ]] as const).map(([team, label]) => (
-            <div key={team} className="rounded-xl bg-black/30 px-3 py-2">
-              <div className="flex items-center justify-between">
-                <strong>{label}</strong>
-                <strong className="text-lg">{view.scores[team].score}</strong>
+          ]] as const).map(([team, seatLabel]) => (
+            <div
+              key={team}
+              className={`rounded-xl border px-3 py-2 ${
+                viewingPlayer?.team === team
+                  ? "border-amber-300/70 bg-amber-950/40"
+                  : "border-transparent bg-black/30"
+              }`}
+            >
+              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-emerald-200 sm:text-xs">
+                <span>{seatLabel === "N/S" ? "North / South" : "East / West"}</span>
+                {viewingPlayer?.team === team && <span className="text-amber-200">Your team</span>}
               </div>
-              <div className="mt-1 grid grid-cols-3 gap-1 text-center text-[11px] text-emerald-100 sm:text-xs">
-                <span><strong className="block text-white">{teamBidLabel(view, team)}</strong>Bid</span>
-                <span><strong className="block text-white">{teamTricks(view, team)}</strong>Tricks</span>
+
+              <div className="mt-2 flex items-end justify-between gap-2 border-b border-emerald-700/60 pb-2">
+                <strong className="min-w-0 truncate text-sm font-black text-white sm:text-lg">
+                  {teamNames(view, team)}
+                </strong>
+                <strong className="text-2xl font-black leading-none text-white sm:text-3xl">
+                  {view.scores[team].score}
+                </strong>
+              </div>
+
+              <div className="mt-2 space-y-1 text-[11px] sm:text-xs">
+                {teamPlayers(view, team).map(({ seat, player }) => (
+                  <div key={seat} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 text-emerald-100">
+                    <strong className="truncate text-left text-white">{player?.name ?? seat}</strong>
+                    <span>Bid <strong className="text-white">{bidLabel(view.bids[seat])}</strong></span>
+                    <span>Tricks <strong className="text-white">{view.tricksWon[seat]}</strong></span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-2 flex justify-between border-t border-emerald-700/60 pt-2 text-[11px] text-emerald-100 sm:text-xs">
+                <span>Team bid <strong className="text-white">{teamBidLabel(view, team)}</strong></span>
                 <span>
-                  <strong className="block text-white">
+                  Bags <strong className="text-white">
                     {view.scores[team].bags}{pendingBags(view, team) > 0 ? ` +${pendingBags(view, team)}` : ""}
                   </strong>
-                  Bags
                 </span>
               </div>
             </div>
@@ -273,7 +322,9 @@ export function SpadesTable(props: SpadesTableProps) {
                 <small className="block text-[10px] uppercase text-zinc-500">{play.seat}</small>
               </div>
             ))}
-            {view.currentTrick.plays.length === 0 && <span className="text-sm text-emerald-300">Waiting for the lead</span>}
+            {view.currentTrick.plays.length === 0 && (
+              <span className="text-sm text-emerald-300">{phaseStatus(view)}</span>
+            )}
           </div>
         </section>
 

@@ -49,7 +49,7 @@ describe("hot-seat Spades session", () => {
     expect(buildHotSeatView(session)?.hand).toHaveLength(13);
   });
 
-  it("rejects input before the active person confirms possession of the device", async () => {
+  it("keeps a solo player confirmed without pass-the-device interruptions", async () => {
     const session = await createHotSeatSession({
       humans: [{ id: "human:ben", name: "Ben" }],
       botDifficulties: ["easy", "normal", "hard"],
@@ -57,6 +57,7 @@ describe("hot-seat Spades session", () => {
       random: () => 0,
     }, instantBots);
 
-    await expect(hotSeatBlindNil(session, false, instantBots)).rejects.toThrow(/confirm/);
+    expect(session.confirmedSeat).toBe(session.activeHumanSeat);
+    await expect(hotSeatBlindNil(session, false, instantBots)).resolves.toBeDefined();
   });
 });
