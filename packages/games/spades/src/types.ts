@@ -5,7 +5,7 @@ export type SpadesSeat = (typeof SPADES_SEATS)[number];
 export type SpadesTeam = 'north-south' | 'east-west';
 export type BotDifficulty = 'easy' | 'normal' | 'hard';
 export type TargetScore = 250 | 500 | 750;
-export type SpadesPhase = 'blind-nil' | 'bidding' | 'playing' | 'finished';
+export type SpadesPhase = 'blind-nil' | 'bidding' | 'playing' | 'hand-complete' | 'finished';
 
 export type SpadesBid =
   | { readonly kind: 'normal'; readonly tricks: number }
@@ -41,6 +41,13 @@ export interface HandScoreResult extends TeamScore {
   readonly bagPoints: number;
   readonly bagPenalty: number;
   readonly contractMade: boolean;
+}
+
+export interface SpadesHandSummary {
+  readonly handNumber: number;
+  readonly previousScores: Record<SpadesTeam, TeamScore>;
+  readonly results: Record<SpadesTeam, HandScoreResult>;
+  readonly winner: SpadesTeam | null;
 }
 
 export interface BotPlayContext {
@@ -96,6 +103,7 @@ export interface SpadesGameState {
   readonly completedTricks?: readonly CompletedTrick[];
   readonly tricksWon: SeatMap<number>;
   readonly scores: Record<SpadesTeam, TeamScore>;
+  readonly handSummary?: SpadesHandSummary;
   readonly spadesBroken: boolean;
   readonly winner: SpadesTeam | null;
 }
@@ -122,6 +130,7 @@ export interface SpadesPlayerView {
   readonly completedTricks?: readonly CompletedTrick[];
   readonly tricksWon: SeatMap<number>;
   readonly scores: Record<SpadesTeam, TeamScore>;
+  readonly handSummary?: SpadesHandSummary;
   readonly spadesBroken: boolean;
   readonly winner: SpadesTeam | null;
 }

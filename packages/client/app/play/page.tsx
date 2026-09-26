@@ -32,6 +32,11 @@ const OPTIONS: PlayOption[] = [
     label: "Host New Game",
     description: "Pick a game and invite people to your room.",
   },
+  {
+    href: "/spades/hot-seat",
+    label: "Spades Hot Seat",
+    description: "Share this device with 1–4 people; computers fill empty seats.",
+  },
 ];
 
 export default function PlayChoice() {
