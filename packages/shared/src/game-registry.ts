@@ -83,10 +83,6 @@ export function getGameById(id: string): GameRegistryEntry | undefined {
   return GAME_REGISTRY.find((game) => game.id === id);
 }
 
-export function isAvailableGameId(id: string): id is GameId {
-  return getGameById(id)?.available === true;
-}
-
 export function isAvailableRoomGameId(id: string): id is GameId {
   const game = getGameById(id);
   return game?.available === true && (

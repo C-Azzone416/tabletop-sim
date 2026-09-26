@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GAME_REGISTRY, getGameById, isAvailableGameId, isAvailableRoomGameId } from "@tabletop/shared";
+import { GAME_REGISTRY, getGameById, isAvailableRoomGameId } from "@tabletop/shared";
 
 describe("game registry", () => {
   it("registers wire-game as available", () => {
@@ -54,13 +54,6 @@ describe("game registry", () => {
 
   it("returns undefined for an unknown game id", () => {
     expect(getGameById("checkers")).toBeUndefined();
-  });
-
-  it("isAvailableGameId reflects the available flag", () => {
-    expect(isAvailableGameId("wire-game")).toBe(true);
-    expect(isAvailableGameId("flip")).toBe(true);
-    expect(isAvailableGameId("spades")).toBe(true);
-    expect(isAvailableGameId("checkers")).toBe(false);
   });
 
   it("allows only online-room games through create_game validation", () => {
