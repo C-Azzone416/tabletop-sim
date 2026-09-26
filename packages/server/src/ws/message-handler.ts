@@ -1,15 +1,23 @@
 import type { WebSocket } from 'ws';
 import type { ClientMessage, GameId, LobbyConfigValue, ServerMessage } from '@tabletop/shared';
 import { DEV_SEAT_SWITCH_CLOSE_CODE, isAvailableRoomGameId } from '@tabletop/shared';
+import type { BotDifficulty, SpadesBid, SpadesClientMessage, TargetScore } from '@tabletop/game-spades';
 import * as engine from '../engine/game-engine.js';
 import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
 import * as connManager from './connection-manager.js';
 import { broadcastGameState, buildPlayerView } from './state-broadcaster.js';
 import { executeFlipAction, type FlipActionKind } from './flip-actions.js';
+import {
+  applyOnlineSpadesAction,
+  clearOnlineSpadesDisconnect,
+  noteOnlineSpadesDisconnect,
+  startOnlineSpades,
+} from '../spades/spades-room-service.js';
 
 type ActionLogger = { info: (data: object, msg?: string) => void; debug: (data: object, msg?: string) => void };
 type ActionResult = 'success' | 'fail' | 'explosion' | 'won';
+type AppClientMessage = ClientMessage | SpadesClientMessage;
 
 function getAuthenticatedUser(socket: WebSocket) {
   const user = connManager.getAuthenticatedUser(socket);
@@ -27,7 +35,7 @@ function isValidName(val: unknown): val is string {
   return isNonEmptyString(val) && val.length <= MAX_NAME_LENGTH;
 }
 
-function validateMessage(parsed: unknown): ClientMessage | null {
+function validateMessage(parsed: unknown): AppClientMessage | null {
   if (typeof parsed !== 'object' || parsed === null || !('type' in parsed)) return null;
   const msg = parsed as Record<string, unknown>;
 
@@ -50,6 +58,41 @@ function validateMessage(parsed: unknown): ClientMessage | null {
       }
       return { type: 'start_game', mission: mission ?? 1 };
     }
+    case 'start_spades': {
+      const targets: TargetScore[] = [250, 500, 750];
+      const difficulties: BotDifficulty[] = ['easy', 'normal', 'hard'];
+      if (!targets.includes(msg.targetScore as TargetScore) || !Array.isArray(msg.botDifficulties)) return null;
+      if (
+        msg.botDifficulties.length > 3 ||
+        !msg.botDifficulties.every((difficulty) => difficulties.includes(difficulty as BotDifficulty))
+      ) return null;
+      return {
+        type: 'start_spades',
+        targetScore: msg.targetScore as TargetScore,
+        botDifficulties: msg.botDifficulties as BotDifficulty[],
+      };
+    }
+    case 'spades_blind_nil':
+      if (typeof msg.blindNil !== 'boolean') return null;
+      return { type: 'spades_blind_nil', blindNil: msg.blindNil };
+    case 'spades_bid': {
+      if (typeof msg.bid !== 'object' || msg.bid === null) return null;
+      const bid = msg.bid as Record<string, unknown>;
+      if (bid.kind === 'nil') return { type: 'spades_bid', bid: { kind: 'nil' } };
+      if (
+        bid.kind !== 'normal' ||
+        typeof bid.tricks !== 'number' ||
+        !Number.isInteger(bid.tricks) ||
+        bid.tricks < 1 ||
+        bid.tricks > 13
+      ) return null;
+      return { type: 'spades_bid', bid: { kind: 'normal', tricks: bid.tricks } as Exclude<SpadesBid, { kind: 'blind-nil' }> };
+    }
+    case 'spades_play':
+      if (!isNonEmptyString(msg.cardId)) return null;
+      return { type: 'spades_play', cardId: msg.cardId };
+    case 'spades_continue_hand':
+      return { type: 'spades_continue_hand' };
     case 'place_info_token':
       if (!isNonEmptyString(msg.wireId)) return null;
       return { type: 'place_info_token', wireId: msg.wireId };
@@ -162,6 +205,21 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       case 'start_game':
         await handleStartGame(socket, msg.mission ?? 1);
         break;
+      case 'start_spades':
+        await handleStartSpades(socket, msg.targetScore, msg.botDifficulties);
+        break;
+      case 'spades_blind_nil':
+        await handleSpadesAction(socket, { type: 'blind-nil', blindNil: msg.blindNil });
+        break;
+      case 'spades_bid':
+        await handleSpadesAction(socket, { type: 'bid', bid: msg.bid });
+        break;
+      case 'spades_play':
+        await handleSpadesAction(socket, { type: 'play', cardId: msg.cardId });
+        break;
+      case 'spades_continue_hand':
+        await handleSpadesAction(socket, { type: 'continue-hand' });
+        break;
       case 'place_info_token':
         await handlePlaceInfoToken(socket, msg.wireId);
         break;
@@ -265,6 +323,12 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
       'Only the host can change the player count', 'Player count can only change in the lobby',
       'Player count is locked once everyone is ready',
       'Cannot lower below the players already in the lobby',
+      // Spades room lifecycle and server-authoritative action errors.
+      'Not a Spades game', 'Spades game has not started',
+      'Spades supports 1 to 4 human players',
+      'Choose one difficulty for each computer seat',
+      'Player is not seated in this Spades game',
+      'the hand is not complete',
     ];
     sendError(socket, safeMessages.includes(message) ? message : 'Internal error');
   } finally {
@@ -277,6 +341,26 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
     log?.info({ gameId: info?.gameId, playerId: info?.playerId, action: msg.type });
     log?.debug({ gameId: info?.gameId, playerId: info?.playerId, action: msg.type, result: actionResult });
   }
+}
+
+async function handleStartSpades(
+  socket: WebSocket,
+  targetScore: TargetScore,
+  botDifficulties: readonly BotDifficulty[],
+): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+  await startOnlineSpades(info.gameId, info.playerId, targetScore, botDifficulties);
+  connManager.clearLobbyConfig(info.gameId);
+}
+
+async function handleSpadesAction(
+  socket: WebSocket,
+  action: import('@tabletop/game-spades').SpadesPlayerAction,
+): Promise<void> {
+  const info = connManager.getConnectionInfo(socket);
+  if (!info) throw new Error('Not connected to a game');
+  await applyOnlineSpadesAction(info.gameId, info.playerId, action);
 }
 
 async function handleCreateGame(socket: WebSocket, _playerName: string, gameType: GameId, maxPlayers: number): Promise<void> {
@@ -691,6 +775,7 @@ async function handleLeaveGame(socket: WebSocket): Promise<void> {
   // from an earlier disconnect on this same player (a reconnect normally
   // cancels it already; defensive here against ordering it doesn't cover).
   connManager.cancelPendingLeave(info.playerId);
+  clearOnlineSpadesDisconnect(info.gameId, info.playerId);
   await performLeave(info.gameId, info.playerId);
 }
 
@@ -798,6 +883,17 @@ export function handleDisconnect(socket: WebSocket, closeCode?: number, log?: Ac
       log?.info({ gameId: info.gameId, playerId: info.playerId, err }, '[ws] leave-on-disconnect failed');
     });
   });
+
+  // Active Spades owns presence with its product-selected 60-second pause
+  // and bot takeover. Arm the generic safety timer first, then cancel it as
+  // soon as the persisted room lookup confirms this is such a table.
+  void noteOnlineSpadesDisconnect(info.gameId, info.playerId)
+    .then((spadesOwnsDisconnect) => {
+      if (spadesOwnsDisconnect) connManager.cancelPendingLeave(info.playerId);
+    })
+    .catch((err) => {
+      log?.info({ gameId: info.gameId, playerId: info.playerId, err }, '[ws] spades disconnect lookup failed');
+    });
 
   // #448 — purely informational: they have not left (that only becomes
   // true if the grace window above actually elapses), so remaining clients

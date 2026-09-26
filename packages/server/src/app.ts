@@ -19,6 +19,7 @@ import { handleMessage, handleDisconnect } from './ws/message-handler.js';
 import { setAuthenticatedUser, registerConnection, cancelPendingLeave, broadcastToGame } from './ws/connection-manager.js';
 import { authenticateUpgrade, authenticateProfile } from './ws/auth.js';
 import { broadcastGameState } from './ws/state-broadcaster.js';
+import { noteOnlineSpadesReconnect } from './spades/spades-room-service.js';
 
 // #252 — pre-launch access gate. Two independent mechanisms, per Caroline's
 // requirement: a shared secret alone would still let anyone holding it mint
@@ -380,8 +381,9 @@ export async function buildApp() {
           const game = await gamesDb.getGameById(player.gameId);
           if (game) {
             registerConnection(socket, player.id, game.id);
+            const spadesOwnsReconnect = await noteOnlineSpadesReconnect(game.id, player.id);
             app.log.info({ gameId: game.id, playerId: player.id }, '[WS /ws] player reconnected');
-            if (wasPending) {
+            if (wasPending || spadesOwnsReconnect) {
               const reconnectedNotice: ServerMessage = { type: 'player_reconnected', playerId: player.id };
               broadcastToGame(game.id, reconnectedNotice);
             }

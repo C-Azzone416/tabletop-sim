@@ -4,7 +4,7 @@
 // table here, no package extraction, no dependency on #288/#304.
 
 export type GameId = 'wire-game' | 'spades' | 'flip';
-export type GameLaunchMode = 'online-room' | 'local';
+export type GameLaunchMode = 'online-room' | 'local' | 'local-and-online';
 
 export interface GameRegistryEntry {
   id: GameId;
@@ -60,7 +60,7 @@ export const GAME_REGISTRY: readonly GameRegistryEntry[] = Object.freeze([
     minPlayers: 4,
     maxPlayers: 4,
     playerCountLabel: '1–4 players',
-    launchMode: 'local',
+    launchMode: 'local-and-online',
     launchPath: '/spades/hot-seat',
     available: true,
   }),
@@ -89,5 +89,7 @@ export function isAvailableGameId(id: string): id is GameId {
 
 export function isAvailableRoomGameId(id: string): id is GameId {
   const game = getGameById(id);
-  return game?.available === true && game.launchMode === 'online-room';
+  return game?.available === true && (
+    game.launchMode === 'online-room' || game.launchMode === 'local-and-online'
+  );
 }

@@ -4,6 +4,7 @@ import * as wiresDb from '../db/wires.js';
 import * as tokensDb from '../db/tokens.js';
 import * as candidatesDb from '../db/candidates.js';
 import * as flipGamesDb from '../db/flip-games.js';
+import * as spadesGamesDb from '../db/spades-games.js';
 import * as playersDb from '../db/players.js';
 import * as gamesDb from '../db/games.js';
 import { groupRoundsByPlayer, toFlipTableView } from './flip-view.js';
@@ -11,6 +12,7 @@ import { getGameSockets, getLobbyConfig, sendToPlayer } from './connection-manag
 import { flipTimeoutAction, executeFlipAction } from './flip-actions.js';
 import { scheduleFlipTurnTimeout, cancelFlipTurnTimeout, turnDeadlineFor, clearTurnDeadline } from './flip-turn-timer.js';
 import { FLIP_TURN_TIMEOUT_MS, FLIP_DEV_TURN_TIMEOUT_MS } from './message-handler.js';
+import { broadcastPrivateSpadesState } from '../spades/spades-room-service.js';
 
 /**
  * #394 (Contract C4) — fires when a Flip turn/pending-action's timer
@@ -229,6 +231,18 @@ export async function broadcastGameState(
   gameId: string,
   game: Game,
 ): Promise<void> {
+  // An active Spades room has hidden hands. Its state is persisted as one
+  // authoritative engine blob, then projected separately for every socket.
+  // Branch before the generic wire payload so another player's hand can
+  // never leak through a room-wide message.
+  if (game.gameType === 'spades' && game.status !== 'waiting') {
+    const state = await spadesGamesDb.getSpadesGameState(gameId);
+    if (state) {
+      await broadcastPrivateSpadesState(gameId, state, game);
+      return;
+    }
+  }
+
   // #382 — branch BEFORE any wire-game DB call. This used to run
   // getWiresByGameId unconditionally, so a Flip game received a state message
   // full of wire-shaped emptiness and the client sat on the lobby screen

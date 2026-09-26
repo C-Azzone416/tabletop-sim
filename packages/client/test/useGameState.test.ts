@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useGameState } from "../app/hooks/useGameState";
+import type { SpadesPlayerView } from "@tabletop/game-spades";
 import {
   makeGame,
   makePlayer,
@@ -48,6 +49,57 @@ describe("useGameState", () => {
     expect(result.current.state.game).toEqual(game);
     expect(result.current.state.localPlayer).toEqual(player);
     expect(result.current.state.players).toEqual(players);
+  });
+
+  it("stores the private online Spades view without inventing another seat's hand", () => {
+    const { result } = renderHook(() => useGameState());
+    const game = makeGame({ id: "g1", gameType: "spades", status: "active" });
+    const player = makePlayer({ id: "p1", gameId: "g1", name: "Alice" });
+    const view: SpadesPlayerView = {
+      phase: "bidding",
+      targetScore: 250,
+      handNumber: 1,
+      players: [
+        { id: "p1", name: "Alice", seat: "south", team: "north-south", isBot: false },
+        { id: "bot-1", name: "Mona", seat: "west", team: "east-west", isBot: true, difficulty: "normal" },
+        { id: "bot-2", name: "Erik", seat: "north", team: "north-south", isBot: true, difficulty: "normal" },
+        { id: "bot-3", name: "Kip", seat: "east", team: "east-west", isBot: true, difficulty: "normal" },
+      ],
+      dealer: "west",
+      currentSeat: "south",
+      hand: [],
+      opponentHandCounts: { north: 13, east: 13, south: 0, west: 13 },
+      blindNilChoicesMade: 4,
+      bids: {},
+      currentTrick: { leader: "south", plays: [] },
+      tricksWon: { north: 0, east: 0, south: 0, west: 0 },
+      scores: {
+        "north-south": { score: 0, bags: 0 },
+        "east-west": { score: 0, bags: 0 },
+      },
+      spadesBroken: false,
+      winner: null,
+    };
+
+    act(() => {
+      result.current.handleMessage({
+        type: "spades_state",
+        game,
+        players: [player],
+        localPlayerId: "p1",
+        view,
+        viewingSeat: "south",
+        pausedUntil: "2026-09-26T21:30:00.000Z",
+      });
+    });
+
+    expect(result.current.state.localPlayer).toEqual(player);
+    expect(result.current.state.spades).toEqual({
+      view,
+      viewingSeat: "south",
+      pausedUntil: "2026-09-26T21:30:00.000Z",
+    });
+    expect(result.current.state.spades?.view).not.toHaveProperty("hands");
   });
 
   it("handles player_joined message", () => {

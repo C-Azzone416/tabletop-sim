@@ -7,12 +7,12 @@ describe("game registry", () => {
     expect(wireGame).toMatchObject({ id: "wire-game", available: true });
   });
 
-  it("registers Spades as available local hot-seat play", () => {
+  it("registers Spades with both hot-seat and online-room play", () => {
     const spades = getGameById("spades");
     expect(spades).toMatchObject({
       id: "spades",
       available: true,
-      launchMode: "local",
+      launchMode: "local-and-online",
       launchPath: "/spades/hot-seat",
       minPlayers: 4,
       maxPlayers: 4,
@@ -66,7 +66,7 @@ describe("game registry", () => {
   it("allows only online-room games through create_game validation", () => {
     expect(isAvailableRoomGameId("wire-game")).toBe(true);
     expect(isAvailableRoomGameId("flip")).toBe(true);
-    expect(isAvailableRoomGameId("spades")).toBe(false);
+    expect(isAvailableRoomGameId("spades")).toBe(true);
     expect(isAvailableRoomGameId("checkers")).toBe(false);
   });
 

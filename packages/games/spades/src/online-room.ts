@@ -1,4 +1,4 @@
-import { playCard, submitBid, submitBlindNilChoice } from './game';
+import { continueAfterHand, playCard, submitBid, submitBlindNilChoice } from './game';
 import type {
   SpadesBid,
   SpadesGameState,
@@ -10,7 +10,8 @@ import { buildSpadesPlayerView } from './game';
 export type SpadesPlayerAction =
   | { readonly type: 'blind-nil'; readonly blindNil: boolean }
   | { readonly type: 'bid'; readonly bid: Exclude<SpadesBid, { kind: 'blind-nil' }> }
-  | { readonly type: 'play'; readonly cardId: string };
+  | { readonly type: 'play'; readonly cardId: string }
+  | { readonly type: 'continue-hand' };
 
 export function seatForSpadesPlayer(
   state: SpadesGameState,
@@ -34,7 +35,11 @@ export function applySpadesPlayerAction(
   if (action.type === 'bid') {
     return submitBid(state, seat, action.bid);
   }
-  return playCard(state, seat, action.cardId, random);
+  if (action.type === 'play') {
+    return playCard(state, seat, action.cardId, random);
+  }
+  if (state.phase !== 'hand-complete') throw new Error('the hand is not complete');
+  return continueAfterHand(state, random);
 }
 
 export function buildPrivateSpadesView(
