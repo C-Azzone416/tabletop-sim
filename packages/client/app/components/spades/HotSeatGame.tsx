@@ -22,13 +22,16 @@ interface HotSeatGameProps {
 export function HotSeatGame({ initialSession, botOptions = {} }: HotSeatGameProps) {
   const [session, setSession] = useState(initialSession);
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const activeSeat = session.activeHumanSeat;
   const activePlayer = session.state.players.find((player) => player.seat === activeSeat);
   const view = buildHotSeatView(session);
 
   const update = async (action: (progressOptions: BotTurnRunnerOptions) => Promise<HotSeatSession>) => {
     if (busy) return;
+    const checkpoint = session;
     setBusy(true);
+    setActionError(null);
     try {
       const viewerSeat = session.activeHumanSeat;
       const progressOptions: BotTurnRunnerOptions = {
@@ -45,15 +48,29 @@ export function HotSeatGame({ initialSession, botOptions = {} }: HotSeatGameProp
         },
       };
       setSession(await action(progressOptions));
+    } catch (error) {
+      console.error("Hot-seat Spades action failed", error);
+      // Bot progress is rendered incrementally. Roll back the whole action so
+      // a partial bot sequence never leaves the table in an unplayable state.
+      setSession(checkpoint);
+      setActionError("That turn couldn’t be completed. The table was restored—please try again.");
     } finally {
       setBusy(false);
     }
   };
 
+  const errorBanner = actionError ? (
+    <div role="alert" className="fixed inset-x-4 top-4 z-50 mx-auto flex max-w-xl items-center justify-between gap-4 rounded-cab border-2 border-red-300 bg-red-950 p-4 text-sm font-semibold text-white shadow-xl">
+      <span>{actionError}</span>
+      <button type="button" onClick={() => setActionError(null)} className="press min-h-11 shrink-0 px-3">Dismiss</button>
+    </div>
+  ) : null;
+
   if (session.state.phase === "finished") {
     const winningTeam = session.state.winner === "north-south" ? "North / South" : "East / West";
     return (
       <main className="flex min-h-screen items-center justify-center bg-emerald-950 p-6 text-white">
+        {errorBanner}
         <section className="rounded-cab border-2 border-emerald-700 bg-black/30 p-8 text-center shadow-print-md">
           <h1 className="text-display-l-sm font-display">Game over</h1>
           <p className="mt-3 text-heading">{winningTeam} wins</p>
@@ -68,6 +85,7 @@ export function HotSeatGame({ initialSession, botOptions = {} }: HotSeatGameProp
   if (!activeSeat || !view) {
     return (
       <main className="min-h-screen bg-emerald-950 p-8 text-center text-white">
+        {errorBanner}
         Computer players are thinking…
       </main>
     );
@@ -76,6 +94,7 @@ export function HotSeatGame({ initialSession, botOptions = {} }: HotSeatGameProp
   if (session.confirmedSeat !== activeSeat) {
     return (
       <div className="relative min-h-screen bg-emerald-950">
+        {errorBanner}
         <SpadesTable
           view={view}
           viewingSeat={activeSeat}
@@ -109,6 +128,7 @@ export function HotSeatGame({ initialSession, botOptions = {} }: HotSeatGameProp
 
   return (
     <div aria-busy={busy}>
+      {errorBanner}
       <SpadesTable
         view={view}
         viewingSeat={activeSeat}

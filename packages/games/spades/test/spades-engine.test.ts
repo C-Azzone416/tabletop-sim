@@ -29,6 +29,7 @@ import {
   teamForSeat,
   validatePlay,
   type SpadesBid,
+  type SpadesGameState,
   type SpadesSeat,
 } from '@tabletop/game-spades';
 
@@ -332,5 +333,34 @@ describe('headless game state machine', () => {
     expect(state.scores['north-south'].score !== 0 || state.scores['east-west'].score !== 0).toBe(true);
     state = continueAfterHand(state, () => 0.75);
     expect(state.handNumber === startingHandNumber + 1 || state.phase === 'finished').toBe(true);
+  });
+
+  it('finishes a won match and clears the completed-hand recap', () => {
+    const base = start();
+    const winningState: SpadesGameState = {
+      ...base,
+      phase: 'hand-complete',
+      currentSeat: null,
+      winner: 'north-south',
+      scores: {
+        'north-south': { score: 251, bags: 1 },
+        'east-west': { score: 190, bags: 0 },
+      },
+      handSummary: {
+        handNumber: 1,
+        previousScores: base.scores,
+        results: {
+          'north-south': { score: 251, bags: 1, handPoints: 51, contractPoints: 50, nilPoints: 0, bagPoints: 1, bagPenalty: 0, contractMade: true },
+          'east-west': { score: 190, bags: 0, handPoints: -40, contractPoints: -40, nilPoints: 0, bagPoints: 0, bagPenalty: 0, contractMade: false },
+        },
+        winner: 'north-south',
+      },
+    };
+
+    const finished = continueAfterHand(winningState, () => 0);
+    expect(finished.phase).toBe('finished');
+    expect(finished.winner).toBe('north-south');
+    expect(finished.handNumber).toBe(winningState.handNumber);
+    expect(finished.handSummary).toBeUndefined();
   });
 });

@@ -16,9 +16,11 @@ export default function HotSeatPage() {
   const [bots, setBots] = useState<BotDifficulty[]>(["normal", "normal", "normal"]);
   const [session, setSession] = useState<HotSeatSession | null>(null);
   const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   const start = async () => {
     setStarting(true);
+    setStartError(null);
     try {
       const humans = names.slice(0, humanCount).map((name, index) => ({
         id: `hot-seat-${index + 1}`,
@@ -29,6 +31,9 @@ export default function HotSeatPage() {
         botDifficulties: bots.slice(0, 4 - humanCount),
         targetScore,
       }));
+    } catch (error) {
+      console.error("Could not start hot-seat Spades", error);
+      setStartError("We couldn’t deal this game. Please try again.");
     } finally {
       setStarting(false);
     }
@@ -114,6 +119,11 @@ export default function HotSeatPage() {
           >
             {starting ? "Dealing…" : "Deal cards"}
           </button>
+          {startError && (
+            <p role="alert" className="rounded-cab border-2 border-red-700 bg-red-50 p-3 text-sm font-semibold text-red-900">
+              {startError}
+            </p>
+          )}
         </section>
       </div>
     </main>
