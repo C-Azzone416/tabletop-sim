@@ -19,6 +19,7 @@ interface SpadesTableProps {
   onBlindNilChoice: (blindNil: boolean) => void;
   onBid: (bid: Exclude<SpadesBid, { kind: "blind-nil" }>) => void;
   onPlayCard: (cardId: string) => void;
+  onContinueHand: () => void;
 }
 
 type TablePosition = "bottom" | "left" | "top" | "right";
@@ -182,7 +183,7 @@ function PhaseControls({
   interactionLocked = false,
   onBlindNilChoice,
   onBid,
-}: Omit<SpadesTableProps, "onPlayCard">) {
+}: Omit<SpadesTableProps, "onPlayCard" | "onContinueHand">) {
   if (view.phase === "blind-nil") {
     return (
       <div className="rounded-2xl bg-black/65 p-4 text-center text-white shadow-xl" aria-label="Blind nil choice">
@@ -214,7 +215,7 @@ function PhaseControls({
 }
 
 export function SpadesTable(props: SpadesTableProps) {
-  const { view, viewingSeat, concealHand = false, onPlayCard } = props;
+  const { view, viewingSeat, concealHand = false, onPlayCard, onContinueHand } = props;
   const seats = seatsFromViewer(viewingSeat);
   const legalIds = new Set(
     !concealHand && view.phase === "playing" && view.currentSeat === viewingSeat
@@ -229,7 +230,7 @@ export function SpadesTable(props: SpadesTableProps) {
   const reviewedTrick = reviewedTrickIndex === null ? undefined : completedTricks[reviewedTrickIndex];
   const viewingPlayer = view.players.find((player) => player.seat === viewingSeat);
   const resolutionKey = (
-    view.phase === "playing"
+    (view.phase === "playing" || view.phase === "hand-complete")
     && view.currentTrick.plays.length === 0
     && completedTricks.length > 0
   ) ? `${view.handNumber}:${completedTricks.length}` : null;
@@ -241,6 +242,9 @@ export function SpadesTable(props: SpadesTableProps) {
   const resolvedWinner = heldResolvedTrick
     ? view.players.find((player) => player.seat === heldResolvedTrick.winner)?.name ?? heldResolvedTrick.winner
     : null;
+  const showHandSummary = view.phase === "hand-complete"
+    && resolutionKey !== null
+    && resolutionKey === dismissedResolutionKey;
 
   useEffect(() => {
     if (!resolutionKey || resolutionKey === dismissedResolutionKey) return;
@@ -411,6 +415,50 @@ export function SpadesTable(props: SpadesTableProps) {
               <button type="button" disabled={reviewedTrickIndex === 0} onClick={reviewOlderTrick} className="press rounded-cab bg-emerald-800 px-4 py-2 font-semibold disabled:opacity-40">Earlier trick</button>
               <button type="button" disabled={reviewedTrickIndex === latestTrickIndex} onClick={() => setReviewedTrickIndex(reviewedTrickIndex + 1)} className="press rounded-cab bg-emerald-800 px-4 py-2 font-semibold disabled:opacity-40">Newer trick</button>
             </div>
+          </div>
+        </section>
+      )}
+
+      {showHandSummary && view.handSummary && (
+        <section role="dialog" aria-modal="true" aria-label="Hand complete" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-2xl rounded-3xl border-2 border-amber-300/70 bg-emerald-950 p-5 shadow-2xl sm:p-7">
+            <p className="text-xs font-bold uppercase tracking-widest text-amber-200">Hand {view.handSummary.handNumber}</p>
+            <h2 className="mt-1 text-2xl font-black">Hand Complete</h2>
+            <p className="mt-1 text-sm text-emerald-100">Final bids, tricks, bags, and points</p>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              {(["north-south", "east-west"] as const).map((team) => {
+                const result = view.handSummary!.results[team];
+                return (
+                  <div key={team} className="rounded-2xl border border-emerald-700 bg-black/30 p-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-emerald-200">
+                      {team === "north-south" ? "North / South" : "East / West"}
+                    </p>
+                    <h3 className="mt-1 text-lg font-black">{teamNames(view, team)}</h3>
+                    <div className="mt-3 flex items-end justify-between border-t border-emerald-700/60 pt-3">
+                      <span className="text-sm text-emerald-100">This hand</span>
+                      <strong className={`text-2xl ${result.handPoints >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                        {result.handPoints >= 0 ? "+" : ""}{result.handPoints}
+                      </strong>
+                    </div>
+                    <div className="mt-2 flex justify-between text-sm text-emerald-100">
+                      <span>Total score <strong className="text-white">{result.score}</strong></span>
+                      <span>Bags <strong className="text-white">{result.bags}</strong></span>
+                    </div>
+                    <div className="mt-3 space-y-1 text-xs text-emerald-200">
+                      <div className="flex justify-between"><span>Contract</span><span>{result.contractPoints >= 0 ? "+" : ""}{result.contractPoints}</span></div>
+                      {result.nilPoints !== 0 && <div className="flex justify-between"><span>Nil</span><span>{result.nilPoints >= 0 ? "+" : ""}{result.nilPoints}</span></div>}
+                      {result.bagPoints !== 0 && <div className="flex justify-between"><span>Bag points</span><span>+{result.bagPoints}</span></div>}
+                      {result.bagPenalty !== 0 && <div className="flex justify-between text-red-200"><span>Bag penalty</span><span>{result.bagPenalty}</span></div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button type="button" onClick={onContinueHand} className="press mt-6 min-h-11 w-full rounded-cab bg-amber-300 px-5 py-3 font-black text-emerald-950">
+              {view.handSummary.winner ? "View Game Result" : "Continue to Next Hand"}
+            </button>
           </div>
         </section>
       )}

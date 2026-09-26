@@ -6,6 +6,7 @@ import type { BotTurnRunnerOptions, SpadesSeat } from "@tabletop/game-spades";
 import {
   buildHotSeatView,
   confirmHotSeat,
+  hotSeatContinueHand,
   hotSeatBid,
   hotSeatBlindNil,
   hotSeatPlay,
@@ -82,6 +83,7 @@ export function HotSeatGame({ initialSession, botOptions = {} }: HotSeatGameProp
           onBlindNilChoice={() => undefined}
           onBid={() => undefined}
           onPlayCard={() => undefined}
+          onContinueHand={() => undefined}
         />
         <section
           aria-label="Pass the device"
@@ -114,6 +116,7 @@ export function HotSeatGame({ initialSession, botOptions = {} }: HotSeatGameProp
         onBlindNilChoice={(blindNil) => void update((options) => hotSeatBlindNil(session, blindNil, options))}
         onBid={(bid) => void update((options) => hotSeatBid(session, bid, options))}
         onPlayCard={(cardId) => void update((options) => hotSeatPlay(session, cardId, options))}
+        onContinueHand={() => void update((options) => hotSeatContinueHand(session, options))}
       />
     </div>
   );

@@ -56,7 +56,7 @@ function makeView(overrides: Partial<SpadesPlayerView> = {}): SpadesPlayerView {
   };
 }
 
-const handlers = () => ({ onBlindNilChoice: vi.fn(), onBid: vi.fn(), onPlayCard: vi.fn() });
+const handlers = () => ({ onBlindNilChoice: vi.fn(), onBid: vi.fn(), onPlayCard: vi.fn(), onContinueHand: vi.fn() });
 
 describe("SpadesTable", () => {
   it("sorts the hand by suit and descending rank", () => {
@@ -112,6 +112,48 @@ describe("SpadesTable", () => {
       act(() => vi.advanceTimersByTime(RESOLVED_TRICK_DISPLAY_MS));
       expect(within(table).queryAllByLabelText(/played/)).toHaveLength(0);
       expect(table).toHaveTextContent("Ben leads");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("holds the final trick before showing the hand recap and waits for Continue", () => {
+    vi.useFakeTimers();
+    try {
+      const actions = handlers();
+      const finalTrick = completed(13);
+      render(<SpadesTable
+        view={makeView({
+          phase: "hand-complete",
+          currentSeat: null,
+          currentTrick: { leader: "south", plays: [] },
+          completedTricks: [finalTrick],
+          handSummary: {
+            handNumber: 1,
+            previousScores: {
+              "north-south": { score: 0, bags: 0 },
+              "east-west": { score: 0, bags: 0 },
+            },
+            results: {
+              "north-south": { score: 51, bags: 1, handPoints: 51, contractPoints: 50, nilPoints: 0, bagPoints: 1, bagPenalty: 0, contractMade: true },
+              "east-west": { score: 52, bags: 2, handPoints: 52, contractPoints: 50, nilPoints: 0, bagPoints: 2, bagPenalty: 0, contractMade: true },
+            },
+            winner: null,
+          },
+        })}
+        viewingSeat="south"
+        {...actions}
+      />);
+
+      expect(within(screen.getByLabelText("Current trick")).getAllByLabelText(/played/)).toHaveLength(4);
+      expect(screen.queryByRole("dialog", { name: "Hand complete" })).not.toBeInTheDocument();
+
+      act(() => vi.advanceTimersByTime(RESOLVED_TRICK_DISPLAY_MS));
+      expect(screen.getByRole("dialog", { name: "Hand complete" })).toHaveTextContent("+51");
+      expect(screen.getByRole("dialog", { name: "Hand complete" })).toHaveTextContent("+52");
+
+      fireEvent.click(screen.getByRole("button", { name: "Continue to Next Hand" }));
+      expect(actions.onContinueHand).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
     }

@@ -12,6 +12,7 @@ import {
   chooseBotBid,
   chooseBotBlindNil,
   chooseBotCard,
+  continueAfterHand,
   determineWinner,
   generateThemedNames,
   getLegalCardsForCurrentSeat,
@@ -324,7 +325,12 @@ describe('headless game state machine', () => {
       plays += 1;
     }
     expect(plays).toBe(52);
-    expect(state.handNumber === startingHandNumber + 1 || state.phase === 'finished').toBe(true);
+    expect(state.phase).toBe('hand-complete');
+    expect(state.handNumber).toBe(startingHandNumber);
+    expect(state.completedTricks).toHaveLength(13);
+    expect(state.handSummary?.handNumber).toBe(startingHandNumber);
     expect(state.scores['north-south'].score !== 0 || state.scores['east-west'].score !== 0).toBe(true);
+    state = continueAfterHand(state, () => 0.75);
+    expect(state.handNumber === startingHandNumber + 1 || state.phase === 'finished').toBe(true);
   });
 });

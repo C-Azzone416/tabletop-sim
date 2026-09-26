@@ -1,6 +1,7 @@
 import {
   SPADES_SEATS,
   buildSpadesPlayerView,
+  continueAfterHand,
   playCard,
   runBotTurns,
   startSpadesGame,
@@ -25,6 +26,9 @@ function humanAt(state: SpadesGameState, seat: SpadesSeat) {
 }
 
 function nextHumanInput(state: SpadesGameState): SpadesSeat | null {
+  if (state.phase === "hand-complete") {
+    return state.players.find((player) => !player.isBot)?.seat ?? null;
+  }
   if (state.phase === "blind-nil") {
     return SPADES_SEATS.find(
       (seat) => humanAt(state, seat) && state.blindNilChoices[seat] === undefined,
@@ -53,7 +57,7 @@ async function settleBots(
     state: settled,
     activeHumanSeat,
     // A solo player never needs to pass the device back to themselves.
-    confirmedSeat: humanCount === 1 ? activeHumanSeat : null,
+    confirmedSeat: humanCount === 1 || settled.phase === "hand-complete" ? activeHumanSeat : null,
   };
 }
 
@@ -113,4 +117,14 @@ export async function hotSeatPlay(
 ): Promise<HotSeatSession> {
   const seat = requireConfirmedSeat(session);
   return settleBots(playCard(session.state, seat, cardId, botOptions.random), botOptions, true);
+}
+
+export async function hotSeatContinueHand(
+  session: HotSeatSession,
+  botOptions: BotTurnRunnerOptions = {},
+): Promise<HotSeatSession> {
+  if (session.state.phase !== "hand-complete") {
+    throw new Error("the hand is not complete");
+  }
+  return settleBots(continueAfterHand(session.state, botOptions.random), botOptions, true);
 }
