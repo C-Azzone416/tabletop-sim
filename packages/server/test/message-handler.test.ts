@@ -288,14 +288,18 @@ describe("message-handler", () => {
       expect(mockConnManager.registerConnection).not.toHaveBeenCalled();
     });
 
-    it("rejects a known-but-unavailable gameType (spades) and creates no room", async () => {
+    it("creates an online Spades room with four available seats", async () => {
       const ws = mockSocket();
+      const game = makeGame({ id: "gs", captainId: "ps", gameType: "spades", maxPlayers: 4 });
+      const player = makePlayer({ id: "ps", name: "Alice" });
       mockConnManager.getAuthenticatedUser.mockReturnValue({ profileId: "prof-1", name: "Alice" });
+      mockEngine.createGame.mockResolvedValue({ game, player });
 
       await handleMessage(ws, JSON.stringify({ type: "create_game", playerName: "Alice", gameType: "spades", maxPlayers: 4 }));
 
-      expect(lastSent(ws)).toEqual({ type: "error", message: "Unknown game type" });
-      expect(mockEngine.createGame).not.toHaveBeenCalled();
+      expect(mockEngine.createGame).toHaveBeenCalledWith("Alice", "spades", 4, "prof-1");
+      expect(mockConnManager.registerConnection).toHaveBeenCalledWith(ws, "ps", "gs");
+      expect((lastSent(ws) as { type: string }).type).toBe("game_created");
     });
 
     // #361's original acceptance criterion — "create_game accepts flip" —

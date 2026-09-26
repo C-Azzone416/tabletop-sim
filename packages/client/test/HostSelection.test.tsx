@@ -120,13 +120,33 @@ describe("HostSelection (app/play/host/page.tsx)", () => {
       expect(mockConnect).toHaveBeenCalled();
     });
 
-    it("routes local Spades directly to hot-seat without creating a room", () => {
+    it("offers both online-room and hot-seat launches for Spades", () => {
       render(<HostSelection />);
       fireEvent.click(screen.getByText("Spades").closest("button")!);
-      expect(mockPush).toHaveBeenCalledWith("/spades/hot-seat");
+      expect(screen.getByRole("button", { name: "Create Online Room" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Play Hot Seat" })).toBeInTheDocument();
       expect(mockSend).not.toHaveBeenCalled();
       expect(mockConnect).not.toHaveBeenCalled();
-      expect(screen.queryByRole("button", { name: "Create Room" })).not.toBeInTheDocument();
+    });
+
+    it("creates a four-seat online Spades room", () => {
+      render(<HostSelection />);
+      fireEvent.click(screen.getByText("Spades").closest("button")!);
+      fireEvent.click(screen.getByRole("button", { name: "Create Online Room" }));
+      expect(mockSend).toHaveBeenCalledWith({
+        type: "create_game",
+        playerName: "Alice",
+        gameType: "spades",
+        maxPlayers: 4,
+      });
+      expect(mockConnect).toHaveBeenCalled();
+    });
+
+    it("still routes Spades hot-seat to the local table", () => {
+      render(<HostSelection />);
+      fireEvent.click(screen.getByText("Spades").closest("button")!);
+      fireEvent.click(screen.getByRole("button", { name: "Play Hot Seat" }));
+      expect(mockPush).toHaveBeenCalledWith("/spades/hot-seat");
     });
 
     it("routes to the game page when game_created arrives", () => {

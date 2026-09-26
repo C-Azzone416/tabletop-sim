@@ -93,22 +93,33 @@ export default function HostSelection() {
               <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-muted">
                 Players
               </h3>
-              <PlayerCountPicker
-                game={selectedGame}
-                value={count ?? selectedGame.minPlayers}
-                onChange={setCount}
-                disabled={isBusy}
-              />
+              {selectedGame.launchMode === "local-and-online" ? (
+                <p className="text-sm text-ink-muted">Invite up to three people. Computers fill every empty seat when the host starts.</p>
+              ) : (
+                <PlayerCountPicker
+                  game={selectedGame}
+                  value={count ?? selectedGame.minPlayers}
+                  onChange={setCount}
+                  disabled={isBusy}
+                />
+              )}
             </div>
 
-            <button
-              type="button"
-              onClick={handleConfirm}
-              disabled={isBusy || count === null}
-              className="press min-h-11 rounded-cab border-2 border-outline bg-accent px-8 py-3 font-bold text-accent-ink shadow-print-sm disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {mode === "creating" ? "Creating..." : "Create Room"}
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleConfirm}
+                disabled={isBusy || count === null}
+                className="press min-h-11 rounded-cab border-2 border-outline bg-accent px-8 py-3 font-bold text-accent-ink shadow-print-sm disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {mode === "creating" ? "Creating..." : selectedGame.launchMode === "local-and-online" ? "Create Online Room" : "Create Room"}
+              </button>
+              {selectedGame.launchMode === "local-and-online" && selectedGame.launchPath && (
+                <button type="button" onClick={() => router.push(selectedGame.launchPath!)} disabled={isBusy} className="press min-h-11 rounded-cab border-2 border-outline bg-surface-raised px-8 py-3 font-bold text-ink shadow-print-sm disabled:opacity-50">
+                  Play Hot Seat
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <GameSelectionGrid onSelect={handleSelect} disabled={isBusy} />

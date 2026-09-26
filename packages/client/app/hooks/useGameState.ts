@@ -11,6 +11,9 @@ import type {
   FlipTableView,
   LobbyConfigValue,
 } from "@tabletop/shared";
+import type { SpadesPlayerView, SpadesSeat, SpadesServerMessage } from "@tabletop/game-spades";
+
+type AppServerMessage = ServerMessage | SpadesServerMessage;
 
 export interface GameState {
   game: Game | null;
@@ -21,6 +24,12 @@ export interface GameState {
   validationTokens: ValidationToken[];
   /** Flip's table state (#382/#383), set from game_state's `flip` field. Null for Wire games. */
   flip: FlipTableView | null;
+  /** Private, seat-specific online Spades projection. */
+  spades: {
+    view: SpadesPlayerView;
+    viewingSeat: SpadesSeat;
+    pausedUntil: string | null;
+  } | null;
   lastTurnResult: Extract<ServerMessage, { type: "turn_result" }> | null;
   pendingDualCut: Extract<ServerMessage, { type: "dual_cut_proposed" }> | null;
   pendingDualCutCorrect: Extract<ServerMessage, { type: "dual_cut_correct" }> | null;
@@ -87,6 +96,7 @@ const initialState: GameState = {
   infoTokens: [],
   validationTokens: [],
   flip: null,
+  spades: null,
   lastTurnResult: null,
   pendingDualCut: null,
   pendingDualCutCorrect: null,
@@ -101,7 +111,7 @@ const initialState: GameState = {
 type Action =
   | { type: "SET_ERROR"; message: string }
   | { type: "CLEAR_ERROR" }
-  | { type: "SERVER_MESSAGE"; message: ServerMessage }
+  | { type: "SERVER_MESSAGE"; message: AppServerMessage }
   | { type: "DISMISS_MISSION_ENDED" }
   | { type: "RESET" };
 
@@ -120,8 +130,23 @@ function gameReducer(state: GameState, action: Action): GameState {
   }
 }
 
-function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
+function handleServerMessage(state: GameState, msg: AppServerMessage): GameState {
   switch (msg.type) {
+    case "spades_state": {
+      const localPlayer = msg.players.find((player) => player.id === msg.localPlayerId) ?? state.localPlayer;
+      return {
+        ...state,
+        game: msg.game,
+        players: msg.players,
+        localPlayer,
+        spades: {
+          view: msg.view,
+          viewingSeat: msg.viewingSeat,
+          pausedUntil: msg.pausedUntil ?? null,
+        },
+        error: null,
+      };
+    }
     case "game_created":
       return {
         ...state,
@@ -337,7 +362,7 @@ function handleServerMessage(state: GameState, msg: ServerMessage): GameState {
 export function useGameState() {
   const [state, dispatch] = useReducer(gameReducer, initialState);
 
-  const handleMessage = useCallback((message: ServerMessage) => {
+  const handleMessage = useCallback((message: AppServerMessage) => {
     dispatch({ type: "SERVER_MESSAGE", message });
   }, []);
 
