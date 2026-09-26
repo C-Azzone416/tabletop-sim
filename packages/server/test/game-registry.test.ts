@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GAME_REGISTRY, getGameById, isAvailableGameId } from "@tabletop/shared";
+import { GAME_REGISTRY, getGameById, isAvailableGameId, isAvailableRoomGameId } from "@tabletop/shared";
 
 describe("game registry", () => {
   it("registers wire-game as available", () => {
@@ -7,9 +7,17 @@ describe("game registry", () => {
     expect(wireGame).toMatchObject({ id: "wire-game", available: true });
   });
 
-  it("registers spades as not yet available", () => {
+  it("registers Spades as available local hot-seat play", () => {
     const spades = getGameById("spades");
-    expect(spades).toMatchObject({ id: "spades", available: false });
+    expect(spades).toMatchObject({
+      id: "spades",
+      available: true,
+      launchMode: "local",
+      launchPath: "/spades/hot-seat",
+      minPlayers: 4,
+      maxPlayers: 4,
+      playerCountLabel: "1–4 players",
+    });
   });
 
   // #361 (epic #358). Registered ahead of being playable on purpose — the
@@ -51,10 +59,15 @@ describe("game registry", () => {
   it("isAvailableGameId reflects the available flag", () => {
     expect(isAvailableGameId("wire-game")).toBe(true);
     expect(isAvailableGameId("flip")).toBe(true);
-    // Spades is still registered-but-unavailable — the flag genuinely
-    // discriminates rather than being true for everything registered.
-    expect(isAvailableGameId("spades")).toBe(false);
+    expect(isAvailableGameId("spades")).toBe(true);
     expect(isAvailableGameId("checkers")).toBe(false);
+  });
+
+  it("allows only online-room games through create_game validation", () => {
+    expect(isAvailableRoomGameId("wire-game")).toBe(true);
+    expect(isAvailableRoomGameId("flip")).toBe(true);
+    expect(isAvailableRoomGameId("spades")).toBe(false);
+    expect(isAvailableRoomGameId("checkers")).toBe(false);
   });
 
   it("has no duplicate game ids (it is the create_game allowlist)", () => {

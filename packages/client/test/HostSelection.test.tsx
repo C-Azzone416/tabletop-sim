@@ -120,11 +120,13 @@ describe("HostSelection (app/play/host/page.tsx)", () => {
       expect(mockConnect).toHaveBeenCalled();
     });
 
-    it("does not send anything when an unavailable game is picked", () => {
+    it("routes local Spades directly to hot-seat without creating a room", () => {
       render(<HostSelection />);
       fireEvent.click(screen.getByText("Spades").closest("button")!);
+      expect(mockPush).toHaveBeenCalledWith("/spades/hot-seat");
       expect(mockSend).not.toHaveBeenCalled();
       expect(mockConnect).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Create Room" })).not.toBeInTheDocument();
     });
 
     it("routes to the game page when game_created arrives", () => {

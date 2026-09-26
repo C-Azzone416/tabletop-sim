@@ -1,6 +1,6 @@
 import type { WebSocket } from 'ws';
 import type { ClientMessage, GameId, LobbyConfigValue, ServerMessage } from '@tabletop/shared';
-import { DEV_SEAT_SWITCH_CLOSE_CODE, isAvailableGameId } from '@tabletop/shared';
+import { DEV_SEAT_SWITCH_CLOSE_CODE, isAvailableRoomGameId } from '@tabletop/shared';
 import * as engine from '../engine/game-engine.js';
 import * as gamesDb from '../db/games.js';
 import * as playersDb from '../db/players.js';
@@ -282,10 +282,9 @@ export async function handleMessage(socket: WebSocket, raw: string, log?: Action
 async function handleCreateGame(socket: WebSocket, _playerName: string, gameType: GameId, maxPlayers: number): Promise<void> {
   // The application-level gate: a client-controlled value is about to reach
   // a DB column, and the #324 CHECK constraint is only the backstop, not
-  // the primary defense. Reject anything not in the registry as available
-  // (covers both truly unknown ids and known-but-not-yet-playable ones,
-  // e.g. spades) before any room is created.
-  if (!isAvailableGameId(gameType)) throw new Error('Unknown game type');
+  // the primary defense. Reject anything that is not both available and an
+  // online-room game (including local-only Spades) before any room is created.
+  if (!isAvailableRoomGameId(gameType)) throw new Error('Unknown game type');
 
   const user = getAuthenticatedUser(socket);
   // #437 — maxPlayers's own bounds check (against gameType's registry entry)

@@ -1,9 +1,10 @@
-// Game registry (#314): one source of truth for selectable games, consumed
-// identically by the host game-selection screen (#316) and by server-side
-// create_game validation (#313). See the #314 scope ruling: a plain data
+// Game registry (#314): one source of truth for selectable games. The host
+// screen uses every available entry, while create_game accepts only entries
+// whose launch mode is online-room. See the #314 scope ruling: a plain data
 // table here, no package extraction, no dependency on #288/#304.
 
 export type GameId = 'wire-game' | 'spades' | 'flip';
+export type GameLaunchMode = 'online-room' | 'local';
 
 export interface GameRegistryEntry {
   id: GameId;
@@ -11,6 +12,9 @@ export interface GameRegistryEntry {
   description: string;
   minPlayers: number;
   maxPlayers: number;
+  playerCountLabel?: string;
+  launchMode: GameLaunchMode;
+  launchPath?: string;
   /**
    * Games register here before they're playable (#311 ruling: unavailable
    * games render greyed as "Coming soon", they are not hidden).
@@ -31,8 +35,8 @@ export interface GameRegistryEntry {
 }
 
 // Frozen at both levels (not just `readonly` at the type level, which erases
-// at compile time): #313 uses this as a security allowlist for create_game,
-// so it must not be mutable at runtime.
+// at compile time): #313 uses the online-room subset as a security allowlist
+// for create_game, so it must not be mutable at runtime.
 export const GAME_REGISTRY: readonly GameRegistryEntry[] = Object.freeze([
   Object.freeze({
     id: 'wire-game',
@@ -46,6 +50,7 @@ export const GAME_REGISTRY: readonly GameRegistryEntry[] = Object.freeze([
     // #404, #406 and #407.
     minPlayers: 3,
     maxPlayers: 5,
+    launchMode: 'online-room',
     available: true,
   }),
   Object.freeze({
@@ -54,7 +59,10 @@ export const GAME_REGISTRY: readonly GameRegistryEntry[] = Object.freeze([
     description: 'Classic trick-taking card game for four players in two partnerships.',
     minPlayers: 4,
     maxPlayers: 4,
-    available: false,
+    playerCountLabel: '1–4 players',
+    launchMode: 'local',
+    launchPath: '/spades/hot-seat',
+    available: true,
   }),
   Object.freeze({
     id: 'flip',
@@ -66,6 +74,7 @@ export const GAME_REGISTRY: readonly GameRegistryEntry[] = Object.freeze([
     // omits a player with no error.
     minPlayers: 3,
     maxPlayers: 5,
+    launchMode: 'online-room',
     available: true,
   }),
 ]);
@@ -76,4 +85,9 @@ export function getGameById(id: string): GameRegistryEntry | undefined {
 
 export function isAvailableGameId(id: string): id is GameId {
   return getGameById(id)?.available === true;
+}
+
+export function isAvailableRoomGameId(id: string): id is GameId {
+  const game = getGameById(id);
+  return game?.available === true && game.launchMode === 'online-room';
 }

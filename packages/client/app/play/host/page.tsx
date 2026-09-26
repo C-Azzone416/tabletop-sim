@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { GameRegistryEntry } from "@tabletop/shared";
 import { GameSelectionGrid } from "../../components/GameSelectionGrid";
 import { PlayerCountPicker } from "../../components/PlayerCountPicker";
@@ -34,6 +35,7 @@ import { usePlayAction, usePlaySessionGuard } from "../usePlayAction";
  * leaving /play/host, so a host who picked the wrong game isn't dumped out.
  */
 export default function HostSelection() {
+  const router = useRouter();
   const guard = usePlaySessionGuard();
   const { mode, isBusy, connectionStatus, errorMessage, dismissError, createGame } = usePlayAction();
   const [selectedGame, setSelectedGame] = useState<GameRegistryEntry | null>(null);
@@ -42,6 +44,10 @@ export default function HostSelection() {
   // The registry entry the player picked carries min/maxPlayers; nothing
   // defaults them (see createGame's note and #313).
   const handleSelect = (game: GameRegistryEntry) => {
+    if (game.launchMode === "local" && game.launchPath) {
+      router.push(game.launchPath);
+      return;
+    }
     setSelectedGame(game);
     setCount(game.minPlayers === game.maxPlayers ? game.maxPlayers : null);
   };
@@ -65,7 +71,7 @@ export default function HostSelection() {
       <PlayScreen
         backHref="/play"
         title="Choose a game"
-        subtitle={mode === "creating" ? "Creating room..." : "Pick what to host"}
+        subtitle={mode === "creating" ? "Creating room..." : "Choose online or hot-seat play"}
       >
         {selectedGame ? (
           <div className="flex flex-col items-start gap-6">
