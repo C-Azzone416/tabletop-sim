@@ -37,11 +37,11 @@ describe("GameSelectionGrid", () => {
     ).toBeInTheDocument();
   });
 
-  it("marks Spades as available Hot Seat play", () => {
+  it("marks Spades as available for Hot Seat and Online play", () => {
     render(<GameSelectionGrid onSelect={vi.fn()} />);
     const card = screen.getByText("Spades").closest("button")!;
     expect(card).not.toBeDisabled();
-    expect(within(card).getByText("Hot Seat")).toBeInTheDocument();
+    expect(within(card).getByText("Hot Seat + Online")).toBeInTheDocument();
     expect(within(card).getByText("1–4 players")).toBeInTheDocument();
   });
 
@@ -70,13 +70,13 @@ describe("GameSelectionGrid", () => {
     );
   });
 
-  it("calls onSelect for local Spades without treating it as unavailable", () => {
+  it("calls onSelect for dual-mode Spades without treating it as unavailable", () => {
     const onSelect = vi.fn();
     render(<GameSelectionGrid onSelect={onSelect} />);
     fireEvent.click(screen.getByText("Spades").closest("button")!);
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
       id: "spades",
-      launchMode: "local",
+      launchMode: "local-and-online",
       launchPath: "/spades/hot-seat",
     }));
   });

@@ -2,13 +2,16 @@
 
 import { useRef, useCallback, useEffect, useState } from "react";
 import type { ClientMessage, ServerMessage } from "@tabletop/shared";
+import type { SpadesClientMessage, SpadesServerMessage } from "@tabletop/game-spades";
 import { SERVER_URL, withApiKeyParam } from "../lib/serverApi";
 
 const MAX_RECONNECT_DELAY = 30_000;
 const INITIAL_RECONNECT_DELAY = 1_000;
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected";
-type MessageHandler = (message: ServerMessage) => void;
+type AppClientMessage = ClientMessage | SpadesClientMessage;
+type AppServerMessage = ServerMessage | SpadesServerMessage;
+type MessageHandler = (message: AppServerMessage) => void;
 
 export function useWebSocket(
   onMessage: MessageHandler,
@@ -20,7 +23,7 @@ export function useWebSocket(
   const connectRef = useRef<() => void>(() => {});
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY);
-  const messageQueueRef = useRef<ClientMessage[]>([]);
+  const messageQueueRef = useRef<AppClientMessage[]>([]);
   // #467 — populated immediately before disconnect()/unmount closes a
   // socket they still hold, so that SPECIFIC socket's own onclose (which
   // fires later, asynchronously, once the close handshake completes) knows
@@ -91,7 +94,7 @@ export function useWebSocket(
       // connection's, with nothing to distinguish it from a genuine update.
       if (wsRef.current !== ws) return;
       try {
-        const message: ServerMessage = JSON.parse(event.data);
+        const message: AppServerMessage = JSON.parse(event.data);
         onMessageRef.current(message);
       } catch {
         // Ignore malformed messages
@@ -170,7 +173,7 @@ export function useWebSocket(
     setStatus("disconnected");
   }, []);
 
-  const send = useCallback((message: ClientMessage) => {
+  const send = useCallback((message: AppClientMessage) => {
     console.log('[ws] send:', message.type);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));

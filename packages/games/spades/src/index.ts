@@ -7,3 +7,4 @@ export * from './seating';
 export * from './game';
 export * from './bot-runner';
 export * from './online-room';
+export * from './protocol';

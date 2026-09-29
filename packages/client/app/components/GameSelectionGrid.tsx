@@ -21,9 +21,9 @@ export function GameSelectionGrid({ onSelect, disabled = false }: GameSelectionG
         >
           <div className="flex w-full items-center justify-between">
             <span className="font-bold text-ink">{game.displayName}</span>
-            {game.available && game.launchMode === "local" && (
+            {game.available && (game.launchMode === "local" || game.launchMode === "local-and-online") && (
               <span className="rounded-cab border border-outline bg-accent px-2 py-0.5 text-xs font-medium text-accent-ink">
-                Hot Seat
+                {game.launchMode === "local-and-online" ? "Hot Seat + Online" : "Hot Seat"}
               </span>
             )}
             {!game.available && (

@@ -19,6 +19,8 @@ import { BackAffordance } from "../../components/BackAffordance";
 import { DevPanel } from "../../components/DevPanel";
 import { ErrorToast } from "../../components/ErrorToast";
 import { JoinCodeBadge } from "../../components/JoinCodeBadge";
+import { SpadesOnlineLobby } from "../../components/spades/SpadesOnlineLobby";
+import { SpadesTable } from "../../components/spades/SpadesTable";
 import { LAST_MISSION } from "../../lib/missions";
 import { highestUnlockedMission } from "../../lib/missionUnlocks";
 import { readRoomGameType } from "../../lib/roomGameType";
@@ -315,6 +317,22 @@ export function GameClient({
 
   // Waiting / Lobby
   if (!state.game || gameStatus === "waiting") {
+    if (state.game && readRoomGameType(state.game) === "spades") {
+      return (
+        <div className="min-h-screen bg-surface">
+          <JoinCodeBadge joinCode={joinCode} />
+          <SpadesOnlineLobby
+            players={state.players}
+            localPlayerId={state.localPlayer?.id ?? ""}
+            captainId={state.game.captainId}
+            onReady={() => send({ type: "player_ready" })}
+            onLeave={handleLeave}
+            onStart={(targetScore, botDifficulties) => send({ type: "start_spades", targetScore, botDifficulties })}
+          />
+          <ErrorToast message={state.error} onDismiss={clearError} />
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen bg-surface">
         <Lobby
@@ -343,6 +361,47 @@ export function GameClient({
           maxPlayers={state.game?.maxPlayers ?? null}
         />
         {devPanel()}
+        <ErrorToast message={state.error} onDismiss={clearError} />
+      </div>
+    );
+  }
+
+  // Online Spades receives a different private projection for every seat.
+  if ((gameStatus === "active" || gameStatus === "won") && readRoomGameType(state.game) === "spades") {
+    const isCaptain = state.localPlayer?.id === state.game.captainId;
+    return (
+      <div className="min-h-screen bg-emerald-950 text-white">
+        <JoinCodeBadge joinCode={joinCode} />
+        <div className="fixed top-4 right-4 z-40 rounded-cab border-2 border-outline bg-surface-raised/90 px-3 py-1.5 text-xs text-ink shadow-print-sm backdrop-blur-sm">
+          <BackAffordance label="Leave" onClick={() => setLeaveWarningOpen(true)} />
+        </div>
+        {leaveWarningOpen && (
+          <LeaveGameWarning
+            isCaptain={isCaptain}
+            onConfirm={confirmLeaveActiveGame}
+            onCancel={() => setLeaveWarningOpen(false)}
+          />
+        )}
+        {state.spades ? (
+          <>
+            <SpadesTable
+              view={state.spades.view}
+              viewingSeat={state.spades.viewingSeat}
+              interactionLocked={state.spades.pausedUntil !== null || gameStatus === "won"}
+              onBlindNilChoice={(blindNil) => send({ type: "spades_blind_nil", blindNil })}
+              onBid={(bid) => send({ type: "spades_bid", bid })}
+              onPlayCard={(cardId) => send({ type: "spades_play", cardId })}
+              onContinueHand={() => send({ type: "spades_continue_hand" })}
+            />
+            {state.spades.pausedUntil && (
+              <div role="status" className="fixed inset-x-4 top-20 z-50 mx-auto max-w-md rounded-cab border-2 border-amber-300 bg-emerald-950/95 p-4 text-center font-bold shadow-xl">
+                Game paused while a player reconnects…
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="p-6 text-center text-sm text-emerald-100">Loading your private hand…</p>
+        )}
         <ErrorToast message={state.error} onDismiss={clearError} />
       </div>
     );
