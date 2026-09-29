@@ -37,22 +37,12 @@ describe("GameSelectionGrid", () => {
     ).toBeInTheDocument();
   });
 
-  // Scoped to each unavailable game's own card rather than a document-wide
-  // text query: there is more than one unavailable game now (#361 added flip
-  // alongside spades), and a global getByText would break again on the next
-  // one. Asserting per-card is also the stronger check — it proves the badge
-  // sits on the disabled card, not merely somewhere on the page.
-  it("marks every unavailable game as Coming soon and disabled", () => {
+  it("marks Spades as available Hot Seat play", () => {
     render(<GameSelectionGrid onSelect={vi.fn()} />);
-
-    const unavailable = GAME_REGISTRY.filter((game) => !game.available);
-    expect(unavailable.length).toBeGreaterThan(0);
-
-    for (const game of unavailable) {
-      const card = screen.getByText(game.displayName).closest("button")!;
-      expect(card).toBeDisabled();
-      expect(within(card).getByText("Coming soon")).toBeInTheDocument();
-    }
+    const card = screen.getByText("Spades").closest("button")!;
+    expect(card).not.toBeDisabled();
+    expect(within(card).getByText("Hot Seat")).toBeInTheDocument();
+    expect(within(card).getByText("1–4 players")).toBeInTheDocument();
   });
 
   // The other half of the #311 ruling: unavailable games are greyed, never
@@ -80,11 +70,15 @@ describe("GameSelectionGrid", () => {
     );
   });
 
-  it("does not call onSelect when an unavailable card is clicked", () => {
+  it("calls onSelect for local Spades without treating it as unavailable", () => {
     const onSelect = vi.fn();
     render(<GameSelectionGrid onSelect={onSelect} />);
     fireEvent.click(screen.getByText("Spades").closest("button")!);
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
+      id: "spades",
+      launchMode: "local",
+      launchPath: "/spades/hot-seat",
+    }));
   });
 
   it("disables every card when disabled prop is set", () => {

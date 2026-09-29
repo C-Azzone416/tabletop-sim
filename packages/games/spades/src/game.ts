@@ -72,6 +72,7 @@ function beginHand(
     completedTricks: [],
     tricksWon: emptyTricks(),
     scores: state.scores,
+    handSummary: undefined,
     spadesBroken: false,
     winner: null,
   };
@@ -148,7 +149,7 @@ export function submitBid(
   };
 }
 
-function completeHand(state: SpadesGameState, random: () => number): SpadesGameState {
+function completeHand(state: SpadesGameState): SpadesGameState {
   const completeBids = state.bids as SeatMap<SpadesBid>;
   const northSouth = scoreHand({
     team: 'north-south',
@@ -167,11 +168,30 @@ function completeHand(state: SpadesGameState, random: () => number): SpadesGameS
     'east-west': { score: eastWest.score, bags: eastWest.bags },
   };
   const winner = determineWinner(scores, state.targetScore);
-  if (winner && winner !== 'tie') {
-    return { ...state, phase: 'finished', currentSeat: null, scores, winner };
-  }
+  const winningTeam = winner && winner !== 'tie' ? winner : null;
+  return {
+    ...state,
+    phase: 'hand-complete',
+    currentSeat: null,
+    scores,
+    winner: winningTeam,
+    handSummary: {
+      handNumber: state.handNumber,
+      previousScores: state.scores,
+      results: { 'north-south': northSouth, 'east-west': eastWest },
+      winner: winningTeam,
+    },
+  };
+}
+
+export function continueAfterHand(
+  state: SpadesGameState,
+  random: () => number = Math.random,
+): SpadesGameState {
+  if (state.phase !== 'hand-complete') throw new Error('the hand is not complete');
+  if (state.winner) return { ...state, phase: 'finished', handSummary: undefined };
   return beginHand(
-    { targetScore: state.targetScore, players: state.players, scores },
+    { targetScore: state.targetScore, players: state.players, scores: state.scores },
     nextSeat(state.dealer),
     state.handNumber + 1,
     random,
@@ -218,7 +238,7 @@ export function playCard(
     completedTricks: [...(state.completedTricks ?? []), completed],
   };
   const noCardsRemain = SPADES_SEATS.every((candidate) => hands[candidate].length === 0);
-  return noCardsRemain ? completeHand(afterTrick, random) : afterTrick;
+  return noCardsRemain ? completeHand(afterTrick) : afterTrick;
 }
 
 export function getLegalCardsForCurrentSeat(state: SpadesGameState): readonly CardInstance[] {
@@ -255,6 +275,7 @@ export function buildSpadesPlayerView(
     completedTricks: state.completedTricks ?? [],
     tricksWon: state.tricksWon,
     scores: state.scores,
+    handSummary: state.handSummary,
     spadesBroken: state.spadesBroken,
     winner: state.winner,
   };

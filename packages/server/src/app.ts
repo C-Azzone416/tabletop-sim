@@ -470,7 +470,7 @@ export async function buildApp() {
 
     // #370 — the dev seed's game type. Validated against the registry, which
     // is the same allowlist create_game uses, but via getGameById rather than
-    // isAvailableGameId: dev seeding deliberately reaches games that are
+    // the room-availability gate: dev seeding deliberately reaches games that are
     // registered-but-not-yet-available (flip ships `available: false`), which
     // is the whole point of a dev door. Unknown ids are still refused, so a
     // client-supplied value never reaches the game_type column unchecked.

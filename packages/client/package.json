@@ -13,6 +13,8 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@tabletop/cards": "*",
+    "@tabletop/game-spades": "*",
     "@tabletop/shared": "*",
     "next": "16.3.3",
     "next-auth": "5.0.0-beta.32",

@@ -10,6 +10,7 @@ function makeGame(overrides: Partial<GameRegistryEntry> = {}): GameRegistryEntry
     description: "test",
     minPlayers: 2,
     maxPlayers: 4,
+    launchMode: "online-room",
     available: true,
     ...overrides,
   };

@@ -10,6 +10,7 @@ import { SPADES_SEATS, type SpadesGameState, type SpadesSeat } from './types';
 
 export const BOT_DELAY_MIN_MS = 600;
 export const BOT_DELAY_MAX_MS = 1200;
+export const TRICK_RESOLUTION_DELAY_MS = 900;
 
 export interface BotTurnRunnerOptions {
   readonly random?: () => number;
@@ -93,10 +94,30 @@ export async function runBotTurns(
   }));
   let state = initialState;
 
+  // If the human just completed a trick that a bot won, hold all four cards
+  // before the bot begins the next trick.
+  if (
+    nextBotSeat(state)
+    && state.phase === 'playing'
+    && state.currentTrick.plays.length === 0
+    && (state.completedTricks?.length ?? 0) > 0
+  ) {
+    await sleep(TRICK_RESOLUTION_DELAY_MS);
+  }
+
   while (nextBotSeat(state)) {
     await sleep(botTurnDelay(random));
+    const completedBefore = state.completedTricks?.length ?? 0;
     state = advanceOneBotTurn(state, random);
     await options.onState?.(state);
+    const completedAfter = state.completedTricks?.length ?? 0;
+    if (
+      nextBotSeat(state)
+      && state.phase === 'playing'
+      && completedAfter > completedBefore
+    ) {
+      await sleep(TRICK_RESOLUTION_DELAY_MS);
+    }
   }
   return state;
 }

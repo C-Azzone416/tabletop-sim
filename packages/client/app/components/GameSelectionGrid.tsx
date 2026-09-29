@@ -21,6 +21,11 @@ export function GameSelectionGrid({ onSelect, disabled = false }: GameSelectionG
         >
           <div className="flex w-full items-center justify-between">
             <span className="font-bold text-ink">{game.displayName}</span>
+            {game.available && game.launchMode === "local" && (
+              <span className="rounded-cab border border-outline bg-accent px-2 py-0.5 text-xs font-medium text-accent-ink">
+                Hot Seat
+              </span>
+            )}
             {!game.available && (
               <span className="rounded-cab border border-outline bg-surface px-2 py-0.5 text-xs font-medium text-ink-muted">
                 Coming soon
@@ -28,9 +33,9 @@ export function GameSelectionGrid({ onSelect, disabled = false }: GameSelectionG
             )}
           </div>
           <span className="text-sm text-ink-muted">
-            {game.minPlayers === game.maxPlayers
+            {game.playerCountLabel ?? (game.minPlayers === game.maxPlayers
               ? `${game.minPlayers} players`
-              : `${game.minPlayers}–${game.maxPlayers} players`}
+              : `${game.minPlayers}–${game.maxPlayers} players`)}
           </span>
           <p className="text-sm text-ink-muted">{game.description}</p>
         </button>
