@@ -88,9 +88,30 @@ describe("SpadesTable", () => {
   });
 
   it("keeps the required phase action in the center of the table", () => {
-    render(<SpadesTable view={makeView({ phase: "bidding" })} viewingSeat="south" {...handlers()} />);
+    const actions = handlers();
+    render(<SpadesTable view={makeView({ phase: "bidding" })} viewingSeat="south" {...actions} />);
     expect(within(screen.getByLabelText("Current trick")).getByLabelText("Bid controls")).toBeVisible();
     expect(within(screen.getByLabelText("Your hand")).queryByLabelText("Bid controls")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Nil" }));
+    fireEvent.click(screen.getByRole("button", { name: "5" }));
+    expect(actions.onBid).toHaveBeenNthCalledWith(1, { kind: "nil" });
+    expect(actions.onBid).toHaveBeenNthCalledWith(2, { kind: "normal", tricks: 5 });
+  });
+
+  it("offers both blind-nil choices before revealing cards", () => {
+    const actions = handlers();
+    render(<SpadesTable
+      view={makeView({ phase: "blind-nil", blindNilChoicesMade: 2, currentTrick: { leader: "north", plays: [] } })}
+      viewingSeat="south"
+      {...actions}
+    />);
+
+    expect(screen.getByLabelText("Blind nil choice")).toHaveTextContent("2 of 4 players locked");
+    expect(screen.queryByTestId("player-hand")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Blind Nil" }));
+    fireEvent.click(screen.getByRole("button", { name: "View Hand" }));
+    expect(actions.onBlindNilChoice).toHaveBeenNthCalledWith(1, true);
+    expect(actions.onBlindNilChoice).toHaveBeenNthCalledWith(2, false);
   });
 
   it("shows all four resolved cards briefly, then clears for the next lead", () => {
@@ -136,9 +157,9 @@ describe("SpadesTable", () => {
             },
             results: {
               "north-south": { score: 51, bags: 1, handPoints: 51, contractPoints: 50, nilPoints: 0, bagPoints: 1, bagPenalty: 0, contractMade: true },
-              "east-west": { score: 52, bags: 2, handPoints: 52, contractPoints: 50, nilPoints: 0, bagPoints: 2, bagPenalty: 0, contractMade: true },
+              "east-west": { score: -110, bags: 2, handPoints: -110, contractPoints: -50, nilPoints: -100, bagPoints: 0, bagPenalty: -10, contractMade: false },
             },
-            winner: null,
+            winner: "north-south",
           },
         })}
         viewingSeat="south"
@@ -150,9 +171,11 @@ describe("SpadesTable", () => {
 
       act(() => vi.advanceTimersByTime(RESOLVED_TRICK_DISPLAY_MS));
       expect(screen.getByRole("dialog", { name: "Hand complete" })).toHaveTextContent("+51");
-      expect(screen.getByRole("dialog", { name: "Hand complete" })).toHaveTextContent("+52");
+      expect(screen.getByRole("dialog", { name: "Hand complete" })).toHaveTextContent("-110");
+      expect(screen.getByRole("dialog", { name: "Hand complete" })).toHaveTextContent("Nil");
+      expect(screen.getByRole("dialog", { name: "Hand complete" })).toHaveTextContent("Bag penalty");
 
-      fireEvent.click(screen.getByRole("button", { name: "Continue to Next Hand" }));
+      fireEvent.click(screen.getByRole("button", { name: "View Game Result" }));
       expect(actions.onContinueHand).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
@@ -168,6 +191,21 @@ describe("SpadesTable", () => {
     fireEvent.click(screen.getByRole("button", { name: "Earlier trick" }));
     expect(confirm).toHaveBeenCalledOnce();
     expect(screen.getByRole("dialog", { name: "Trick review" })).toHaveTextContent("Trick 2 of 2");
+    confirm.mockRestore();
+  });
+
+  it("browses earlier and newer tricks after confirmation, then returns live", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<SpadesTable view={makeView({ completedTricks: [completed(1), completed(2)] })} viewingSeat="south" {...handlers()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Last won trick (2)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Earlier trick" }));
+    expect(screen.getByRole("dialog", { name: "Trick review" })).toHaveTextContent("Earlier trick");
+    expect(screen.getByRole("dialog", { name: "Trick review" })).toHaveTextContent("Trick 1 of 2");
+    fireEvent.click(screen.getByRole("button", { name: "Newer trick" }));
+    expect(screen.getByRole("dialog", { name: "Trick review" })).toHaveTextContent("Last won trick");
+    fireEvent.click(screen.getByRole("button", { name: "Back to live" }));
+    expect(screen.queryByRole("dialog", { name: "Trick review" })).not.toBeInTheDocument();
     confirm.mockRestore();
   });
 });

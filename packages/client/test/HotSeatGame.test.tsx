@@ -66,10 +66,52 @@ describe("HotSeatGame", () => {
 
     expect(screen.getByLabelText("Pass the device")).toBeVisible();
     expect(screen.getByText("Hand concealed")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Blind nil choice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bid two" }));
+    fireEvent.click(screen.getByRole("button", { name: "Play card" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue hand" }));
+    expect(mocks.hotSeatBlindNil).not.toHaveBeenCalled();
+    expect(mocks.hotSeatBid).not.toHaveBeenCalled();
+    expect(mocks.hotSeatPlay).not.toHaveBeenCalled();
+    expect(mocks.hotSeatContinueHand).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "I am Alice" }));
 
     expect(mocks.confirmHotSeat).toHaveBeenCalledWith(session, "south");
     expect(screen.queryByLabelText("Pass the device")).toBeNull();
+  });
+
+  it("shows a thinking state when no human action or private view is available", () => {
+    mocks.buildHotSeatView.mockReturnValueOnce(null);
+    render(<HotSeatGame initialSession={makeSession({ activeHumanSeat: null, confirmedSeat: null })} />);
+    expect(screen.getByText("Computer players are thinking…")).toBeVisible();
+  });
+
+  it("forwards incremental bot state to an optional outside observer", async () => {
+    const session = makeSession();
+    const onState = vi.fn();
+    mocks.hotSeatBid.mockImplementationOnce(async (_session: HotSeatSession, _bid: unknown, options: { onState?: (state: unknown) => Promise<void> }) => {
+      await options.onState?.({ ...session.state, phase: "playing" });
+      return { ...session, state: { ...session.state, phase: "playing" } };
+    });
+
+    render(<HotSeatGame initialSession={session} botOptions={{ onState }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Bid two" }));
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ phase: "playing" })));
+  });
+
+  it("ignores a repeated action while the first action is still running", async () => {
+    const session = makeSession();
+    let finishAction!: (value: HotSeatSession) => void;
+    mocks.hotSeatBid.mockImplementationOnce(() => new Promise((resolve) => {
+      finishAction = resolve;
+    }));
+
+    render(<HotSeatGame initialSession={session} />);
+    fireEvent.click(screen.getByRole("button", { name: "Bid two" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bid two" }));
+    expect(mocks.hotSeatBid).toHaveBeenCalledTimes(1);
+    finishAction(session);
+    await waitFor(() => expect(screen.getByLabelText("Mock Spades table")).toBeVisible());
   });
 
   it("wires the table controls to every hot-seat session action", async () => {
@@ -104,14 +146,17 @@ describe("HotSeatGame", () => {
     consoleError.mockRestore();
   });
 
-  it("renders the winning team when the match is finished", () => {
+  it.each([
+    ["north-south", "North / South wins"],
+    ["east-west", "East / West wins"],
+  ] as const)("renders the %s winner when the match is finished", (winner, label) => {
     const session = makeSession({
-      state: { ...makeSession().state, phase: "finished", winner: "north-south" },
+      state: { ...makeSession().state, phase: "finished", winner },
       activeHumanSeat: null,
       confirmedSeat: null,
     });
     render(<HotSeatGame initialSession={session} />);
     expect(screen.getByRole("heading", { name: "Game over" })).toBeVisible();
-    expect(screen.getByText("North / South wins")).toBeVisible();
+    expect(screen.getByText(label)).toBeVisible();
   });
 });
