@@ -15,6 +15,74 @@ import {
 const instantBots = { random: () => 0, sleep: async () => {} };
 
 describe("hot-seat Spades session", () => {
+  it("rejects setup without at least one human player", async () => {
+    await expect(createHotSeatSession({
+      humans: [],
+      botDifficulties: ["easy", "normal", "hard"],
+      targetScore: 250,
+      random: () => 0,
+    }, instantBots)).rejects.toThrow("hot seat requires at least one human");
+  });
+
+  it("rejects confirmation from a seat that is not awaiting input", async () => {
+    const session = await createHotSeatSession({
+      humans: [
+        { id: "human:ben", name: "Ben" },
+        { id: "human:caroline", name: "Caroline" },
+      ],
+      botDifficulties: ["normal", "hard"],
+      targetScore: 250,
+      random: () => 0,
+    }, instantBots);
+
+    const wrongSeat = session.activeHumanSeat === "north" ? "east" : "north";
+    expect(() => confirmHotSeat(session, wrongSeat)).toThrow("this seat is not awaiting input");
+  });
+
+  it("returns no private view when no human action is pending", async () => {
+    const session = await createHotSeatSession({
+      humans: [{ id: "human:ben", name: "Ben" }],
+      botDifficulties: ["easy", "normal", "hard"],
+      targetScore: 250,
+      random: () => 0,
+    }, instantBots);
+
+    expect(buildHotSeatView({
+      ...session,
+      activeHumanSeat: null,
+      confirmedSeat: null,
+    })).toBeNull();
+  });
+
+  it("rejects bids and card plays before the active player confirms", async () => {
+    const session = await createHotSeatSession({
+      humans: [
+        { id: "human:ben", name: "Ben" },
+        { id: "human:caroline", name: "Caroline" },
+      ],
+      botDifficulties: ["normal", "hard"],
+      targetScore: 250,
+      random: () => 0,
+    }, instantBots);
+
+    await expect(hotSeatBid(session, { kind: "normal", tricks: 2 }, instantBots))
+      .rejects.toThrow("confirm the active player before acting");
+    await expect(hotSeatPlay(session, "any-card", instantBots))
+      .rejects.toThrow("confirm the active player before acting");
+  });
+
+  it("rejects continuing before the current hand is complete", async () => {
+    const session = await createHotSeatSession({
+      humans: [{ id: "human:ben", name: "Ben" }],
+      botDifficulties: ["easy", "normal", "hard"],
+      targetScore: 250,
+      random: () => 0,
+    }, instantBots);
+
+    await expect(hotSeatContinueHand(session, instantBots))
+      .rejects.toThrow("the hand is not complete");
+  });
+
   it("hides the active hand until the named player confirms the handoff", async () => {
     let session = await createHotSeatSession({
       humans: [
